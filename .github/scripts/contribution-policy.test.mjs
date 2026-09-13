@@ -7,7 +7,7 @@ import { readLabels, sync } from './sync-labels.mjs';
 
 export function validPR() {
   return readFileSync(new URL('../pull_request_template.md', import.meta.url), 'utf8')
-    .replace('- [ ] Agent', '- [x] Agent').replace('- [ ] bug', '- [x] bug').replace('- [ ] Not yet verified by a human', '- [x] Not yet verified by a human')
+    .replace('- [ ] Agent', '- [x] Agent').replace('- [ ] bug', '- [x] bug')
     .replace('## Summary', '## Summary\nFix CI recovery after a description changes.')
     .replace('## Validation', '## Validation\nRan the controller regression tests.')
     .replace('## Screenshots / Recordings', '## Screenshots / Recordings\nOnly workflows change; there is no visible product UI. Verified with workflow tests.');
@@ -42,12 +42,14 @@ test('fenced reproduction text is allowed and duplicate headings are rejected', 
   assert.deepEqual(validate(issue('bug').replace('Specific reproducible details', '```sh\nmemoh start\n```'), false).errors, []);
   assert.ok(validate(validPR() + '\n## Type\n- [x] test', true).errors.some(error => error.includes('Duplicate')));
 });
-test('human QA checkboxes disclose status; confirmed QA requires a record', () => {
+test('single QA checkbox defaults to unverified; checking it requires a record', () => {
   assert.deepEqual(validate(validPR(), true).errors, []);
-  let human = validPR().replace('- [x] Not yet verified by a human', '- [ ] Not yet verified by a human').replace('- [ ] Confirmed by a human', '- [x] Confirmed by a human');
+  let human = validPR().replace('- [ ] 已通过真人 QA', '- [x] 已通过真人 QA');
   assert.ok(validate(human, true).errors.length);
   human += '\n@maintainer confirmed the happy path in the PR review.';
   assert.deepEqual(validate(human, true).errors, []);
+  assert.deepEqual(validate(human.replace('[x] 已通过真人 QA','[X] 已通过真人 QA'), true).errors, []);
+  assert.deepEqual(validate(human.replace('[x] 已通过真人 QA','[ ] 已通过真人 QA'), true).errors, []);
 });
 test('all size boundaries use the larger total, never the sum', () => {
   for (const [n, label] of [[0,'XS'],[49,'XS'],[50,'S'],[499,'S'],[500,'M'],[999,'M'],[1000,'L'],[3000,'L'],[3001,'XL']]) {
@@ -158,13 +160,13 @@ test('subheadings remain part of their template section, including repeated subs
   }
   assert.ok(validate(validPR()+'\n## Validation\n重复字段',true).errors.some(e=>e.includes('Duplicate')));
 });
-test('QA choices are visible, unique and allow follow-up notes without a warning line', () => {
+test('QA checkbox is visible, unique and allows follow-up notes', () => {
   assert.deepEqual(validate(validPR()+'\n\n补充：仍等待真人验收。',true).errors,[]);
-  const choice='- [x] Not yet verified by a human';
-  for(const replacement of [`<!-- ${choice} -->`,`\`\`\`\n${choice}\n\`\`\``, '', `${choice}\n- [x] Confirmed by a human`]) {
+  const choice='- [ ] 已通过真人 QA';
+  for(const replacement of [`<!-- ${choice} -->`,`\`\`\`\n${choice}\n\`\`\``, '', `${choice}\n- [x] 已通过真人 QA`, '- [ ] Unknown QA']) {
     assert.ok(validate(validPR().replace(choice,replacement),true).errors.length);
   }
-  const human=validPR().replace(choice,'- [ ] Not yet verified by a human').replace('- [ ] Confirmed by a human','- [x] Confirmed by a human');
+  const human=validPR().replace(choice,'- [x] 已通过真人 QA');
   for(const evidence of ['<!-- @reviewer confirmed -->','\`\`\`\n@reviewer confirmed\n\`\`\`']) {
     assert.ok(validate(human+'\n'+evidence,true).errors.length);
   }

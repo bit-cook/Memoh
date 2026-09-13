@@ -56,8 +56,7 @@ jobs:
             This only updates provider capability configuration and has no visible UI change. Use the generated diff and CI results for verification.
 
             ## Human QA
-            - [x] Not yet verified by a human
-            - [ ] Confirmed by a human
+            - [ ] 已通过真人 QA
 
           commit-message: "chore: sync model reasoning capabilities from LiteLLM"
           add-paths: conf/providers/*.yaml

@@ -233,7 +233,7 @@ Empty sections, placeholders (including bare OK/done/passed), missing selections
 
 Upload screenshots as GitHub-accessible attachments. For visible behavior, agents should use browser tools or Computer Use to exercise the change and capture evidence. If capture or upload is unavailable or not applicable, explain why and describe alternative verification. Local file paths are not uploaded evidence.
 
-Human QA 的勾选项是唯一状态声明，不需要额外警告行。尚无真人确认时只选 `Not yet verified by a human`；获得明确确认后只选 `Confirmed by a human`，并注明验收人和确认记录。选项和确认记录必须是可见正文，注释或代码块不算。Agent 测试和截图不能代替真人 QA；自动校验只检查声明结构，不证明验收实际发生。
+Human QA 只保留一个 `- [ ] 已通过真人 QA` 复选框作为状态声明，不需要额外警告行。未勾选表示尚未验证；获得明确确认后勾选，并注明验收人和确认记录。选项和确认记录必须是可见正文，注释或代码块不算。Agent 测试和截图不能代替真人 QA；自动校验只检查声明结构，不证明验收实际发生。
 
 ### Workflow Behavior
 

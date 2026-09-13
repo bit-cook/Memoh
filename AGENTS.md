@@ -118,11 +118,11 @@ Memoh is a commercial project split across two repositories: this OSS repo and a
 
 ### Pull Request QA Status
 
-PR 正文的 `Human QA` 勾选项是唯一的 QA 状态声明，不再附加旧版警告行：
+PR 正文的 `Human QA` 只保留一个 `- [ ] 已通过真人 QA` 复选框作为 QA 状态声明，不再附加旧版警告行：
 
-- **尚未真人验证**：只勾选 `Not yet verified by a human`。
-- **真人明确确认后**：改为只勾选 `Confirmed by a human`，并注明验收人及确认记录。CI、自动测试和 Agent 截图均不算真人 QA。
-- **确认后继续修改**：若新提交可能影响已验收路径，恢复为尚未真人验证，直到当前 head 获得确认；拼写、注释等不影响行为的改动无需重复验收。
+- **尚未真人验证**：保持复选框未勾选。
+- **真人明确确认后**：勾选 `已通过真人 QA`，并注明验收人及确认记录。CI、自动测试和 Agent 截图均不算真人 QA。
+- **确认后继续修改**：若新提交可能影响已验收路径，取消勾选，直到当前 head 获得确认；拼写、注释等不影响行为的改动无需重复验收。
 
 ## Key Development Rules
 

@@ -30,6 +30,5 @@ If screenshots are unavailable or the change has no visible interface, explain w
 
 ## Human QA
 
-<!-- 只选一项。确认真人 QA 时，补充验收人和确认记录；否则选择尚未验证。 -->
-- [ ] Not yet verified by a human
-- [ ] Confirmed by a human
+<!-- 默认不勾选。真人确认后勾选，并补充验收人和确认记录。 -->
+- [ ] 已通过真人 QA

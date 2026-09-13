@@ -62,9 +62,13 @@ export function validate(body, isPR) {
   const type = choice('type', isPR ? ['bug', 'feat', 'test'] : ['bug', 'feat', 'help']);
   if (isPR) {
     ['summary', 'validation', 'screenshots', 'qa'].forEach(required);
-    const qa = choice('qa', ['Not yet verified by a human', 'Confirmed by a human']);
-    if (qa === 'Confirmed by a human') {
-      const evidence = (parts.get(headings.qa)?.plain.join('\n') ?? '').replace(/^\s*-\s+\[[ xX]\].*$/gm, '').trim();
+    const qaText = parts.get(headings.qa)?.plain.join('\n') ?? '';
+    const qaChoices = [...qaText.matchAll(/^\s*-\s+\[([ xX])\]\s+(.+?)\s*$/gm)];
+    if (qaChoices.length !== 1 || qaChoices[0][2] !== '已通过真人 QA') {
+      errors.push('Human QA 只保留一个“已通过真人 QA”复选框；未勾选表示尚未验证。');
+    }
+    if (qaChoices.length === 1 && qaChoices[0][2] === '已通过真人 QA' && qaChoices[0][1].toLowerCase() === 'x') {
+      const evidence = qaText.replace(/^\s*-\s+\[[ xX]\].*$/gm, '').trim();
       if (!evidence || /^(?:TBD|TODO|待填写|N\/?A)$/i.test(evidence)) errors.push('Identify the reviewer and confirmation record in "Human QA".');
     }
   } else {
