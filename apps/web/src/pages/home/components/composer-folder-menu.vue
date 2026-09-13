@@ -10,7 +10,7 @@
         variant="quiet"
         size="sm"
         :disabled="locked"
-        class="min-w-0 max-w-48 gap-1.5 px-1.5 font-normal max-md:h-11"
+        class="min-w-14 shrink max-w-48 gap-1.5 px-1.5 font-normal max-md:h-11"
         :title="project?.path || folderName"
         :aria-label="t('chat.folder') + ': ' + (project?.name || folderName || t('chat.codexProject.none'))"
       >
@@ -185,7 +185,7 @@ const branchState = computed(() => !branchQuery.error.value && branchQuery.data.
   ? branchQuery.data.value?.state : undefined)
 const canSwitchBranch = computed(() => props.canExecute && props.project?.target_kind === 'native' && !props.project.archived)
 useIntervalFn(() => { if (branchQueryEnabled()) void branchQuery.refetch() }, 5000)
-watch(menuOpen, (open) => { if (open && props.codex) void branchQuery.refetch() })
+watch(menuOpen, (open) => { if (open && branchQueryEnabled()) void branchQuery.refetch() })
 watch(() => props.project?.id, () => { menuOpen.value = false })
 
 async function switchBranch(branch: string) {
@@ -206,6 +206,6 @@ async function switchBranch(branch: string) {
   }
 }
 watch(() => props.streaming, (streaming, wasStreaming) => {
-  if (wasStreaming && !streaming && props.visible && props.project?.id) void branchQuery.refetch()
+  if (wasStreaming && !streaming && branchQueryEnabled()) void branchQuery.refetch()
 })
 </script>

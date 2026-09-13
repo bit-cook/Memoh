@@ -26,7 +26,7 @@
         :disabled="locked || boundToFolder"
         :title="currentName"
         :aria-label="t('chat.continueOn.label')"
-        class="min-w-0 max-w-48 gap-1.5 px-1.5 font-normal max-md:h-11"
+        class="min-w-14 shrink max-w-48 gap-1.5 px-1.5 font-normal max-md:h-11"
       >
         <ComputerIcon class="size-3.5 shrink-0" />
         <span class="min-w-0 truncate text-label">{{ currentName }}</span>

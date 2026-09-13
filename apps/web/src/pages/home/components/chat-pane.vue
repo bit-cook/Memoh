@@ -622,6 +622,7 @@
                   <DropdownMenuContent
                     class="w-56"
                     align="start"
+                    :side="isWelcome ? 'bottom' : 'top'"
                   >
                     <DropdownMenuItem
                       :disabled="!currentBotId || activeChatReadOnly || streaming || loadingMessages"
@@ -957,244 +958,247 @@
                   ? 'mt-1 min-h-10 max-md:min-h-12'
                   : 'min-h-10.5 max-md:min-h-13.5'"
               >
-                <ComposerContinueOn
-                  v-if="showComputersMenu && voiceInputState === 'idle'"
-                  trigger="text"
-                  :targets="workspaceTargets"
-                  :selected-target-id="composerComputerTargetId"
-                  :selected-missing="composerComputerTargetMissing"
-                  :selected-snapshot-name="composerComputerSnapshotName"
-                  :locked="computerSwitchLocked"
-                  :bound-to-folder="composerFolderLocked"
-                  :initial-loading="workspaceTargetsInitialLoading"
-                  :load-failed="workspaceTargetsLoadFailed"
-                  :bot-id="currentBotId ?? ''"
-                  :bot-name="currentBot?.display_name || currentBot?.name || ''"
-                  @select="selectWorkspaceTarget"
-                  @menu-open="refetchWorkspaceTargets"
-                />
-
-                <ComposerFolderMenu
-                  v-if="voiceInputState === 'idle' && (composerFolderPickable || composerFolderLocked || activeChatTarget.runtimeType === BOT_AGENT_RUNTIME_CODEX)"
-                  :bot-id="currentBotId || ''"
-                  :project="codexProject"
-                  :projects="selectableFolders"
-                  :editable="!hasRenderedSession"
-                  :locked="computerSwitchLocked || composerConfigPending || !canWorkspaceRead"
-                  :visible="isVisible && canWorkspaceRead"
-                  :streaming="streaming"
-                  :codex="activeChatTarget.runtimeType === BOT_AGENT_RUNTIME_CODEX"
-                  :pickable="composerFolderPickable"
-                  :locked-folder="composerFolderLocked"
-                  :folder-name="composerFolderName"
-                  :can-execute="hasBotPermission(currentBot?.current_user_permissions, 'workspace_exec')"
-                  @select="selectWorkingFolder"
-                  @clear="clearWorkingFolder"
-                />
-
-                <DropdownMenu
-                  v-if="!hasRenderedSession && (enabledBotAgents.length || canAddAgent) && voiceInputState === 'idle'"
-                  v-model:open="agentPopoverOpen"
-                >
-                  <DropdownMenuTrigger as-child>
-                    <Button
-                      type="button"
-                      variant="quiet"
-                      size="sm"
-                      :disabled="!canChangeAgent"
-                      :class="runtimeModeChanging ? 'disabled:opacity-100' : undefined"
-                      :title="composerAgentName"
-                      :aria-label="$t('chat.agent') + ': ' + composerAgentName"
-                      class="min-w-0 max-w-60 gap-1.5 px-1.5 font-normal max-md:h-11"
-                    >
-                      <component
-                        :is="composerAgentIcon"
-                        class="size-3.5 shrink-0"
-                        aria-hidden="true"
-                      />
-                      <span class="truncate text-label">{{ composerAgentName }}</span>
-                      <ChevronDown class="size-3 shrink-0 opacity-70" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    side="bottom"
-                    :side-offset="0"
-                    class="w-56"
-                  >
-                    <DropdownMenuLabel>{{ $t('chat.agent') }}</DropdownMenuLabel>
-                    <DropdownMenuItem
-                      @mouseenter="hoveredAgentChoice = 'memoh'"
-                      @mouseleave="hoveredAgentChoice = ''"
-                      @select="selectMemohAgent"
-                    >
-                      <component
-                        :is="!activeUsesExternalAgentComposer || hoveredAgentChoice === 'memoh' ? MemohColor : MemohIcon"
-                        class="size-4 shrink-0 text-muted-foreground"
-                        aria-hidden="true"
-                      />
-                      <span class="min-w-0 flex-1 truncate">{{ $t('chat.agentMemoh') }}</span>
-                      <Check
-                        v-if="!activeUsesExternalAgentComposer"
-                        class="ml-auto"
-                      />
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      v-for="agent in enabledBotAgents"
-                      :key="agent.id"
-                      @mouseenter="hoveredAgentChoice = agent.id || ''"
-                      @mouseleave="hoveredAgentChoice = ''"
-                      @select="selectBotAgent(agent)"
-                    >
-                      <component
-                        :is="botAgentIcon(agent, activeBotAgentID === agent.id || hoveredAgentChoice === agent.id)"
-                        class="size-4 shrink-0 text-muted-foreground"
-                      />
-                      <span class="min-w-0 flex-1 truncate">{{ botAgentName(agent) }}</span>
-                      <Check
-                        v-if="activeBotAgentID === agent.id"
-                        class="ml-auto"
-                      />
-                    </DropdownMenuItem>
-                    <template v-if="canAddAgent">
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem @select="openAgentSettings(true)">
-                        <AddIcon />
-                        {{ $t('bots.agent.add') }}
-                      </DropdownMenuItem>
-                    </template>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <span
-                  v-else-if="hasRenderedSession && voiceInputState === 'idle'"
-                  class="inline-flex h-8 min-w-0 max-w-60 items-center gap-1.5 px-1.5 text-label font-normal text-muted-foreground max-md:h-11"
-                  :title="composerAgentName"
-                  :aria-label="$t('chat.agent') + ': ' + composerAgentName"
-                >
-                  <component
-                    :is="composerAgentIcon"
-                    class="size-3.5 shrink-0"
-                    aria-hidden="true"
+                <!-- Labels shrink first; extra active controls remain reachable by scrolling. -->
+                <div class="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                  <ComposerContinueOn
+                    v-if="showComputersMenu && voiceInputState === 'idle'"
+                    trigger="text"
+                    :targets="workspaceTargets"
+                    :selected-target-id="composerComputerTargetId"
+                    :selected-missing="composerComputerTargetMissing"
+                    :selected-snapshot-name="composerComputerSnapshotName"
+                    :locked="computerSwitchLocked"
+                    :bound-to-folder="composerFolderLocked"
+                    :initial-loading="workspaceTargetsInitialLoading"
+                    :load-failed="workspaceTargetsLoadFailed"
+                    :bot-id="currentBotId ?? ''"
+                    :bot-name="currentBot?.display_name || currentBot?.name || ''"
+                    @select="selectWorkspaceTarget"
+                    @menu-open="refetchWorkspaceTargets"
                   />
-                  <span class="truncate">{{ composerAgentName }}</span>
-                </span>
 
-                <DropdownMenu v-if="runtimeModes.length && voiceInputState === 'idle'">
-                  <DropdownMenuTrigger as-child>
-                    <Button
-                      variant="quiet"
-                      size="sm"
-                      :disabled="runtimeModeDisabled"
-                      :class="runtimeModeChanging ? 'disabled:opacity-100' : undefined"
-                      class="min-w-0 max-w-48 gap-1.5 px-1.5 font-normal max-md:h-11"
-                      :title="currentRuntimeMode?.name || currentRuntimeModeId"
-                      :aria-label="$t('chat.permissionMode') + ': ' + (currentRuntimeMode?.name || currentRuntimeModeId)"
-                    >
-                      <RuntimeModeIcon
-                        :icon="currentRuntimeMode?.icon"
-                        :warning="currentRuntimeMode?.warning"
-                        class="size-3.5"
-                      />
-                      <span
-                        class="truncate text-label"
-                        :class="currentRuntimeMode?.warning ? 'text-warning-foreground' : undefined"
-                      >{{ currentRuntimeMode?.name || currentRuntimeModeId }}</span>
-                      <ChevronDown class="size-3 shrink-0 opacity-70" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    side="bottom"
-                    :side-offset="0"
-                    :collision-padding="16"
-                    class="w-80 max-w-[calc(100vw-2rem)] sm:w-md"
+                  <ComposerFolderMenu
+                    v-if="voiceInputState === 'idle' && (composerFolderPickable || composerFolderLocked || activeChatTarget.runtimeType === BOT_AGENT_RUNTIME_CODEX)"
+                    :bot-id="currentBotId || ''"
+                    :project="codexProject"
+                    :projects="selectableFolders"
+                    :editable="!hasRenderedSession"
+                    :locked="computerSwitchLocked || composerConfigPending || !canWorkspaceRead"
+                    :visible="isVisible && canWorkspaceRead"
+                    :streaming="streaming"
+                    :codex="activeChatTarget.runtimeType === BOT_AGENT_RUNTIME_CODEX"
+                    :pickable="composerFolderPickable"
+                    :locked-folder="composerFolderLocked"
+                    :folder-name="composerFolderName"
+                    :can-execute="hasBotPermission(currentBot?.current_user_permissions, 'workspace_exec')"
+                    @select="selectWorkingFolder"
+                    @clear="clearWorkingFolder"
+                  />
+
+                  <DropdownMenu
+                    v-if="!hasRenderedSession && (enabledBotAgents.length || canAddAgent) && voiceInputState === 'idle'"
+                    v-model:open="agentPopoverOpen"
                   >
-                    <DropdownMenuLabel class="text-label font-normal">
-                      {{ $t('chat.sessionPermissionMode') }}
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem
-                      v-for="mode in runtimeModes"
-                      :key="mode.id"
-                      class="py-1 max-md:py-1.5"
-                      :disabled="runtimeModeDisabled"
-                      @select="onRuntimeModeSelected(mode.id)"
-                    >
-                      <RuntimeModeIcon
-                        :icon="mode.icon"
-                        :warning="mode.warning"
-                      />
-                      <span
-                        class="min-w-0 flex-1"
-                        :class="mode.warning ? 'text-warning-foreground' : undefined"
+                    <DropdownMenuTrigger as-child>
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        size="sm"
+                        :disabled="!canChangeAgent"
+                        :class="runtimeModeChanging ? 'disabled:opacity-100' : undefined"
+                        :title="composerAgentName"
+                        :aria-label="$t('chat.agent') + ': ' + composerAgentName"
+                        class="min-w-14 shrink max-w-60 gap-1.5 px-1.5 font-normal max-md:h-11"
                       >
-                        <span class="block text-label">{{ mode.name || mode.id }}</span>
-                        <span
-                          v-if="mode.description"
-                          class="block whitespace-normal text-body"
-                          :class="mode.warning ? 'text-warning-foreground' : 'text-muted-foreground'"
-                        >{{ mode.description }}</span>
-                      </span>
-                      <Check v-if="mode.id === currentRuntimeModeId" />
-                    </DropdownMenuItem>
-                    <template v-if="planModeSupported || goalSupported">
-                      <DropdownMenuSeparator />
+                        <component
+                          :is="composerAgentIcon"
+                          class="size-3.5 shrink-0"
+                          aria-hidden="true"
+                        />
+                        <span class="truncate text-label">{{ composerAgentName }}</span>
+                        <ChevronDown class="size-3 shrink-0 opacity-70" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      side="bottom"
+                      :side-offset="0"
+                      class="w-56"
+                    >
+                      <DropdownMenuLabel>{{ $t('chat.agent') }}</DropdownMenuLabel>
                       <DropdownMenuItem
-                        v-if="planModeSupported"
+                        @mouseenter="hoveredAgentChoice = 'memoh'"
+                        @mouseleave="hoveredAgentChoice = ''"
+                        @select="selectMemohAgent"
+                      >
+                        <component
+                          :is="!activeUsesExternalAgentComposer || hoveredAgentChoice === 'memoh' ? MemohColor : MemohIcon"
+                          class="size-4 shrink-0 text-muted-foreground"
+                          aria-hidden="true"
+                        />
+                        <span class="min-w-0 flex-1 truncate">{{ $t('chat.agentMemoh') }}</span>
+                        <Check
+                          v-if="!activeUsesExternalAgentComposer"
+                          class="ml-auto"
+                        />
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        v-for="agent in enabledBotAgents"
+                        :key="agent.id"
+                        @mouseenter="hoveredAgentChoice = agent.id || ''"
+                        @mouseleave="hoveredAgentChoice = ''"
+                        @select="selectBotAgent(agent)"
+                      >
+                        <component
+                          :is="botAgentIcon(agent, activeBotAgentID === agent.id || hoveredAgentChoice === agent.id)"
+                          class="size-4 shrink-0 text-muted-foreground"
+                        />
+                        <span class="min-w-0 flex-1 truncate">{{ botAgentName(agent) }}</span>
+                        <Check
+                          v-if="activeBotAgentID === agent.id"
+                          class="ml-auto"
+                        />
+                      </DropdownMenuItem>
+                      <template v-if="canAddAgent">
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem @select="openAgentSettings(true)">
+                          <AddIcon />
+                          {{ $t('bots.agent.add') }}
+                        </DropdownMenuItem>
+                      </template>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <span
+                    v-else-if="hasRenderedSession && voiceInputState === 'idle'"
+                    class="inline-flex h-8 min-w-0 max-w-60 items-center gap-1.5 px-1.5 text-label font-normal text-muted-foreground max-md:h-11"
+                    :title="composerAgentName"
+                    :aria-label="$t('chat.agent') + ': ' + composerAgentName"
+                  >
+                    <component
+                      :is="composerAgentIcon"
+                      class="size-3.5 shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span class="truncate">{{ composerAgentName }}</span>
+                  </span>
+
+                  <DropdownMenu v-if="runtimeModes.length && voiceInputState === 'idle'">
+                    <DropdownMenuTrigger as-child>
+                      <Button
+                        variant="quiet"
+                        size="sm"
                         :disabled="runtimeModeDisabled"
-                        @select="togglePlanMode"
+                        :class="runtimeModeChanging ? 'disabled:opacity-100' : undefined"
+                        class="min-w-14 shrink max-w-48 gap-1.5 px-1.5 font-normal max-md:h-11"
+                        :title="currentRuntimeMode?.name || currentRuntimeModeId"
+                        :aria-label="$t('chat.permissionMode') + ': ' + (currentRuntimeMode?.name || currentRuntimeModeId)"
                       >
-                        <Lightbulb />
-                        <span class="min-w-0 flex-1 truncate">{{ $t(planModeEnabled ? 'chat.planMode.disable' : 'chat.planMode.enable') }}</span>
-                        <Check v-if="planModeEnabled" />
-                      </DropdownMenuItem>
+                        <RuntimeModeIcon
+                          :icon="currentRuntimeMode?.icon"
+                          :warning="currentRuntimeMode?.warning"
+                          class="size-3.5"
+                        />
+                        <span
+                          class="truncate text-label"
+                          :class="currentRuntimeMode?.warning ? 'text-warning-foreground' : undefined"
+                        >{{ currentRuntimeMode?.name || currentRuntimeModeId }}</span>
+                        <ChevronDown class="size-3 shrink-0 opacity-70" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="start"
+                      side="bottom"
+                      :side-offset="0"
+                      :collision-padding="16"
+                      class="w-80 max-w-[calc(100vw-2rem)] sm:w-md"
+                    >
+                      <DropdownMenuLabel class="text-label font-normal">
+                        {{ $t('chat.sessionPermissionMode') }}
+                      </DropdownMenuLabel>
                       <DropdownMenuItem
-                        v-if="goalSupported"
-                        :disabled="runtimeModeDisabled || !!goalExecutionBlockedReason"
-                        :title="goalExecutionBlockedReason"
-                        @select="goalDraftScope = goalDraftEnabled ? '' : runtimeModeScope"
+                        v-for="mode in runtimeModes"
+                        :key="mode.id"
+                        class="py-1 max-md:py-1.5"
+                        :disabled="runtimeModeDisabled"
+                        @select="onRuntimeModeSelected(mode.id)"
                       >
-                        <Target />
-                        <span class="min-w-0 flex-1 truncate">{{ $t(goalDraftEnabled ? 'chat.goal.cancelDraft' : 'chat.goal.description') }}</span>
-                        <Check v-if="goalDraftEnabled" />
+                        <RuntimeModeIcon
+                          :icon="mode.icon"
+                          :warning="mode.warning"
+                        />
+                        <span
+                          class="min-w-0 flex-1"
+                          :class="mode.warning ? 'text-warning-foreground' : undefined"
+                        >
+                          <span class="block text-label">{{ mode.name || mode.id }}</span>
+                          <span
+                            v-if="mode.description"
+                            class="block whitespace-normal text-body"
+                            :class="mode.warning ? 'text-warning-foreground' : 'text-muted-foreground'"
+                          >{{ mode.description }}</span>
+                        </span>
+                        <Check v-if="mode.id === currentRuntimeModeId" />
                       </DropdownMenuItem>
-                    </template>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                      <template v-if="planModeSupported || goalSupported">
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          v-if="planModeSupported"
+                          :disabled="runtimeModeDisabled"
+                          @select="togglePlanMode"
+                        >
+                          <Lightbulb />
+                          <span class="min-w-0 flex-1 truncate">{{ $t(planModeEnabled ? 'chat.planMode.disable' : 'chat.planMode.enable') }}</span>
+                          <Check v-if="planModeEnabled" />
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          v-if="goalSupported"
+                          :disabled="runtimeModeDisabled || !!goalExecutionBlockedReason"
+                          :title="goalExecutionBlockedReason"
+                          @select="goalDraftScope = goalDraftEnabled ? '' : runtimeModeScope"
+                        >
+                          <Target />
+                          <span class="min-w-0 flex-1 truncate">{{ $t(goalDraftEnabled ? 'chat.goal.cancelDraft' : 'chat.goal.description') }}</span>
+                          <Check v-if="goalDraftEnabled" />
+                        </DropdownMenuItem>
+                      </template>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
-                <Button
-                  v-if="planModeEnabled && voiceInputState === 'idle'"
-                  variant="quiet"
-                  size="sm"
-                  class="shrink-0 gap-1.5 px-1.5 font-normal max-md:h-11"
-                  :disabled="runtimeModeDisabled"
-                  :aria-label="$t('chat.planMode.disable')"
-                  :title="$t('chat.planMode.disable')"
-                  @click="togglePlanMode"
-                >
-                  <Lightbulb class="size-3.5" />
-                  <span class="text-label">{{ $t('chat.planMode.label') }}</span>
-                  <X
-                    class="size-3"
-                    aria-hidden="true"
-                  />
-                </Button>
-                <Button
-                  v-if="goalDraftEnabled && voiceInputState === 'idle'"
-                  variant="quiet"
-                  size="sm"
-                  class="shrink-0 gap-1.5 px-1.5 font-normal max-md:h-11"
-                  :disabled="runtimeModeDisabled"
-                  :aria-label="$t('chat.goal.cancelDraft')"
-                  :title="$t('chat.goal.cancelDraft')"
-                  @click="goalDraftScope = ''"
-                >
-                  <Target class="size-3.5" />
-                  <span class="text-label">{{ $t('chat.goal.label') }}</span>
-                  <X
-                    class="size-3"
-                    aria-hidden="true"
-                  />
-                </Button>
+                  <Button
+                    v-if="planModeEnabled && voiceInputState === 'idle'"
+                    variant="quiet"
+                    size="sm"
+                    class="shrink-0 gap-1.5 px-1.5 font-normal max-md:h-11"
+                    :disabled="runtimeModeDisabled"
+                    :aria-label="$t('chat.planMode.disable')"
+                    :title="$t('chat.planMode.disable')"
+                    @click="togglePlanMode"
+                  >
+                    <Lightbulb class="size-3.5" />
+                    <span class="text-label">{{ $t('chat.planMode.label') }}</span>
+                    <X
+                      class="size-3"
+                      aria-hidden="true"
+                    />
+                  </Button>
+                  <Button
+                    v-if="goalDraftEnabled && voiceInputState === 'idle'"
+                    variant="quiet"
+                    size="sm"
+                    class="shrink-0 gap-1.5 px-1.5 font-normal max-md:h-11"
+                    :disabled="runtimeModeDisabled"
+                    :aria-label="$t('chat.goal.cancelDraft')"
+                    :title="$t('chat.goal.cancelDraft')"
+                    @click="goalDraftScope = ''"
+                  >
+                    <Target class="size-3.5" />
+                    <span class="text-label">{{ $t('chat.goal.label') }}</span>
+                    <X
+                      class="size-3"
+                      aria-hidden="true"
+                    />
+                  </Button>
+                </div>
 
                 <SessionInfoRing
                   v-if="showSessionInfoRing && voiceInputState === 'idle'"
@@ -1302,7 +1306,6 @@ import { captureChatPaneSendContext, clearComposerPairDraft, composerHasNoModel 
 import { onAuthSessionCleared } from '@/lib/auth-session'
 import { useACPRuntime } from '@/composables/useACPRuntime'
 import { useAgentModelCatalog } from '@/composables/useAgentModelCatalog'
-import { useIsMobile } from '@/composables/useIsMobile'
 import { useVirtualKeyboard } from '@/composables/useVirtualKeyboard'
 import { findMissingRequiredManagedField, readACPAgentConfig } from '@/utils/acp'
 import { BOT_AGENT_RUNTIME_ACP, BOT_AGENT_RUNTIME_CLAUDE_CODE, BOT_AGENT_RUNTIME_CODEX, botAgentIcon, botAgentName, botAgentProvider, isDirectBotAgentConfigured, normalizeBotAgentRuntime } from '@/utils/bot-agent'
@@ -3175,28 +3178,12 @@ watch(inputText, (text) => {
   if (!prefix || text === prefix || text.startsWith(`${prefix} `)) return
   slashPanelSuppressedPrefix.value = ''
 })
-// Mirror of ComposerContinueOn's pill rule: only an explicit non-default
-// selection expands the trigger (unset — including the pre-load window —
-// renders the collapsed default circle; a missing/ghost selection resolves to
-// null here exactly like the child's selectedTarget). The reservation must
-// track which width the control is actually rendering, and on mobile the
-// trigger never expands (see the child's header comment).
-const isMobileShell = useIsMobile()
-const continueOnExpanded = computed(() => (
-  !!selectedWorkspaceTargetId.value
-  && selectedWorkspaceTarget.value?.kind !== 'native'
-  && !isMobileShell.value
-))
-
 const {
   textareaEl,
   composerEl,
   focusTextarea,
   modelTriggerMaxWidth,
-} = useComposerLayout({
-  continueOnVisible: showComputersMenu,
-  continueOnExpanded,
-})
+} = useComposerLayout()
 
 useUnfocusedComposerInput({
   textarea: textareaEl,
