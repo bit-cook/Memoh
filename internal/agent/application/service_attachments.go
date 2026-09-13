@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	sdk "github.com/felinics/twilight/sdk"
@@ -18,6 +19,20 @@ import (
 
 const (
 	gatewayInlineAttachmentMaxBytes int64 = 20 * 1024 * 1024
+
+	// attachmentPreparationTimeout bounds preparing one turn's attachments.
+	// Rendering an animated sticker has its own, tighter deadline; this is the
+	// ceiling on a turn that carries a lot of them, so a batch of pathological
+	// media cannot hold a conversation open indefinitely.
+	attachmentPreparationTimeout = 30 * time.Second
+
+	// maxTurnVisionImages caps how many images one turn hands the model.
+	//
+	// A discussion turn gathers attachments from every new message, and an
+	// animated sticker expands into several images, so the two multiply. Past
+	// the cap an attachment contributes its first frame only — every
+	// attachment stays visible, and it is the expansion that is shed first.
+	maxTurnVisionImages = 20
 )
 
 // routeAndMergeAttachments applies CapabilityFallbackPolicy to split
@@ -27,7 +42,7 @@ func (s *Service) routeAndMergeAttachments(ctx context.Context, model models.Get
 	if len(req.Attachments) == 0 && len(req.ReplyAttachments) == 0 {
 		return []any{}
 	}
-	typed := s.prepareGatewayAttachments(ctx, req)
+	typed := s.prepareGatewayAttachments(ctx, req, modelAcceptsImages(model))
 	routed := routeAttachmentsByCapability(model.Config.Compatibilities, typed)
 	for i := range routed.Fallback {
 		fallbackPath := strings.TrimSpace(routed.Fallback[i].FallbackPath)
@@ -62,7 +77,15 @@ func (s *Service) routeAndMergeAttachments(ctx context.Context, model models.Get
 	return merged
 }
 
-func (s *Service) prepareGatewayAttachments(ctx context.Context, req ChatRequest) []gatewayAttachment {
+// prepareGatewayAttachments materializes request attachments for the gateway.
+//
+// acceptsImages says whether inline images can be used at all. Preparing an
+// image is not free — an animated sticker is rasterised, any stored image is
+// read and encoded — and a model without vision routes every one of them to a
+// file reference regardless, so the work is skipped rather than thrown away.
+func (s *Service) prepareGatewayAttachments(ctx context.Context, req ChatRequest, acceptsImages bool) []gatewayAttachment {
+	ctx, cancel := context.WithTimeout(ctx, attachmentPreparationTimeout)
+	defer cancel()
 	attachments := requestAttachmentsForGateway(req)
 	if len(attachments) == 0 {
 		return nil
@@ -125,7 +148,9 @@ func (s *Service) prepareGatewayAttachments(ctx context.Context, req ChatRequest
 			}
 		}
 		item = normalizeGatewayAttachmentPayload(item)
-		item = s.inlineImageAttachmentAssetIfNeeded(ctx, strings.TrimSpace(req.BotID), item)
+		if acceptsImages {
+			item = s.inlineImageAttachmentAssetIfNeeded(ctx, strings.TrimSpace(req.BotID), item)
+		}
 		item = s.inlineFileAttachmentAssetIfNeeded(ctx, strings.TrimSpace(req.BotID), item)
 		prepared = append(prepared, item)
 	}
@@ -265,7 +290,10 @@ func inlineTextAttachmentPart(ga gatewayAttachment) (sdk.TextPart, bool) {
 // media the model cannot parse are skipped; the message text still carries the
 // attachment, so the agent keeps a usable reference to the original.
 func (s *Service) inlineInjectAttachments(ctx context.Context, botID string, atts []ChatAttachment) []sdk.ImagePart {
+	ctx, cancel := context.WithTimeout(ctx, attachmentPreparationTimeout)
+	defer cancel()
 	var parts []sdk.ImagePart
+	var budget visionBudget
 	seen := make(map[string]bool, len(atts))
 	for _, att := range atts {
 		if strings.ToLower(strings.TrimSpace(att.Type)) != "image" {
@@ -281,7 +309,7 @@ func (s *Service) inlineInjectAttachments(ctx context.Context, botID string, att
 			s.logImageInputRejected(err, botID, contentHash)
 			continue
 		}
-		parts = append(parts, framed...)
+		parts = append(parts, budget.take(framed)...)
 	}
 	return parts
 }

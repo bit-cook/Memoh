@@ -60,6 +60,18 @@ const (
 	inlineTextAttachmentMaxBytes = 64 * 1024
 )
 
+// modelAcceptsImages reports whether inline images are usable by this model at
+// all. It is the same vision bit the router applies, read before any image is
+// prepared rather than after.
+func modelAcceptsImages(model models.GetResponse) bool {
+	for _, compatibility := range model.Config.Compatibilities {
+		if compatibility == models.CompatVision {
+			return true
+		}
+	}
+	return false
+}
+
 // routeAttachmentsByCapability splits attachments based on model compatibilities.
 // Images route natively with CompatVision, PDFs with CompatFileInput, and small
 // plain-text files unconditionally; everything else goes through fallback. The

@@ -118,6 +118,7 @@ type Service struct {
 	eventPublisher          messageevent.Publisher
 	skillLoader             SkillLoader
 	assetLoader             gatewayAssetLoader
+	animationFrames         animationCache
 	platformIdentities      PlatformIdentitySource
 	botPermissions          botPermissionChecker
 	workspaceTargets        workspaceTargetResolver
@@ -368,7 +369,10 @@ func (s *Service) InlineImageAttachments(ctx context.Context, botID string, refs
 	if s == nil || s.assetLoader == nil || len(refs) == 0 {
 		return nil
 	}
+	ctx, cancel := context.WithTimeout(ctx, attachmentPreparationTimeout)
+	defer cancel()
 	var parts []sdk.ImagePart
+	var budget visionBudget
 	seen := make(map[string]bool, len(refs))
 	for _, ref := range refs {
 		contentHash := strings.TrimSpace(ref.ContentHash)
@@ -384,7 +388,7 @@ func (s *Service) InlineImageAttachments(ctx context.Context, botID string, refs
 			s.logImageInputRejected(err, botID, contentHash)
 			continue
 		}
-		parts = append(parts, framed...)
+		parts = append(parts, budget.take(framed)...)
 	}
 	return parts
 }

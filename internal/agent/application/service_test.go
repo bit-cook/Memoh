@@ -56,7 +56,7 @@ func TestPrepareGatewayAttachments_InlineAssetToBase64(t *testing.T) {
 		},
 	}
 
-	prepared := resolver.prepareGatewayAttachments(context.Background(), req)
+	prepared := resolver.prepareGatewayAttachments(context.Background(), req, true)
 	if len(prepared) != 1 {
 		t.Fatalf("expected 1 attachment, got %d", len(prepared))
 	}
@@ -116,7 +116,7 @@ func TestPrepareGatewayAttachments_DataURLFromURLFieldIsNativeInline(t *testing.
 		},
 	}
 
-	prepared := resolver.prepareGatewayAttachments(context.Background(), req)
+	prepared := resolver.prepareGatewayAttachments(context.Background(), req, true)
 	if len(prepared) != 1 {
 		t.Fatalf("expected 1 attachment, got %d", len(prepared))
 	}
@@ -142,7 +142,7 @@ func TestPrepareGatewayAttachments_PublicURLFromURLFieldIsNativePublic(t *testin
 		},
 	}
 
-	prepared := resolver.prepareGatewayAttachments(context.Background(), req)
+	prepared := resolver.prepareGatewayAttachments(context.Background(), req, true)
 	if len(prepared) != 1 {
 		t.Fatalf("expected 1 attachment, got %d", len(prepared))
 	}
@@ -205,7 +205,7 @@ func TestPrepareGatewayAttachments_IncludesReplyAttachments(t *testing.T) {
 		},
 	}
 
-	prepared := resolver.prepareGatewayAttachments(context.Background(), req)
+	prepared := resolver.prepareGatewayAttachments(context.Background(), req, true)
 	if len(prepared) != 2 {
 		t.Fatalf("expected current and reply attachments, got %d", len(prepared))
 	}
@@ -237,7 +237,7 @@ func TestPrepareGatewayAttachments_ResolvesStoredFileAccessPath(t *testing.T) {
 		}},
 	}
 
-	prepared := resolver.prepareGatewayAttachments(context.Background(), req)
+	prepared := resolver.prepareGatewayAttachments(context.Background(), req, true)
 	if len(prepared) != 1 || prepared[0].FallbackPath != "/data/.memoh/media/aa/asset.pdf" {
 		t.Fatalf("prepared attachments = %#v, want reachable PDF path", prepared)
 	}
@@ -426,7 +426,7 @@ func TestPrepareGatewayAttachments_DetectsImageMimeWhenOctetStream(t *testing.T)
 		},
 	}
 
-	prepared := resolver.prepareGatewayAttachments(context.Background(), req)
+	prepared := resolver.prepareGatewayAttachments(context.Background(), req, true)
 	if len(prepared) != 1 {
 		t.Fatalf("expected 1 attachment, got %d", len(prepared))
 	}

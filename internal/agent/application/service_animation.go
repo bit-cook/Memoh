@@ -31,6 +31,30 @@ const animationFrameCount = 5
 // runaway render on, which is the whole reason the renderer runs in one.
 const animationRenderTimeout = 10 * time.Second
 
+// visionBudget bounds how many images one turn hands the model.
+//
+// It is spent in two stages so a turn that carries more media than the budget
+// still shows the model something of everything: an attachment offers all its
+// frames, and once the budget is tight it contributes only its first. The
+// zero value is a full budget.
+type visionBudget struct{ used int }
+
+// take returns the frames this attachment may contribute.
+func (b *visionBudget) take(frames []sdk.ImagePart) []sdk.ImagePart {
+	remaining := maxTurnVisionImages - b.used
+	switch {
+	case remaining <= 0:
+		return nil
+	case len(frames) <= remaining:
+		b.used += len(frames)
+		return frames
+	default:
+		// Not enough room for the expansion — keep the representative frame.
+		b.used++
+		return frames[:1]
+	}
+}
+
 // inlineStoredImageParts turns a stored asset into direct vision input.
 //
 // An animated sticker becomes several frames while every other image stays a
@@ -55,6 +79,12 @@ func (s *Service) inlineStoredImageDataURLs(ctx context.Context, botID, contentH
 	if s == nil || s.assetLoader == nil {
 		return nil, "", errors.New("gateway asset loader not configured")
 	}
+	// Only animations are cached, so a hit already answers both "what is this"
+	// and "what does it render to" — the asset never has to be opened.
+	cacheKey := animationCacheKey(botID, contentHash)
+	if cached, ok := s.animationFrames.get(cacheKey); ok {
+		return cached, "image/png", nil
+	}
 	reader, assetMime, err := s.assetLoader.OpenForGateway(ctx, botID, contentHash)
 	if err != nil {
 		return nil, "", fmt.Errorf("open asset: %w", err)
@@ -77,6 +107,7 @@ func (s *Service) inlineStoredImageDataURLs(ctx context.Context, botID, contentH
 		if err != nil {
 			return nil, "", err
 		}
+		s.animationFrames.put(cacheKey, dataURLs)
 		return dataURLs, "image/png", nil
 	}
 
