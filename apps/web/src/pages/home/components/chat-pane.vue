@@ -214,7 +214,7 @@
         :class="[
           isWelcome
             ? 'inset-0 flex flex-col items-center justify-start pt-[28dvh]'
-            : 'inset-x-0 bottom-0 pt-2 pb-7',
+            : 'inset-x-0 bottom-0 pt-2',
           { invisible: composerPlacementPending },
         ]"
         :style="composerLiftPx > 0 ? { bottom: `${composerLiftPx}px` } : undefined"
@@ -431,21 +431,6 @@
                 @clear="controlGoal('clear')"
                 @resume="controlGoal('resume')"
               />
-              <CodexProjectBar
-                v-if="activeChatTarget.runtimeType === BOT_AGENT_RUNTIME_CODEX && (!hasRenderedSession || activeSessionWorkdirId)"
-                v-show="codexProjectExpanded"
-                :id="codexProjectBarId"
-                :bot-id="currentBotId || ''"
-                :project="codexProject"
-                :projects="selectableFolders"
-                :can-execute="hasBotPermission(currentBot?.current_user_permissions, 'workspace_exec')"
-                :editable="!hasRenderedSession"
-                :locked="computerSwitchLocked || composerConfigPending || !canWorkspaceRead"
-                :visible="isVisible && canWorkspaceRead && codexProjectExpanded"
-                :streaming="streaming"
-                @select="selectWorkingFolder"
-                @clear="clearWorkingFolder"
-              />
               <!-- The composer is ALWAYS a two-row card (textarea on top,
                    controls below) — no pill↔multiline morph: a fixed rounded-2xl
                    box, so its shape never depends on the content and nothing
@@ -638,51 +623,6 @@
                     class="w-56"
                     align="start"
                   >
-                    <!-- Folder binding. A draft picks where it lands here, the
-                       same choice the sidebar's per-folder ＋ makes, so a new
-                       chat isn't stuck folderless just because it was started
-                       from the composer. Once the session exists the binding
-                       pins its workspace target for life, so the picker gives
-                       way to a read-only entry. -->
-                    <template v-if="activeChatTarget.runtimeType !== BOT_AGENT_RUNTIME_CODEX && composerFolderPickable">
-                      <DropdownMenuLabel>{{ $t('chat.folder') }}</DropdownMenuLabel>
-                      <DropdownMenuItem @select="clearWorkingFolder">
-                        <X class="size-4 shrink-0" />
-                        <span class="min-w-0 flex-1 truncate">{{ $t('chat.folderDetachDraft') }}</span>
-                        <Check
-                          v-if="!draftWorkingFolder"
-                          class="ml-auto"
-                        />
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        v-for="folder in selectableFolders"
-                        :key="folder.id"
-                        @select="selectWorkingFolder(folder)"
-                      >
-                        <FolderOpen class="size-4 shrink-0" />
-                        <span class="min-w-0 flex-1 truncate">{{ folder.name }}</span>
-                        <Check
-                          v-if="draftWorkingFolder?.id === folder.id"
-                          class="ml-auto"
-                        />
-                      </DropdownMenuItem>
-                    </template>
-                    <template v-else-if="activeChatTarget.runtimeType !== BOT_AGENT_RUNTIME_CODEX && composerFolderLocked">
-                      <DropdownMenuLabel>{{ $t('chat.folder') }}</DropdownMenuLabel>
-                      <DropdownMenuItem disabled>
-                        <FolderOpen class="size-4 shrink-0" />
-                        <span class="min-w-0 flex-1 truncate">{{ composerFolderName }}</span>
-                        <Check class="ml-auto" />
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        v-if="!activeSession"
-                        @select="clearWorkingFolder"
-                      >
-                        <X class="size-4 shrink-0" />
-                        <span class="min-w-0 flex-1 truncate">{{ $t('chat.folderDetachDraft') }}</span>
-                      </DropdownMenuItem>
-                    </template>
-                    <DropdownMenuSeparator v-if="activeChatTarget.runtimeType !== BOT_AGENT_RUNTIME_CODEX && showComposerFolderSection" />
                     <DropdownMenuItem
                       :disabled="!currentBotId || activeChatReadOnly || streaming || loadingMessages"
                       @select="fileInput?.click()"
@@ -696,148 +636,6 @@
                     />
                   </DropdownMenuContent>
                 </DropdownMenu>
-
-                <Button
-                  v-if="activeChatTarget.runtimeType === BOT_AGENT_RUNTIME_CODEX && activeSessionWorkdirId && codexProjectCollapsible && voiceInputState === 'idle'"
-                  size="icon-sm"
-                  variant="quiet"
-                  shape="circle"
-                  class="order-1 self-end max-md:size-11"
-                  :title="$t(codexProjectExpanded ? 'chat.codexProject.collapse' : 'chat.codexProject.expand')"
-                  :aria-label="$t(codexProjectExpanded ? 'chat.codexProject.collapse' : 'chat.codexProject.expand')"
-                  :aria-expanded="codexProjectExpanded"
-                  :aria-controls="codexProjectBarId"
-                  @click="setCodexProjectExpanded(!codexProjectExpanded)"
-                >
-                  <component :is="codexProjectExpanded ? FolderOpen : Folder" />
-                </Button>
-
-                <DropdownMenu v-if="runtimeModes.length && voiceInputState === 'idle'">
-                  <DropdownMenuTrigger as-child>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      :disabled="runtimeModeDisabled"
-                      :class="runtimeModeChanging ? 'disabled:opacity-100' : undefined"
-                      class="order-2 min-w-0 max-w-48 self-end font-normal text-muted-foreground max-md:h-11 @max-lg/composer:w-11 @max-lg/composer:shrink-0 @max-lg/composer:px-0"
-                      :title="currentRuntimeMode?.name || currentRuntimeModeId"
-                      :aria-label="$t('chat.permissionMode') + ': ' + (currentRuntimeMode?.name || currentRuntimeModeId)"
-                    >
-                      <RuntimeModeIcon
-                        :icon="currentRuntimeMode?.icon"
-                        :warning="currentRuntimeMode?.warning"
-                      />
-                      <span
-                        class="truncate text-label @max-lg/composer:hidden"
-                        :class="currentRuntimeMode?.warning ? 'text-warning-foreground' : undefined"
-                      >{{ currentRuntimeMode?.name || currentRuntimeModeId }}</span>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    side="top"
-                    :collision-padding="16"
-                    class="w-80 max-w-[calc(100vw-2rem)] sm:w-md"
-                  >
-                    <DropdownMenuLabel class="text-label font-normal">
-                      {{ $t('chat.sessionPermissionMode') }}
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem
-                      v-for="mode in runtimeModes"
-                      :key="mode.id"
-                      class="py-1 max-md:py-1.5"
-                      :disabled="runtimeModeDisabled"
-                      @select="onRuntimeModeSelected(mode.id)"
-                    >
-                      <RuntimeModeIcon
-                        :icon="mode.icon"
-                        :warning="mode.warning"
-                      />
-                      <span
-                        class="min-w-0 flex-1"
-                        :class="mode.warning ? 'text-warning-foreground' : undefined"
-                      >
-                        <span class="block text-label">{{ mode.name || mode.id }}</span>
-                        <span
-                          v-if="mode.description"
-                          class="block whitespace-normal text-body"
-                          :class="mode.warning ? 'text-warning-foreground' : 'text-muted-foreground'"
-                        >{{ mode.description }}</span>
-                      </span>
-                      <Check v-if="mode.id === currentRuntimeModeId" />
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <div
-                  v-if="planModeEnabled && voiceInputState === 'idle'"
-                  class="order-2 flex shrink-0 items-center gap-2 self-end @max-lg/composer:gap-0"
-                >
-                  <Separator
-                    orientation="vertical"
-                    class="h-5 @max-lg/composer:hidden"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="font-normal text-muted-foreground max-md:h-11 @max-lg/composer:w-11 @max-lg/composer:gap-1 @max-lg/composer:px-0"
-                    :disabled="runtimeModeDisabled"
-                    :class="runtimeModeChanging ? 'disabled:opacity-100' : undefined"
-                    :aria-label="$t('chat.planMode.disable')"
-                    :title="$t('chat.planMode.disable')"
-                    @click="togglePlanMode"
-                  >
-                    <Lightbulb />
-                    <span class="@max-lg/composer:hidden">{{ $t('chat.planMode.label') }}</span>
-                    <X
-                      class="size-3"
-                      aria-hidden="true"
-                    />
-                  </Button>
-                </div>
-
-                <div
-                  v-if="goalDraftEnabled && voiceInputState === 'idle'"
-                  class="order-2 flex shrink-0 items-center gap-2 self-end @max-lg/composer:gap-0"
-                >
-                  <Separator
-                    orientation="vertical"
-                    class="h-5 @max-lg/composer:hidden"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="font-normal text-muted-foreground max-md:h-11 @max-lg/composer:w-11 @max-lg/composer:gap-1 @max-lg/composer:px-0"
-                    :disabled="runtimeModeDisabled"
-                    :aria-label="$t('chat.goal.cancelDraft')"
-                    :title="$t('chat.goal.cancelDraft')"
-                    @click="goalDraftScope = ''"
-                  >
-                    <Target />
-                    <span class="@max-lg/composer:hidden">{{ $t('chat.goal.label') }}</span>
-                    <X
-                      class="size-3"
-                      aria-hidden="true"
-                    />
-                  </Button>
-                </div>
-
-                <!-- Destination selector: a peer of the ＋ menu in the
-                     controls row. Selection only; ACL lives elsewhere. -->
-                <ComposerContinueOn
-                  v-if="showComputersMenu"
-                  :targets="workspaceTargets"
-                  :selected-target-id="selectedWorkspaceTargetId"
-                  :selected-missing="selectedWorkspaceTargetMissing"
-                  :selected-snapshot-name="workspaceTargetSelection.snapshot?.name ?? ''"
-                  :locked="computerSwitchLocked"
-                  :initial-loading="workspaceTargetsInitialLoading"
-                  :load-failed="workspaceTargetsLoadFailed"
-                  :bot-id="currentBotId ?? ''"
-                  :bot-name="currentBot?.display_name || currentBot?.name || ''"
-                  @select="selectWorkspaceTarget"
-                  @menu-open="refetchWorkspaceTargets"
-                />
 
                 <!-- The model selector truncates within the input controls row. -->
                 <div class="order-3 flex min-w-0 flex-1 basis-48 items-center justify-end gap-1 self-end">
@@ -1145,9 +943,55 @@
                   </div>
                 </div>
               </div>
-              <!-- Session controls sit below the input surface. Keep this row's
-                   height while recording so the dock remains stable. -->
-              <div class="flex min-h-10 min-w-0 items-center justify-between gap-2 px-2 pt-1 max-md:min-h-12">
+              <!-- Session controls sit outside the input surface as bare text
+                 triggers — no chrome at rest, the label itself shifts
+                 muted→foreground on hover (Button variant="quiet"). Order:
+                 Computer → Folder (+ branch) → Agent → Permission →
+                 mode pills, with the context-pressure ring pinned right.
+                 Keep this row's height while recording so the dock stays
+                 stable. -->
+              <div
+                data-composer-context-row
+                class="flex min-w-0 items-center gap-1 px-2"
+                :class="isWelcome
+                  ? 'mt-1 min-h-10 max-md:min-h-12'
+                  : 'min-h-10.5 max-md:min-h-13.5'"
+              >
+                <ComposerContinueOn
+                  v-if="showComputersMenu && voiceInputState === 'idle'"
+                  trigger="text"
+                  :targets="workspaceTargets"
+                  :selected-target-id="composerComputerTargetId"
+                  :selected-missing="composerComputerTargetMissing"
+                  :selected-snapshot-name="composerComputerSnapshotName"
+                  :locked="computerSwitchLocked"
+                  :bound-to-folder="composerFolderLocked"
+                  :initial-loading="workspaceTargetsInitialLoading"
+                  :load-failed="workspaceTargetsLoadFailed"
+                  :bot-id="currentBotId ?? ''"
+                  :bot-name="currentBot?.display_name || currentBot?.name || ''"
+                  @select="selectWorkspaceTarget"
+                  @menu-open="refetchWorkspaceTargets"
+                />
+
+                <ComposerFolderMenu
+                  v-if="voiceInputState === 'idle' && (composerFolderPickable || composerFolderLocked || activeChatTarget.runtimeType === BOT_AGENT_RUNTIME_CODEX)"
+                  :bot-id="currentBotId || ''"
+                  :project="codexProject"
+                  :projects="selectableFolders"
+                  :editable="!hasRenderedSession"
+                  :locked="computerSwitchLocked || composerConfigPending || !canWorkspaceRead"
+                  :visible="isVisible && canWorkspaceRead"
+                  :streaming="streaming"
+                  :codex="activeChatTarget.runtimeType === BOT_AGENT_RUNTIME_CODEX"
+                  :pickable="composerFolderPickable"
+                  :locked-folder="composerFolderLocked"
+                  :folder-name="composerFolderName"
+                  :can-execute="hasBotPermission(currentBot?.current_user_permissions, 'workspace_exec')"
+                  @select="selectWorkingFolder"
+                  @clear="clearWorkingFolder"
+                />
+
                 <DropdownMenu
                   v-if="!hasRenderedSession && (enabledBotAgents.length || canAddAgent) && voiceInputState === 'idle'"
                   v-model:open="agentPopoverOpen"
@@ -1155,26 +999,27 @@
                   <DropdownMenuTrigger as-child>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="quiet"
                       size="sm"
                       :disabled="!canChangeAgent"
                       :class="runtimeModeChanging ? 'disabled:opacity-100' : undefined"
                       :title="composerAgentName"
                       :aria-label="$t('chat.agent') + ': ' + composerAgentName"
-                      class="min-w-0 max-w-60 font-normal text-muted-foreground max-md:h-11"
+                      class="min-w-0 max-w-60 gap-1.5 px-1.5 font-normal max-md:h-11"
                     >
                       <component
                         :is="composerAgentIcon"
-                        class="size-4 shrink-0"
+                        class="size-3.5 shrink-0"
                         aria-hidden="true"
                       />
-                      <span class="truncate">{{ composerAgentName }}</span>
-                      <ChevronDown class="size-3.5 shrink-0" />
+                      <span class="truncate text-label">{{ composerAgentName }}</span>
+                      <ChevronDown class="size-3 shrink-0 opacity-70" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
                     align="start"
-                    side="top"
+                    side="bottom"
+                    :side-offset="0"
                     class="w-56"
                   >
                     <DropdownMenuLabel>{{ $t('chat.agent') }}</DropdownMenuLabel>
@@ -1184,7 +1029,7 @@
                       @select="selectMemohAgent"
                     >
                       <component
-                        :is="hoveredAgentChoice === 'memoh' ? MemohColor : MemohIcon"
+                        :is="!activeUsesExternalAgentComposer || hoveredAgentChoice === 'memoh' ? MemohColor : MemohIcon"
                         class="size-4 shrink-0 text-muted-foreground"
                         aria-hidden="true"
                       />
@@ -1202,7 +1047,7 @@
                       @select="selectBotAgent(agent)"
                     >
                       <component
-                        :is="botAgentIcon(agent, hoveredAgentChoice === agent.id)"
+                        :is="botAgentIcon(agent, activeBotAgentID === agent.id || hoveredAgentChoice === agent.id)"
                         class="size-4 shrink-0 text-muted-foreground"
                       />
                       <span class="min-w-0 flex-1 truncate">{{ botAgentName(agent) }}</span>
@@ -1221,18 +1066,136 @@
                   </DropdownMenuContent>
                 </DropdownMenu>
                 <span
-                  v-else-if="voiceInputState === 'idle'"
-                  class="inline-flex h-8 min-w-0 max-w-60 items-center gap-1.5 px-2.5 text-control font-normal text-muted-foreground max-md:h-11"
+                  v-else-if="hasRenderedSession && voiceInputState === 'idle'"
+                  class="inline-flex h-8 min-w-0 max-w-60 items-center gap-1.5 px-1.5 text-label font-normal text-muted-foreground max-md:h-11"
                   :title="composerAgentName"
                   :aria-label="$t('chat.agent') + ': ' + composerAgentName"
                 >
                   <component
                     :is="composerAgentIcon"
-                    class="size-4 shrink-0"
+                    class="size-3.5 shrink-0"
                     aria-hidden="true"
                   />
                   <span class="truncate">{{ composerAgentName }}</span>
                 </span>
+
+                <DropdownMenu v-if="runtimeModes.length && voiceInputState === 'idle'">
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      variant="quiet"
+                      size="sm"
+                      :disabled="runtimeModeDisabled"
+                      :class="runtimeModeChanging ? 'disabled:opacity-100' : undefined"
+                      class="min-w-0 max-w-48 gap-1.5 px-1.5 font-normal max-md:h-11"
+                      :title="currentRuntimeMode?.name || currentRuntimeModeId"
+                      :aria-label="$t('chat.permissionMode') + ': ' + (currentRuntimeMode?.name || currentRuntimeModeId)"
+                    >
+                      <RuntimeModeIcon
+                        :icon="currentRuntimeMode?.icon"
+                        :warning="currentRuntimeMode?.warning"
+                        class="size-3.5"
+                      />
+                      <span
+                        class="truncate text-label"
+                        :class="currentRuntimeMode?.warning ? 'text-warning-foreground' : undefined"
+                      >{{ currentRuntimeMode?.name || currentRuntimeModeId }}</span>
+                      <ChevronDown class="size-3 shrink-0 opacity-70" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="start"
+                    side="bottom"
+                    :side-offset="0"
+                    :collision-padding="16"
+                    class="w-80 max-w-[calc(100vw-2rem)] sm:w-md"
+                  >
+                    <DropdownMenuLabel class="text-label font-normal">
+                      {{ $t('chat.sessionPermissionMode') }}
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      v-for="mode in runtimeModes"
+                      :key="mode.id"
+                      class="py-1 max-md:py-1.5"
+                      :disabled="runtimeModeDisabled"
+                      @select="onRuntimeModeSelected(mode.id)"
+                    >
+                      <RuntimeModeIcon
+                        :icon="mode.icon"
+                        :warning="mode.warning"
+                      />
+                      <span
+                        class="min-w-0 flex-1"
+                        :class="mode.warning ? 'text-warning-foreground' : undefined"
+                      >
+                        <span class="block text-label">{{ mode.name || mode.id }}</span>
+                        <span
+                          v-if="mode.description"
+                          class="block whitespace-normal text-body"
+                          :class="mode.warning ? 'text-warning-foreground' : 'text-muted-foreground'"
+                        >{{ mode.description }}</span>
+                      </span>
+                      <Check v-if="mode.id === currentRuntimeModeId" />
+                    </DropdownMenuItem>
+                    <template v-if="planModeSupported || goalSupported">
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        v-if="planModeSupported"
+                        :disabled="runtimeModeDisabled"
+                        @select="togglePlanMode"
+                      >
+                        <Lightbulb />
+                        <span class="min-w-0 flex-1 truncate">{{ $t(planModeEnabled ? 'chat.planMode.disable' : 'chat.planMode.enable') }}</span>
+                        <Check v-if="planModeEnabled" />
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        v-if="goalSupported"
+                        :disabled="runtimeModeDisabled || !!goalExecutionBlockedReason"
+                        :title="goalExecutionBlockedReason"
+                        @select="goalDraftScope = goalDraftEnabled ? '' : runtimeModeScope"
+                      >
+                        <Target />
+                        <span class="min-w-0 flex-1 truncate">{{ $t(goalDraftEnabled ? 'chat.goal.cancelDraft' : 'chat.goal.description') }}</span>
+                        <Check v-if="goalDraftEnabled" />
+                      </DropdownMenuItem>
+                    </template>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <Button
+                  v-if="planModeEnabled && voiceInputState === 'idle'"
+                  variant="quiet"
+                  size="sm"
+                  class="shrink-0 gap-1.5 px-1.5 font-normal max-md:h-11"
+                  :disabled="runtimeModeDisabled"
+                  :aria-label="$t('chat.planMode.disable')"
+                  :title="$t('chat.planMode.disable')"
+                  @click="togglePlanMode"
+                >
+                  <Lightbulb class="size-3.5" />
+                  <span class="text-label">{{ $t('chat.planMode.label') }}</span>
+                  <X
+                    class="size-3"
+                    aria-hidden="true"
+                  />
+                </Button>
+                <Button
+                  v-if="goalDraftEnabled && voiceInputState === 'idle'"
+                  variant="quiet"
+                  size="sm"
+                  class="shrink-0 gap-1.5 px-1.5 font-normal max-md:h-11"
+                  :disabled="runtimeModeDisabled"
+                  :aria-label="$t('chat.goal.cancelDraft')"
+                  :title="$t('chat.goal.cancelDraft')"
+                  @click="goalDraftScope = ''"
+                >
+                  <Target class="size-3.5" />
+                  <span class="text-label">{{ $t('chat.goal.label') }}</span>
+                  <X
+                    class="size-3"
+                    aria-hidden="true"
+                  />
+                </Button>
+
                 <SessionInfoRing
                   v-if="showSessionInfoRing && voiceInputState === 'idle'"
                   class="ml-auto shrink-0"
@@ -1266,14 +1229,12 @@ import { Memoh as MemohIcon, MemohColor } from '@memohai/icon'
 import { AddIcon, UploadIcon } from '@memohai/icon/ui'
 
 import { EXTERNAL_AGENT_DEFAULT_PROJECT_MODE, EXTERNAL_AGENT_DEFAULT_PROJECT_PATH, normalizeAgentID } from '@/utils/external-agent'
-import { ref, reactive, computed, onBeforeUnmount, useId, useTemplateRef, watch, onWatcherCleanup, nextTick, onActivated, onDeactivated, type Ref } from 'vue'
+import { ref, reactive, computed, onBeforeUnmount, useTemplateRef, watch, onWatcherCleanup, nextTick, onActivated, onDeactivated, type Ref } from 'vue'
 import {
   ImagePlus,
   ChevronDown,
   ArrowDown,
   Check,
-  Folder,
-  FolderOpen,
   Sparkles,
   X,
   HelpCircle,
@@ -1285,7 +1246,7 @@ import {
   Lightbulb,
   Target,
 } from 'lucide-vue-next'
-import { Button, Command, CommandGroup, CommandItem, CommandKeyBridge, CommandList, CommandSeparator, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, InlineLoadingRow, PanePlaceholder, Popover, PopoverContent, PopoverTrigger, ScrollArea, Separator, Skeleton, Spinner, menuChromeClass, toast } from '@felinic/ui'
+import { Button, Command, CommandGroup, CommandItem, CommandKeyBridge, CommandList, CommandSeparator, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, InlineLoadingRow, PanePlaceholder, Popover, PopoverContent, PopoverTrigger, ScrollArea, Skeleton, Spinner, menuChromeClass, toast } from '@felinic/ui'
 import { useChatStore, type ExternalAgentSessionInput, type ChatMessage, type ChatWorkspaceTargetSnapshot, type SendMessageResult } from '@/store/chat-list'
 import { useWorkdirsStore } from '@/store/workdirs'
 import type { BotWorkdir } from '@/composables/api/useWorkdirs'
@@ -1306,7 +1267,7 @@ import MessageItem from './message-item.vue'
 import ComposerContinueOn from './composer-continue-on.vue'
 import ComposerConnectorsMenu from './composer-connectors-menu.vue'
 import RuntimeModeIcon from './runtime-mode-icon.vue'
-import CodexProjectBar from './codex-project-bar.vue'
+import ComposerFolderMenu from './composer-folder-menu.vue'
 import CodexGoalBar from './codex-goal-bar.vue'
 import ChatAttachmentCard from './chat-attachment-card.vue'
 import { useChatScroll } from '../composables/useChatScroll'
@@ -1681,6 +1642,7 @@ const {
     return data
   },
   enabled: () => !!currentBotId.value && canWorkspaceRead.value,
+  refetchOnMount: 'always',
   refetchOnWindowFocus: true,
 })
 
@@ -1756,7 +1718,7 @@ const activeUsesExternalAgentComposer = computed(() => activeIsPendingExternalAg
 // ---- workdir binding ----
 // A session bound to a bot workdir (or a draft under the bot's working
 // folder) has its workspace target pinned by that binding: the computer
-// switcher is replaced by a read-only folder entry, and sends carry no
+// label reflects the folder target, and sends carry no
 // explicit workspace_target_id — the backend derives it from the binding.
 const workdirsStore = useWorkdirsStore()
 watch(() => currentBotId.value, (botId) => {
@@ -1772,7 +1734,7 @@ const draftWorkingFolder = computed(() => {
   if (activeUsesExternalAgentComposer.value && workdir.target_kind === 'remote') return null
   return workdir
 })
-// Codex displays its existing folder binding above the composer. Only drafts
+// Codex displays its existing folder binding in the context row. Only drafts
 // may change it; existing sessions keep their creation-time directory.
 const codexProject = computed<BotWorkdir | null>(() => {
   if (!activeSessionWorkdirId.value) return draftWorkingFolder.value
@@ -1782,16 +1744,6 @@ const codexProject = computed<BotWorkdir | null>(() => {
     path: String(activeSessionMetadata.value.project_path ?? ''),
   }
 })
-const codexProjectBarId = useId()
-const expandedProjectSessions = reactive(new Set<string>())
-const codexProjectCollapsible = computed(() => !!activeSessionId.value && (loadingMessages.value || messages.value.some(message => message.role === 'user')))
-const codexProjectExpanded = computed(() => !codexProjectCollapsible.value || expandedProjectSessions.has(activeSessionId.value))
-function setCodexProjectExpanded(expanded: boolean) {
-  const sessionId = activeSessionId.value
-  if (!sessionId || !codexProjectCollapsible.value) return
-  if (expanded) expandedProjectSessions.add(sessionId)
-  else expandedProjectSessions.delete(sessionId)
-}
 const composerFolderLocked = computed(() => (
   !!activeSessionWorkdirId.value || !!draftWorkingFolder.value
 ))
@@ -1812,7 +1764,6 @@ const selectableFolders = computed(() => {
 // The picker only makes sense before the session exists; an empty folder list
 // falls through to the locked entry (or to nothing at all).
 const composerFolderPickable = computed(() => !activeSession.value && selectableFolders.value.length > 0)
-const showComposerFolderSection = computed(() => composerFolderPickable.value || composerFolderLocked.value)
 
 function selectWorkingFolder(folder: BotWorkdir) {
   if (activeSession.value) return
@@ -1835,7 +1786,6 @@ const showComputersMenu = computed(() => (
   !activeIsExternalAgent.value
   && !activeIsPendingExternalAgent.value
   && canWorkspaceRead.value
-  && !composerFolderLocked.value
 ))
 const computerSwitchLocked = computed(() => (
   streaming.value
@@ -1857,6 +1807,20 @@ const selectedWorkspaceTargetMissing = computed(() => (
   && !selectedWorkspaceTarget.value
   && !workspaceTargetsInitialLoading.value
 ))
+
+// A folder owns its target. Display that target without overwriting the free
+// draft selection, so clearing the folder restores the previous computer.
+const composerComputerTargetId = computed(() => composerFolderLocked.value
+  ? codexProject.value?.workspace_target_id?.trim() || ''
+  : selectedWorkspaceTargetId.value)
+const composerComputerTargetMissing = computed(() => composerFolderLocked.value
+  ? !workspaceTargetsInitialLoading.value && !workspaceTargets.value.some(target => target.target_id === composerComputerTargetId.value)
+  : selectedWorkspaceTargetMissing.value)
+const composerComputerSnapshotName = computed(() => {
+  if (!composerFolderLocked.value) return workspaceTargetSelection.value.snapshot?.name ?? ''
+  const snapshot = workspaceTargetFromSessionMetadata(activeSessionMetadata.value)
+  return snapshot?.target_id === composerComputerTargetId.value ? snapshot.name ?? '' : ''
+})
 
 function snapshotForWorkspaceTarget(target: ValidWorkspaceTarget): ChatWorkspaceTargetSnapshot {
   return {
@@ -1885,7 +1849,7 @@ function workspaceTargetFromSessionMetadata(metadata: Record<string, unknown>): 
 }
 
 function selectWorkspaceTarget(target: ValidWorkspaceTarget) {
-  if (computerSwitchLocked.value || !workspaceTargetAvailable(target)) return
+  if (composerFolderLocked.value || computerSwitchLocked.value || !workspaceTargetAvailable(target)) return
   chatStore.setWorkspaceTargetSelection(
     paneTarget.value,
     target.target_id,
@@ -1940,7 +1904,7 @@ const activeDirectRuntime = computed(() => {
   return ''
 })
 const activeUsesDirectRuntime = computed(() => activeDirectRuntime.value !== '')
-const showSessionInfoRing = computed(() => !activeUsesExternalAgentComposer.value || activeUsesACPRuntime.value)
+const showSessionInfoRing = computed(() => !isWelcome.value && !!activeSession.value && (!activeUsesExternalAgentComposer.value || activeUsesACPRuntime.value))
 const activeACPAgentId = computed(() => normalizeAgentID(activeSessionMetadata.value.acp_agent_id))
 const composerAgent = computed(() => {
   if (!activeUsesExternalAgentComposer.value) return null

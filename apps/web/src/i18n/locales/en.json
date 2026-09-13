@@ -1368,6 +1368,8 @@
     },
     "openPreviewToSide": "Open preview to the side",
     "previewTab": "Preview: {name}",
+    "contextUsedTokens": "{used} / {window} tokens",
+    "contextUsedPercent": "{percent}% context used",
     "sessionInfoRingAria": "Session info",
     "sessionInfoRingAriaUsage": "Session info, context {percent}% used",
     "sessionInfoTooltipHint": "Hover to see session info",

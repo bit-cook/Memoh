@@ -19,12 +19,30 @@
            (composer-pill-press / composer-circle-press, style.css) so press
            feedback is identical either way. -->
       <Button
+        v-if="trigger === 'text'"
+        type="button"
+        variant="quiet"
+        size="sm"
+        :disabled="locked || boundToFolder"
+        :title="currentName"
+        :aria-label="t('chat.continueOn.label')"
+        class="min-w-0 max-w-48 gap-1.5 px-1.5 font-normal max-md:h-11"
+      >
+        <ComputerIcon class="size-3.5 shrink-0" />
+        <span class="min-w-0 truncate text-label">{{ currentName }}</span>
+        <ChevronDown
+          v-if="!boundToFolder"
+          class="size-3 shrink-0 opacity-70"
+        />
+      </Button>
+      <Button
+        v-else
         type="button"
         variant="ghost"
         tone="muted"
         size="sm"
         shape="circle"
-        :disabled="locked"
+        :disabled="locked || boundToFolder"
         :title="isDefaultTarget ? currentName : t('chat.continueOn.label')"
         :aria-label="t('chat.continueOn.label')"
         class="order-2 min-w-0 max-w-48 self-end max-md:h-11 duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none"
@@ -62,6 +80,8 @@
     <DropdownMenuContent
       class="w-auto min-w-64 max-w-[min(20rem,var(--reka-dropdown-menu-content-available-width))]"
       align="start"
+      side="bottom"
+      :side-offset="trigger === 'text' ? 0 : 4"
     >
       <DropdownMenuItem
         v-if="initialLoading"
@@ -161,7 +181,7 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { WorkspaceWorkspaceTarget } from '@memohai/sdk'
 import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Spinner } from '@felinic/ui'
-import { Check } from 'lucide-vue-next'
+import { Check, ChevronDown } from 'lucide-vue-next'
 import {
   DesktopRuntimeKey,
   type DesktopRuntimeState,
@@ -187,10 +207,14 @@ const props = defineProps<{
   selectedMissing: boolean
   selectedSnapshotName: string
   locked: boolean
+  boundToFolder?: boolean
   initialLoading: boolean
   loadFailed: boolean
   botId: string
   botName: string
+  // 'pill' = the morphing circle/pill inside the composer; 'text' = the bare
+  // text trigger in the row below the composer (This Mac ▾).
+  trigger?: 'pill' | 'text'
 }>()
 
 const emit = defineEmits<{
@@ -233,7 +257,11 @@ function onMenuOpen(open: boolean): void {
 
 
 const selectedTarget = computed(() => (
-  props.targets.find(target => target.target_id === props.selectedTargetId) ?? null
+  props.selectedTargetId
+    ? props.targets.find(target => target.target_id === props.selectedTargetId) ?? null
+    : props.targets.find(target => target.primary)
+      ?? props.targets.find(target => target.target_id === 'native')
+      ?? null
 ))
 
 // On desktop, the runtime backed by this machine reads as "This computer"
@@ -251,7 +279,11 @@ const currentName = computed(() => {
   if (props.selectedMissing) return props.selectedSnapshotName || t('chat.computerUnavailable')
   // A selection whose targets haven't loaded yet still wears its snapshot
   // name — the pill is announcing THAT computer, not the generic label.
-  return props.selectedSnapshotName || t('chat.continueOn.label')
+  if (props.selectedSnapshotName) return props.selectedSnapshotName
+  if (!props.selectedTargetId || props.selectedTargetId === 'native') {
+    return workspaceTargetName({ kind: 'native' }, t)
+  }
+  return t('chat.continueOn.label')
 })
 
 // Only an explicit non-default selection earns the pill. No selection at all —

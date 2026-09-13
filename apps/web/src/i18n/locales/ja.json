@@ -1346,6 +1346,8 @@
     },
     "openPreviewToSide": "プレビューを横に開く",
     "previewTab": "プレビュー: {name}",
+    "contextUsedTokens": "{used} / {window} トークン",
+    "contextUsedPercent": "コンテキストを {percent}% 使用",
     "sessionInfoRingAria": "セッション情報",
     "sessionInfoRingAriaUsage": "セッション情報、コンテキスト使用率 {percent}%",
     "sessionInfoTooltipHint": "カーソルを合わせるとセッション情報が表示されます",

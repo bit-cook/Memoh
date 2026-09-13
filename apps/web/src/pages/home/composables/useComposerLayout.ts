@@ -12,9 +12,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Comput
 // floors at 72px — below that the trigger's own `shrink` lets it truncate
 // rather than push past the box.
 
-// The strip beneath the bottom box (pb-8). Shared with the dock so the mask
-// can apply the same half-height rule to whatever box replaces the composer.
-export const COMPOSER_MASK_BELOW_PX = 32
+// The context row owns all space down to the bottom edge; no extra strip follows it.
+export const COMPOSER_MASK_BELOW_PX = 0
 
 export interface ComposerLayoutDeps {
   // Whether the Continue-on destination control is in the row; it reserves space.
