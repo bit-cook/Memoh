@@ -2174,10 +2174,7 @@ func (a *TelegramAdapter) collectTelegramAttachments(bot *tele.Bot, msg *tele.Me
 		attachments = append(attachments, att)
 	}
 	if msg.Sticker != nil {
-		att := a.buildTelegramAttachment(bot, channel.AttachmentImage, msg.Sticker.FileID, "", "", msg.Sticker.FileSize)
-		att.Width = msg.Sticker.Width
-		att.Height = msg.Sticker.Height
-		attachments = append(attachments, att)
+		attachments = append(attachments, a.buildTelegramStickerAttachment(bot, msg.Sticker))
 	}
 	caption := strings.TrimSpace(msg.Caption)
 	if caption != "" {
@@ -2186,6 +2183,54 @@ func (a *TelegramAdapter) collectTelegramAttachments(bot *tele.Bot, msg *tele.Me
 		}
 	}
 	return attachments
+}
+
+// buildTelegramStickerAttachment picks the sticker file a model can actually
+// read. Video stickers are WebM and animated stickers are gzipped Lottie —
+// neither is an image, whatever the attachment is labelled. Telegram ships a
+// static thumbnail alongside both, so that becomes the attachment and the
+// animation stays out of the image lane entirely. The sticker emoji rides along
+// in the name: it is Telegram's own description of what the sticker means, and
+// it is the only signal left when a sticker has no thumbnail.
+func (a *TelegramAdapter) buildTelegramStickerAttachment(bot *tele.Bot, sticker *tele.Sticker) channel.Attachment {
+	fileID, mime := sticker.FileID, "image/webp"
+	width, height, size := sticker.Width, sticker.Height, sticker.FileSize
+	thumbnail := (*tele.Photo)(nil)
+	if sticker.Video || sticker.Animated {
+		// Label the original honestly, so that a sticker without a thumbnail is
+		// routed as a file instead of being handed to the model as an image.
+		mime = "video/webm"
+		if sticker.Animated {
+			mime = "application/x-tgsticker"
+		}
+		if t := sticker.Thumbnail; t != nil && strings.TrimSpace(t.FileID) != "" {
+			thumbnail = t
+			// The thumbnail format is WebP or JPEG depending on the sticker, so
+			// leave the MIME to content sniffing during ingest.
+			fileID, mime, size = t.FileID, "", t.FileSize
+			if t.Width > 0 && t.Height > 0 {
+				width, height = t.Width, t.Height
+			}
+		}
+	}
+	att := a.buildTelegramAttachment(bot, channel.AttachmentImage, fileID, telegramStickerName(sticker), mime, size)
+	att.Width = width
+	att.Height = height
+	if thumbnail != nil {
+		// The stored media is a preview now, so keep a handle on the original.
+		att.Metadata["sticker_file_id"] = sticker.FileID
+	}
+	if emoji := strings.TrimSpace(sticker.Emoji); emoji != "" {
+		att.Metadata["sticker_emoji"] = emoji
+	}
+	return att
+}
+
+func telegramStickerName(sticker *tele.Sticker) string {
+	if emoji := strings.TrimSpace(sticker.Emoji); emoji != "" {
+		return "sticker-" + emoji
+	}
+	return "sticker"
 }
 
 func (a *TelegramAdapter) buildTelegramAttachment(bot *tele.Bot, attType channel.AttachmentType, fileID, name, mime string, size int64) channel.Attachment {

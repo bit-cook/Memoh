@@ -1952,3 +1952,96 @@ func TestBuildTelegramPaginationCallbackKeepsEditInPlace(t *testing.T) {
 		t.Fatalf("reply = %+v, want AttachmentsKnown=true — the tapped card is the bot's own message", msg.Message.Reply)
 	}
 }
+
+func TestCollectTelegramStickerUsesReadableMedia(t *testing.T) {
+	thumb := &tele.Photo{File: tele.File{FileID: "thumb-file", FileSize: 4096}, Width: 320, Height: 320}
+	for _, tc := range []struct {
+		name            string
+		sticker         *tele.Sticker
+		wantPlatformKey string
+		wantMime        string
+		wantSize        [2]int
+	}{
+		{
+			name:            "静态贴纸保留原文件",
+			sticker:         &tele.Sticker{File: tele.File{FileID: "static-file", FileSize: 8192}, Width: 512, Height: 512, Emoji: "😀"},
+			wantPlatformKey: "static-file",
+			wantMime:        "image/webp",
+			wantSize:        [2]int{512, 512},
+		},
+		{
+			name:            "视频贴纸改用静态缩略图",
+			sticker:         &tele.Sticker{File: tele.File{FileID: "video-file"}, Video: true, Width: 512, Height: 512, Thumbnail: thumb, Emoji: "😂"},
+			wantPlatformKey: "thumb-file",
+			wantMime:        "",
+			wantSize:        [2]int{320, 320},
+		},
+		{
+			name:            "动画贴纸改用静态缩略图",
+			sticker:         &tele.Sticker{File: tele.File{FileID: "tgs-file"}, Animated: true, Width: 512, Height: 512, Thumbnail: thumb},
+			wantPlatformKey: "thumb-file",
+			wantMime:        "",
+			wantSize:        [2]int{320, 320},
+		},
+		{
+			// 没有缩略图时保留原文件，但 MIME 必须诚实，否则 WebM/TGS 字节会被
+			// 当成图片送进模型。
+			name:            "视频贴纸无缩略图时标注真实 MIME",
+			sticker:         &tele.Sticker{File: tele.File{FileID: "video-file"}, Video: true, Width: 512, Height: 512},
+			wantPlatformKey: "video-file",
+			wantMime:        "video/webm",
+			wantSize:        [2]int{512, 512},
+		},
+		{
+			name:            "动画贴纸无缩略图时标注真实 MIME",
+			sticker:         &tele.Sticker{File: tele.File{FileID: "tgs-file"}, Animated: true, Width: 512, Height: 512},
+			wantPlatformKey: "tgs-file",
+			wantMime:        "application/x-tgsticker",
+			wantSize:        [2]int{512, 512},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := &TelegramAdapter{}
+			atts := adapter.collectTelegramAttachments(nil, &tele.Message{Sticker: tc.sticker})
+			if len(atts) != 1 {
+				t.Fatalf("collectTelegramAttachments() = %d attachments, want 1", len(atts))
+			}
+			att := atts[0]
+			if att.Type != channel.AttachmentImage {
+				t.Fatalf("type = %q, want image", att.Type)
+			}
+			if att.PlatformKey != tc.wantPlatformKey {
+				t.Fatalf("platform key = %q, want %q", att.PlatformKey, tc.wantPlatformKey)
+			}
+			if att.Mime != tc.wantMime {
+				t.Fatalf("mime = %q, want %q", att.Mime, tc.wantMime)
+			}
+			if att.Width != tc.wantSize[0] || att.Height != tc.wantSize[1] {
+				t.Fatalf("size = %dx%d, want %dx%d", att.Width, att.Height, tc.wantSize[0], tc.wantSize[1])
+			}
+			if tc.wantPlatformKey != tc.sticker.FileID && att.Metadata["sticker_file_id"] != tc.sticker.FileID {
+				t.Fatalf("metadata = %+v, want a handle on the original sticker", att.Metadata)
+			}
+		})
+	}
+}
+
+func TestCollectTelegramStickerCarriesEmojiInName(t *testing.T) {
+	adapter := &TelegramAdapter{}
+	atts := adapter.collectTelegramAttachments(nil, &tele.Message{
+		Sticker: &tele.Sticker{File: tele.File{FileID: "static-file"}, Width: 512, Height: 512, Emoji: "🎉"},
+	})
+	if len(atts) != 1 || atts[0].Name != "sticker-🎉" {
+		t.Fatalf("attachment = %+v, want the sticker emoji in the name", atts)
+	}
+	if atts[0].Metadata["sticker_emoji"] != "🎉" {
+		t.Fatalf("metadata = %+v, want the sticker emoji recorded", atts[0].Metadata)
+	}
+
+	without := adapter.collectTelegramAttachments(nil, &tele.Message{
+		Sticker: &tele.Sticker{File: tele.File{FileID: "static-file"}, Width: 512, Height: 512},
+	})
+	if len(without) != 1 || without[0].Name != "sticker" {
+		t.Fatalf("attachment = %+v, want a plain sticker name", without)
+	}
+}
