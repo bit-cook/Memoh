@@ -69,6 +69,8 @@ export interface SessionCompactionEvent {
 }
 
 export type BotSessionActivityEvent =
+  | { type: 'activity_ready', cache_invalidation: boolean }
+  | { type: 'session_invalidated', session_id: string }
   | SessionTouchedEvent
   | SessionTitleChangedEvent
   | SessionCreatedEvent
@@ -192,6 +194,9 @@ export interface UIToolMessage {
   execution_location?: UIExecutionLocation
   user_input?: UIUserInput
   background_task?: UIBackgroundTask
+  // UI-only unified diff attached to the tool call at execution time
+  // (edit/write tools). Never part of the model-facing tool result.
+  diff?: string
 }
 
 export interface UIExecutionLocation {
@@ -336,6 +341,7 @@ export interface UIUserTurn {
 }
 
 export interface UIAssistantTurn {
+  runtime_forkable?: boolean
   turn_id: string
   turn_position?: number
   role: 'assistant'
@@ -425,6 +431,7 @@ export interface RuntimeRunOperation {
 }
 
 export interface RuntimeCurrentRunView {
+  configuration_only?: boolean
   run_id: string
   turn_id: string
   // The originating send's client-issued id, echoed so live frames can be

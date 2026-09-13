@@ -21,20 +21,16 @@ func NewSupermarketPublisher(installer *supermarket.Installer) interface {
 	return &installerPublisher{installer: installer}
 }
 
-func (p *installerPublisher) ResolveTargetID(ctx context.Context, botID, targetID string) (string, error) {
-	return p.installer.ResolveTargetID(ctx, botID, targetID)
-}
-
-func (p *installerPublisher) PublishSkills(ctx context.Context, botID, targetID string, pkg supermarket.AppDescriptor, expectedRevision string) (SkillTransaction, []supermarket.InstallSkillResponse, error) {
-	publication, err := p.installer.PublishSkills(ctx, botID, targetID, pkg, expectedRevision)
+func (p *installerPublisher) PublishSkills(ctx context.Context, botID string, pkg supermarket.AppDescriptor, expectedRevision string) (SkillTransaction, []supermarket.InstallSkillResponse, error) {
+	publication, err := p.installer.PublishSkills(ctx, botID, pkg, expectedRevision)
 	if err != nil {
 		return nil, nil, err
 	}
 	return publication, publication.Skills, nil
 }
 
-func (p *installerPublisher) RemoveSkills(ctx context.Context, botID, targetID, registryID, appID, revision string) (SkillTransaction, error) {
-	removal, err := p.installer.RemoveSkills(ctx, botID, targetID, registryID, appID, revision)
+func (p *installerPublisher) RemoveSkills(ctx context.Context, botID, registryID, appID, revision string) (SkillTransaction, error) {
+	removal, err := p.installer.RemoveSkills(ctx, botID, registryID, appID, revision)
 	if err != nil {
 		return nil, err
 	}

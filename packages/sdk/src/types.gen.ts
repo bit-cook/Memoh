@@ -1444,6 +1444,14 @@ export type ConversationUiMessage = {
     background_task?: ConversationUiBackgroundTask;
     code?: string;
     content?: string;
+    /**
+     * Diff is a UI-only unified diff attached to the tool call at execution
+     * time (edit/write tools). It never reaches the model: rows persist it
+     * under the diffs metadata key — on the assistant row (lifted out of
+     * providerMetadata at store time) or, for the deferred-approval path, on
+     * the tool message row — never inside the tool result.
+     */
+    diff?: string;
     execution_location?: ConversationUiExecutionLocation;
     id?: number;
     input?: unknown;
@@ -1501,6 +1509,11 @@ export type ConversationUiTurn = {
     platform?: string;
     reply?: ConversationUiReplyRef;
     role: 'user' | 'assistant' | 'system';
+    /**
+     * RuntimeForkable means this persisted turn has a runtime fork anchor.
+     * Session-level runtime support and access permissions still apply.
+     */
+    runtime_forkable?: boolean;
     sender_avatar_url?: string;
     sender_display_name?: string;
     sender_user_id?: string;
@@ -1633,6 +1646,28 @@ export type EmailUpdateProviderRequest = {
     };
     name?: string;
     provider?: string;
+};
+
+export type ExternalControls = {
+    capabilities?: TurnRuntimeControlCapabilities;
+    commands?: Array<TurnRuntimeCommand>;
+    modes?: TurnRuntimeModeState;
+    plan_mode?: TurnRuntimeModeState;
+    session_id?: string;
+};
+
+export type ExternalGoal = {
+    objective?: string;
+    status?: string;
+    time_used_seconds?: number;
+    token_budget?: number;
+    tokens_used?: number;
+};
+
+export type ExternalModeState = {
+    available_modes?: Array<TurnRuntimeMode>;
+    current_mode_id?: string;
+    supported?: boolean;
 };
 
 export type ExternalModelCatalog = {
@@ -1775,7 +1810,7 @@ export type HandlersAppDependencyItem = {
     id?: string;
     /**
      * Shared is set when another installed App references the same
-     * dependency on this workspace target.
+     * dependency on this bot workspace.
      */
     shared?: boolean;
 };
@@ -1784,7 +1819,6 @@ export type HandlersAppInstallRequest = {
     app_id: string;
     registry_id: string;
     revision: string;
-    workspace_target_id?: string;
 };
 
 export type HandlersAppItem = {
@@ -1834,8 +1868,7 @@ export type HandlersAppItem = {
 export type HandlersAppListResponse = {
     dependency_catalog_stale?: boolean;
     items?: Array<HandlersAppItem>;
-    workspace_state?: 'running' | 'not_running' | 'missing' | 'remote_offline';
-    workspace_target_id?: string;
+    workspace_state?: 'running' | 'not_running' | 'missing';
 };
 
 export type HandlersAppRemovalPreviewApp = {
@@ -1901,7 +1934,6 @@ export type HandlersAppUpdateRequest = {
      * Release moves the installation to the registry's current release.
      */
     release?: boolean;
-    workspace_target_id?: string;
 };
 
 export type HandlersBatchDeleteRequest = {
@@ -2380,6 +2412,30 @@ export type HandlersRollbackRequest = {
     version?: number;
 };
 
+export type HandlersRuntimeCommandRequest = {
+    command?: string;
+};
+
+export type HandlersRuntimeCommandResponse = {
+    text?: string;
+};
+
+export type HandlersRuntimeGoalRequest = {
+    action?: 'pause' | 'clear';
+};
+
+export type HandlersRuntimeGoalResponse = {
+    goal?: ExternalGoal;
+};
+
+export type HandlersRuntimeModeRequest = {
+    mode_id?: string;
+    /**
+     * Omitted means permission; plan changes the independent planning mode.
+     */
+    mode_kind?: 'permission' | 'plan';
+};
+
 export type HandlersSafeSkillsResponse = {
     skills?: Array<SkillsSafeCatalogItem>;
 };
@@ -2815,7 +2871,7 @@ export type HandlersWorkspaceDependencyListResponse = {
     discovery_error?: string;
     items?: Array<HandlersWorkspaceDependencyItem>;
     platform?: HandlersWorkspaceDependencyPlatform;
-    workspace_state?: 'running' | 'not_running' | 'missing' | 'remote_offline';
+    workspace_state?: 'running' | 'not_running' | 'missing';
 };
 
 export type HandlersWorkspaceDependencyOperationResponse = {
@@ -2844,15 +2900,11 @@ export type HandlersWorkspaceDependencyPreflightItem = {
 
 export type HandlersWorkspaceDependencyPreflightRequest = {
     dependency_ids?: Array<string>;
-    /**
-     * WorkspaceTargetID overrides the query parameter of the same name.
-     */
-    workspace_target_id?: string;
 };
 
 export type HandlersWorkspaceDependencyPreflightResponse = {
     items?: Array<HandlersWorkspaceDependencyPreflightItem>;
-    workspace_state?: 'running' | 'not_running' | 'missing' | 'remote_offline';
+    workspace_state?: 'running' | 'not_running' | 'missing';
 };
 
 export type HandlersWorkspaceDependencyScriptEnv = {
@@ -4037,6 +4089,44 @@ export type SkillsSafeCatalogItem = {
     state?: string;
 };
 
+export type TurnRuntimeCommand = {
+    completed_text?: string;
+    description?: string;
+    input_hint?: string;
+    kind?: TurnRuntimeCommandKind;
+    name?: string;
+    running_text?: string;
+};
+
+export type TurnRuntimeCommandKind = 'turn' | 'read' | 'operation';
+
+export type TurnRuntimeControlCapabilities = {
+    compact?: boolean;
+    goal?: boolean;
+    permission_modes?: boolean;
+    plan_mode?: boolean;
+};
+
+export type TurnRuntimeMode = {
+    description?: string;
+    /**
+     * Icon is a presentation hint; clients may fall back for unknown values.
+     */
+    icon?: string;
+    id?: string;
+    name?: string;
+    /**
+     * Warning marks a runtime-declared elevated permission option.
+     */
+    warning?: boolean;
+};
+
+export type TurnRuntimeModeState = {
+    available_modes?: Array<TurnRuntimeMode>;
+    current_mode_id?: string;
+    supported?: boolean;
+};
+
 export type UserinputUiAnswer = {
     custom_text?: string;
     question?: string;
@@ -4171,6 +4261,16 @@ export type WorkdirCreateRequest = {
     name: string;
     path: string;
     workspace_target_id?: string;
+};
+
+export type WorkdirGitBranchResponse = {
+    branch?: string;
+    branches?: Array<string>;
+    busy?: boolean;
+};
+
+export type WorkdirSwitchGitBranchRequest = {
+    branch: string;
 };
 
 export type WorkdirUpdateRequest = {
@@ -6003,6 +6103,48 @@ export type GetBotsByBotIdAgentsByIdModelsResponses = {
 
 export type GetBotsByBotIdAgentsByIdModelsResponse = GetBotsByBotIdAgentsByIdModelsResponses[keyof GetBotsByBotIdAgentsByIdModelsResponses];
 
+export type GetBotsByBotIdAgentsByIdRuntimeControlsData = {
+    body?: never;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Agent ID
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/agents/{id}/runtime-controls';
+};
+
+export type GetBotsByBotIdAgentsByIdRuntimeControlsErrors = {
+    /**
+     * Forbidden
+     */
+    403: ApperrorProblem;
+    /**
+     * Not Found
+     */
+    404: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+};
+
+export type GetBotsByBotIdAgentsByIdRuntimeControlsError = GetBotsByBotIdAgentsByIdRuntimeControlsErrors[keyof GetBotsByBotIdAgentsByIdRuntimeControlsErrors];
+
+export type GetBotsByBotIdAgentsByIdRuntimeControlsResponses = {
+    /**
+     * OK
+     */
+    200: ExternalControls;
+};
+
+export type GetBotsByBotIdAgentsByIdRuntimeControlsResponse = GetBotsByBotIdAgentsByIdRuntimeControlsResponses[keyof GetBotsByBotIdAgentsByIdRuntimeControlsResponses];
+
 export type GetBotsByBotIdAppsData = {
     body?: never;
     path: {
@@ -6012,10 +6154,6 @@ export type GetBotsByBotIdAppsData = {
         bot_id: string;
     };
     query?: {
-        /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
         /**
          * Refresh workspace discovery
          */
@@ -6111,12 +6249,7 @@ export type PostBotsByBotIdAppsCheckUpdatesData = {
          */
         bot_id: string;
     };
-    query?: {
-        /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-    };
+    query?: never;
     url: '/bots/{bot_id}/apps/check-updates';
 };
 
@@ -6780,6 +6913,62 @@ export type GetBotsByBotIdConnectorsResponses = {
 };
 
 export type GetBotsByBotIdConnectorsResponse = GetBotsByBotIdConnectorsResponses[keyof GetBotsByBotIdConnectorsResponses];
+
+export type DeleteBotsByBotIdConnectorsByConnectionIdData = {
+    body?: never;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Connect-It connection ID
+         */
+        connection_id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/connectors/{connection_id}';
+};
+
+export type DeleteBotsByBotIdConnectorsByConnectionIdErrors = {
+    /**
+     * Bad Request
+     */
+    400: ApperrorProblem;
+    /**
+     * Forbidden
+     */
+    403: HandlersErrorResponse;
+    /**
+     * Not Found
+     */
+    404: ApperrorProblem;
+    /**
+     * Conflict
+     */
+    409: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+    /**
+     * Bad Gateway
+     */
+    502: ApperrorProblem;
+    /**
+     * Service Unavailable
+     */
+    503: ApperrorProblem;
+};
+
+export type DeleteBotsByBotIdConnectorsByConnectionIdError = DeleteBotsByBotIdConnectorsByConnectionIdErrors[keyof DeleteBotsByBotIdConnectorsByConnectionIdErrors];
+
+export type DeleteBotsByBotIdConnectorsByConnectionIdResponses = {
+    /**
+     * No Content
+     */
+    204: unknown;
+};
 
 export type GetBotsByBotIdConnectorsByConnectionIdData = {
     body?: never;
@@ -8429,10 +8618,6 @@ export type GetBotsByBotIdDependenciesData = {
     };
     query?: {
         /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-        /**
          * Refresh definitions and workspace discovery
          */
         refresh?: boolean;
@@ -8482,12 +8667,7 @@ export type PostBotsByBotIdDependenciesCheckUpdatesData = {
          */
         bot_id: string;
     };
-    query?: {
-        /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-    };
+    query?: never;
     url: '/bots/{bot_id}/dependencies/check-updates';
 };
 
@@ -8536,12 +8716,7 @@ export type PostBotsByBotIdDependenciesPreflightData = {
          */
         bot_id: string;
     };
-    query?: {
-        /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-    };
+    query?: never;
     url: '/bots/{bot_id}/dependencies/preflight';
 };
 
@@ -8594,12 +8769,7 @@ export type PostBotsByBotIdDependenciesByDepIdInstallData = {
          */
         dep_id: string;
     };
-    query?: {
-        /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-    };
+    query?: never;
     url: '/bots/{bot_id}/dependencies/{dep_id}/install';
 };
 
@@ -8652,12 +8822,7 @@ export type PostBotsByBotIdDependenciesByDepIdReinstallData = {
          */
         dep_id: string;
     };
-    query?: {
-        /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-    };
+    query?: never;
     url: '/bots/{bot_id}/dependencies/{dep_id}/reinstall';
 };
 
@@ -8707,12 +8872,7 @@ export type PostBotsByBotIdDependenciesByDepIdRollbackData = {
          */
         dep_id: string;
     };
-    query?: {
-        /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-    };
+    query?: never;
     url: '/bots/{bot_id}/dependencies/{dep_id}/rollback';
 };
 
@@ -8776,10 +8936,6 @@ export type GetBotsByBotIdDependenciesByDepIdScriptData = {
          */
         action?: 'install' | 'update' | 'remove' | 'reinstall' | 'rollback';
         /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-        /**
          * Keep a previously prepared definition revision
          */
         definition_revision?: string;
@@ -8836,12 +8992,7 @@ export type PostBotsByBotIdDependenciesByDepIdUpdateData = {
          */
         dep_id: string;
     };
-    query?: {
-        /**
-         * Workspace target ID (defaults to the bot's current target)
-         */
-        workspace_target_id?: string;
-    };
+    query?: never;
     url: '/bots/{bot_id}/dependencies/{dep_id}/update';
 };
 
@@ -11838,6 +11989,231 @@ export type GetBotsByBotIdSessionsBySessionIdQueueResponses = {
 
 export type GetBotsByBotIdSessionsBySessionIdQueueResponse = GetBotsByBotIdSessionsBySessionIdQueueResponses[keyof GetBotsByBotIdSessionsBySessionIdQueueResponses];
 
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsData = {
+    body?: never;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Session ID
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/sessions/{session_id}/runtime-controls';
+};
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ApperrorProblem;
+    /**
+     * Forbidden
+     */
+    403: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+};
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsError = GetBotsByBotIdSessionsBySessionIdRuntimeControlsErrors[keyof GetBotsByBotIdSessionsBySessionIdRuntimeControlsErrors];
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsResponses = {
+    /**
+     * OK
+     */
+    200: ExternalControls;
+};
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsResponse = GetBotsByBotIdSessionsBySessionIdRuntimeControlsResponses[keyof GetBotsByBotIdSessionsBySessionIdRuntimeControlsResponses];
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsData = {
+    /**
+     * Runtime command
+     */
+    body: HandlersRuntimeCommandRequest;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Session ID
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/sessions/{session_id}/runtime-controls/commands';
+};
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsErrors = {
+    /**
+     * Bad Request
+     */
+    400: ApperrorProblem;
+    /**
+     * Forbidden
+     */
+    403: ApperrorProblem;
+    /**
+     * Conflict
+     */
+    409: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+};
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsError = PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsErrors[keyof PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsErrors];
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsResponses = {
+    /**
+     * OK
+     */
+    200: HandlersRuntimeCommandResponse;
+};
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsResponse = PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsResponses[keyof PostBotsByBotIdSessionsBySessionIdRuntimeControlsCommandsResponses];
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalData = {
+    body?: never;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Session ID
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/sessions/{session_id}/runtime-controls/goal';
+};
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalErrors = {
+    /**
+     * Bad Request
+     */
+    400: ApperrorProblem;
+    /**
+     * Forbidden
+     */
+    403: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+};
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalError = GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalErrors[keyof GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalErrors];
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalResponses = {
+    /**
+     * OK
+     */
+    200: HandlersRuntimeGoalResponse;
+};
+
+export type GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalResponse = GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalResponses[keyof GetBotsByBotIdSessionsBySessionIdRuntimeControlsGoalResponses];
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsGoalData = {
+    /**
+     * Goal action
+     */
+    body: HandlersRuntimeGoalRequest;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Session ID
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/sessions/{session_id}/runtime-controls/goal';
+};
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsGoalErrors = {
+    /**
+     * Bad Request
+     */
+    400: ApperrorProblem;
+    /**
+     * Forbidden
+     */
+    403: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+};
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsGoalError = PostBotsByBotIdSessionsBySessionIdRuntimeControlsGoalErrors[keyof PostBotsByBotIdSessionsBySessionIdRuntimeControlsGoalErrors];
+
+export type PostBotsByBotIdSessionsBySessionIdRuntimeControlsGoalResponses = {
+    /**
+     * No Content
+     */
+    204: unknown;
+};
+
+export type PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeData = {
+    /**
+     * Permission mode
+     */
+    body: HandlersRuntimeModeRequest;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Session ID
+         */
+        session_id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/sessions/{session_id}/runtime-controls/mode';
+};
+
+export type PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeErrors = {
+    /**
+     * Bad Request
+     */
+    400: ApperrorProblem;
+    /**
+     * Forbidden
+     */
+    403: ApperrorProblem;
+    /**
+     * Conflict
+     */
+    409: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+};
+
+export type PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeError = PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeErrors[keyof PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeErrors];
+
+export type PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeResponses = {
+    /**
+     * OK
+     */
+    200: ExternalModeState;
+};
+
+export type PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeResponse = PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeResponses[keyof PatchBotsByBotIdSessionsBySessionIdRuntimeControlsModeResponses];
+
 export type GetBotsByBotIdSessionsBySessionIdStatusData = {
     body?: never;
     path: {
@@ -13099,6 +13475,97 @@ export type PatchBotsByBotIdWorkdirsByWorkdirIdResponses = {
 };
 
 export type PatchBotsByBotIdWorkdirsByWorkdirIdResponse = PatchBotsByBotIdWorkdirsByWorkdirIdResponses[keyof PatchBotsByBotIdWorkdirsByWorkdirIdResponses];
+
+export type GetBotsByBotIdWorkdirsByWorkdirIdGitBranchData = {
+    body?: never;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Workdir ID
+         */
+        workdir_id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/workdirs/{workdir_id}/git-branch';
+};
+
+export type GetBotsByBotIdWorkdirsByWorkdirIdGitBranchErrors = {
+    /**
+     * Forbidden
+     */
+    403: ApperrorProblem;
+    /**
+     * Not Found
+     */
+    404: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+};
+
+export type GetBotsByBotIdWorkdirsByWorkdirIdGitBranchError = GetBotsByBotIdWorkdirsByWorkdirIdGitBranchErrors[keyof GetBotsByBotIdWorkdirsByWorkdirIdGitBranchErrors];
+
+export type GetBotsByBotIdWorkdirsByWorkdirIdGitBranchResponses = {
+    /**
+     * OK
+     */
+    200: WorkdirGitBranchResponse;
+};
+
+export type GetBotsByBotIdWorkdirsByWorkdirIdGitBranchResponse = GetBotsByBotIdWorkdirsByWorkdirIdGitBranchResponses[keyof GetBotsByBotIdWorkdirsByWorkdirIdGitBranchResponses];
+
+export type PostBotsByBotIdWorkdirsByWorkdirIdGitBranchData = {
+    /**
+     * Local branch
+     */
+    body: WorkdirSwitchGitBranchRequest;
+    path: {
+        /**
+         * Bot ID
+         */
+        bot_id: string;
+        /**
+         * Workdir ID
+         */
+        workdir_id: string;
+    };
+    query?: never;
+    url: '/bots/{bot_id}/workdirs/{workdir_id}/git-branch';
+};
+
+export type PostBotsByBotIdWorkdirsByWorkdirIdGitBranchErrors = {
+    /**
+     * Bad Request
+     */
+    400: ApperrorProblem;
+    /**
+     * Forbidden
+     */
+    403: ApperrorProblem;
+    /**
+     * Conflict
+     */
+    409: ApperrorProblem;
+    /**
+     * Internal Server Error
+     */
+    500: ApperrorProblem;
+};
+
+export type PostBotsByBotIdWorkdirsByWorkdirIdGitBranchError = PostBotsByBotIdWorkdirsByWorkdirIdGitBranchErrors[keyof PostBotsByBotIdWorkdirsByWorkdirIdGitBranchErrors];
+
+export type PostBotsByBotIdWorkdirsByWorkdirIdGitBranchResponses = {
+    /**
+     * OK
+     */
+    200: WorkdirGitBranchResponse;
+};
+
+export type PostBotsByBotIdWorkdirsByWorkdirIdGitBranchResponse = PostBotsByBotIdWorkdirsByWorkdirIdGitBranchResponses[keyof PostBotsByBotIdWorkdirsByWorkdirIdGitBranchResponses];
 
 export type GetBotsByBotIdWorkspaceTargetsData = {
     body?: never;

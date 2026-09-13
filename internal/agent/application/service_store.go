@@ -282,6 +282,7 @@ func (s *Service) buildPersistInputs(ctx context.Context, req ChatRequest, messa
 		turnRequestMessageID = strings.TrimSpace(req.PersistedUserMessageID)
 	}
 	persistInputs := make([]messagepkg.PersistInput, 0, len(messages))
+	originalQueryAvailable := !req.UserMessagePersisted && !req.ReusePersistedUserMessage
 	for i, msg := range messages {
 		msg = normalizeUserMessageContent(msg)
 
@@ -292,6 +293,12 @@ func (s *Service) buildPersistInputs(ctx context.Context, req ChatRequest, messa
 				msg = pruned
 			}
 		}
+
+		// Lift UI-only diffs out of tool-call providerMetadata before the
+		// content column is written: inside content they would count against
+		// the history byte budget; on the row's metadata they still reach the
+		// UI converter via ToolCallDiffsMetadataKey.
+		msg, toolCallDiffs := historyfrag.ExtractToolCallDiffs(msg)
 
 		content, err := historyfrag.MarshalStoredModelMessage(msg)
 		if err != nil {
@@ -333,9 +340,10 @@ func (s *Service) buildPersistInputs(ctx context.Context, req ChatRequest, messa
 				strings.TrimSpace(req.Query) == "" &&
 				ownText == "" &&
 				i == 0
-			isOriginalQuery := (ownText != "" && ownText == strings.TrimSpace(req.Query)) || isOriginalSkillActivation
+			isOriginalQuery := originalQueryAvailable && ((ownText != "" && ownText == strings.TrimSpace(req.Query)) || isOriginalSkillActivation)
 
 			if isOriginalQuery {
+				originalQueryAvailable = false
 				externalMessageID = req.ExternalMessageID
 				sourceReplyToMessageID = req.SourceReplyToMessageID
 				messageEventID = req.EventID
@@ -369,6 +377,11 @@ func (s *Service) buildPersistInputs(ctx context.Context, req ChatRequest, messa
 		}
 		if i == lastAssistantIdx && len(outboundAssets) > 0 {
 			assets = append(assets, outboundAssets...)
+		}
+		if len(toolCallDiffs) > 0 {
+			persistMeta = mergeMetadata(persistMeta, map[string]any{
+				messagepkg.ToolCallDiffsMetadataKey: toolCallDiffs,
+			})
 		}
 		if extraMeta := opts.MessageMetadataByIndex[i]; len(extraMeta) > 0 {
 			persistMeta = mergeMetadata(persistMeta, extraMeta)

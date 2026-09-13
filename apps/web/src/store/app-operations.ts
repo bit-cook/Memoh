@@ -38,7 +38,7 @@ export interface AppOperation {
   /** `appOperationKey(botId, registryId, appId)`. */
   key: string
   botId: string
-  targetId: string
+
   registryId: string
   appId: string
   installationId: string
@@ -60,8 +60,7 @@ export interface AppOperation {
 
 export interface StartAppOperationInput {
   botId: string
-  /** '' → the bot's current workspace target. */
-  targetId: string
+
   registryId: string
   appId: string
   installationId?: string
@@ -242,17 +241,19 @@ export const useAppOperationsStore = defineStore('app-operations', () => {
   }
 
   function applySettled(operation: AppOperation, item: AppItem | undefined) {
+    // Failed removals now retain the installation. Check failure before
+    // inferring either step completion or a successful removal.
+    if (item?.status === 'failed') {
+      operation.status = 'error'
+      operation.error = item.last_error || t('apps.progress.failedTitle')
+      return
+    }
     for (const step of operation.steps) {
       if (step.status === 'running') step.status = settledStepStatus(operation.action)
     }
     if (operation.action === 'remove') {
       operation.status = 'done'
       operation.result = 'removed'
-      return
-    }
-    if (item?.status === 'failed') {
-      operation.status = 'error'
-      operation.error = item.last_error || t('apps.progress.failedTitle')
       return
     }
     operation.status = 'done'
@@ -275,7 +276,6 @@ export const useAppOperationsStore = defineStore('app-operations', () => {
       try {
         const { data } = await getBotsByBotIdApps({
           path: { bot_id: operation.botId },
-          query: operation.targetId ? { workspace_target_id: operation.targetId } : undefined,
           signal,
           throwOnError: true,
         })
@@ -285,7 +285,9 @@ export const useAppOperationsStore = defineStore('app-operations', () => {
       }
       const item = items.find(entry => entry.registry_id === operation.registryId && entry.app_id === operation.appId)
       if (operation.action === 'remove') {
-        if (item?.installation_id && appInProgress(item)) continue
+        // A surviving installed/partial record does not confirm removal.
+        // It may be an old snapshot or a request rejected before admission.
+        if (item?.installation_id && item.status !== 'failed') continue
         applySettled(operation, item?.installation_id ? item : undefined)
         return true
       }
@@ -393,7 +395,6 @@ export const useAppOperationsStore = defineStore('app-operations', () => {
     const operation = reactive<AppOperation>({
       key,
       botId: input.botId,
-      targetId: input.targetId,
       registryId: input.registryId,
       appId: input.appId,
       installationId: input.installationId ?? '',

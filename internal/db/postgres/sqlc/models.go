@@ -210,7 +210,6 @@ type BotAppInstallation struct {
 	ID                pgtype.UUID        `json:"id"`
 	TeamID            pgtype.UUID        `json:"team_id"`
 	BotID             pgtype.UUID        `json:"bot_id"`
-	WorkspaceTargetID string             `json:"workspace_target_id"`
 	RegistryID        string             `json:"registry_id"`
 	AppID             string             `json:"app_id"`
 	Revision          string             `json:"revision"`
@@ -273,7 +272,6 @@ type BotDependencyInstallation struct {
 	ID                 pgtype.UUID        `json:"id"`
 	TeamID             pgtype.UUID        `json:"team_id"`
 	BotID              pgtype.UUID        `json:"bot_id"`
-	WorkspaceTargetID  string             `json:"workspace_target_id"`
 	DependencyID       string             `json:"dependency_id"`
 	Source             string             `json:"source"`
 	Status             string             `json:"status"`

@@ -28,14 +28,14 @@ const (
 
 // InstallSkillResponse describes one Skill written into the workspace.
 type InstallSkillResponse struct {
-	OK                bool   `json:"ok" validate:"required"`
-	RegistryID        string `json:"registry_id" validate:"required"`
-	AppID             string `json:"app_id" validate:"required"`
-	SkillID           string `json:"skill_id" validate:"required"`
-	InstallID         string `json:"install_id" validate:"required"`
-	WorkspaceTargetID string `json:"workspace_target_id" validate:"required"`
-	ArtifactDigest    string `json:"artifact_digest" validate:"required"`
-	FilesWritten      int    `json:"files_written" validate:"required"`
+	OK         bool   `json:"ok" validate:"required"`
+	RegistryID string `json:"registry_id" validate:"required"`
+	AppID      string `json:"app_id" validate:"required"`
+	SkillID    string `json:"skill_id" validate:"required"`
+	InstallID  string `json:"install_id" validate:"required"`
+
+	ArtifactDigest string `json:"artifact_digest" validate:"required"`
+	FilesWritten   int    `json:"files_written" validate:"required"`
 } // @name handlers.InstallRegistrySkillResponse
 
 type preparedSkill struct {
@@ -53,10 +53,9 @@ type preparedApp struct {
 // the previous copy is kept until Commit. Rollback restores it. A App
 // without Skills stages the removal of any Skills a previous revision left.
 type SkillPublication struct {
-	publication       *skillset.AppPublication
-	removal           *skillset.AppRemoval
-	Skills            []InstallSkillResponse
-	WorkspaceTargetID string
+	publication *skillset.AppPublication
+	removal     *skillset.AppRemoval
+	Skills      []InstallSkillResponse
 }
 
 func (p *SkillPublication) Commit(ctx context.Context) error {
@@ -75,8 +74,7 @@ func (p *SkillPublication) Rollback(ctx context.Context) error {
 
 // SkillRemoval is a staged removal of an App's Skills.
 type SkillRemoval struct {
-	removal           *skillset.AppRemoval
-	WorkspaceTargetID string
+	removal *skillset.AppRemoval
 }
 
 func (r *SkillRemoval) Commit(ctx context.Context) error {
@@ -91,18 +89,6 @@ func (r *SkillRemoval) Rollback(ctx context.Context) error {
 		return nil
 	}
 	return r.removal.Rollback(ctx)
-}
-
-// ResolveTargetID normalizes a workspace target reference to its ID.
-func (i *Installer) ResolveTargetID(ctx context.Context, botID, targetID string) (string, error) {
-	if i == nil || i.workspaces == nil {
-		return "", errors.New("supermarket installer is not configured")
-	}
-	target, err := i.workspaces.ResolveWorkspaceTarget(workspace.WithWorkspaceTarget(ctx, targetID), botID, targetID)
-	if err != nil {
-		return "", &WorkspaceTargetError{Err: err}
-	}
-	return target.TargetID, nil
 }
 
 // FetchRelease downloads and validates one immutable App release.
@@ -152,16 +138,16 @@ func (i *Installer) FetchCurrentApp(ctx context.Context, registryID, appID strin
 }
 
 // PublishSkills downloads the Skills of a validated release and stages them
-// into the workspace target. expectedRevision is the revision the caller has
+// into the bot workspace. expectedRevision is the revision the caller has
 // recorded for the App, or empty when it is new; a workspace copy that
 // does not match it is replaced. The caller commits after recording the
 // installation, or rolls back.
-func (i *Installer) PublishSkills(ctx context.Context, botID, targetID string, pkg AppDescriptor, expectedRevision string) (*SkillPublication, error) {
+func (i *Installer) PublishSkills(ctx context.Context, botID string, pkg AppDescriptor, expectedRevision string) (*SkillPublication, error) {
 	if i == nil || i.workspaces == nil {
 		return nil, apperror.Wrap(apperror.CodeRegistryAppInstallFailed, errors.New("skill App installer is not configured"), nil)
 	}
-	targetCtx := workspace.WithWorkspaceTarget(ctx, targetID)
-	target, err := i.workspaces.ResolveWorkspaceTarget(targetCtx, botID, targetID)
+	targetCtx := workspace.WithWorkspaceTarget(ctx, workspace.WorkspaceTargetNative)
+	target, err := i.workspaces.ResolveWorkspaceTarget(targetCtx, botID, workspace.WorkspaceTargetNative)
 	if err != nil {
 		return nil, &WorkspaceTargetError{Err: err}
 	}
@@ -180,7 +166,6 @@ func (i *Installer) PublishSkills(ctx context.Context, botID, targetID string, p
 	if !consistent && i.logger != nil {
 		i.logger.Warn("Skill App files did not match the recorded revision; replacing them",
 			slog.String("registry_id", pkg.RegistryID), slog.String("app_id", pkg.AppID),
-			slog.String("workspace_target_id", target.TargetID), slog.String("recorded_revision", expectedRevision),
 		)
 	}
 	if len(pkg.Skills) == 0 {
@@ -188,26 +173,26 @@ func (i *Installer) PublishSkills(ctx context.Context, botID, targetID string, p
 		if err != nil {
 			return nil, apperror.Wrap(apperror.CodeRegistryAppInstallFailed, fmt.Errorf("clear previous Registry App Skills: %w", err), nil)
 		}
-		return &SkillPublication{removal: removal, Skills: []InstallSkillResponse{}, WorkspaceTargetID: target.TargetID}, nil
+		return &SkillPublication{removal: removal, Skills: []InstallSkillResponse{}}, nil
 	}
 	prepared, err := i.prepareApp(targetCtx, target.Info.OS, pkg)
 	if err != nil {
 		return nil, err
 	}
-	publication, published, err := publishApp(targetCtx, target.Client, prepared, target.TargetID)
+	publication, published, err := publishApp(targetCtx, target.Client, prepared)
 	if err != nil {
 		return nil, err
 	}
-	return &SkillPublication{publication: publication, Skills: published, WorkspaceTargetID: target.TargetID}, nil
+	return &SkillPublication{publication: publication, Skills: published}, nil
 }
 
 // RemoveSkills stages the removal of an App's Skills from the workspace.
-func (i *Installer) RemoveSkills(ctx context.Context, botID, targetID, registryID, appID, revision string) (*SkillRemoval, error) {
+func (i *Installer) RemoveSkills(ctx context.Context, botID, registryID, appID, revision string) (*SkillRemoval, error) {
 	if i == nil || i.workspaces == nil {
 		return nil, errors.New("skill App installer is not configured")
 	}
-	targetCtx := workspace.WithWorkspaceTarget(ctx, targetID)
-	target, err := i.workspaces.ResolveWorkspaceTarget(targetCtx, botID, targetID)
+	targetCtx := workspace.WithWorkspaceTarget(ctx, workspace.WorkspaceTargetNative)
+	target, err := i.workspaces.ResolveWorkspaceTarget(targetCtx, botID, workspace.WorkspaceTargetNative)
 	if err != nil {
 		return nil, &WorkspaceTargetError{Err: err}
 	}
@@ -221,14 +206,14 @@ func (i *Installer) RemoveSkills(ctx context.Context, botID, targetID, registryI
 	if !consistent && i.logger != nil {
 		i.logger.Warn("Skill App files did not match the recorded revision; removing the managed path",
 			slog.String("registry_id", registryID), slog.String("app_id", appID),
-			slog.String("workspace_target_id", target.TargetID), slog.String("recorded_revision", revision),
+			slog.String("recorded_revision", revision),
 		)
 	}
 	removal, err := skillset.PrepareAppRemoval(targetCtx, target.Client, registryID, appID)
 	if err != nil {
 		return nil, err
 	}
-	return &SkillRemoval{removal: removal, WorkspaceTargetID: target.TargetID}, nil
+	return &SkillRemoval{removal: removal}, nil
 }
 
 func validateAppIdentity(registryID, appID string) (string, string, error) {
@@ -297,7 +282,7 @@ func (i *Installer) prepareSkill(ctx context.Context, skill CatalogSkill) (prepa
 	return preparedSkill{skill: skill, archive: archive}, nil
 }
 
-func publishApp(ctx context.Context, client *bridge.Client, prepared preparedApp, workspaceTargetID string) (*skillset.AppPublication, []InstallSkillResponse, error) {
+func publishApp(ctx context.Context, client *bridge.Client, prepared preparedApp) (*skillset.AppPublication, []InstallSkillResponse, error) {
 	if client == nil {
 		return nil, nil, apperror.Wrap(apperror.CodeRegistryAppInstallFailed, errors.New("workspace is not reachable"), nil)
 	}
@@ -319,7 +304,7 @@ func publishApp(ctx context.Context, client *bridge.Client, prepared preparedApp
 	}
 	installed := make([]InstallSkillResponse, 0, len(prepared.skills))
 	for _, item := range prepared.skills {
-		installed = append(installed, InstallSkillResponse{OK: true, RegistryID: item.skill.RegistryID, AppID: item.skill.AppID, SkillID: item.skill.SkillID, InstallID: item.skill.InstallID, WorkspaceTargetID: workspaceTargetID, ArtifactDigest: item.skill.Artifact.Digest, FilesWritten: item.archive.FileCount()})
+		installed = append(installed, InstallSkillResponse{OK: true, RegistryID: item.skill.RegistryID, AppID: item.skill.AppID, SkillID: item.skill.SkillID, InstallID: item.skill.InstallID, ArtifactDigest: item.skill.Artifact.Digest, FilesWritten: item.archive.FileCount()})
 	}
 	return publication, installed, nil
 }

@@ -55,6 +55,7 @@ type Manager struct {
 	commandHandler         func(context.Context, Command) error
 	decisionStore          DecisionStore
 	terminalObserver       func(context.Context, TerminalRun)
+	admissionObserver      func(botID, sessionID string)
 	decisionFinalizer      func(context.Context, RunHandle) error
 	terminalReconciler     func(context.Context) error
 	cancelLostRunDecisions func(context.Context, string, string, string, int64, string) error
@@ -230,6 +231,18 @@ func (c *runControl) decisionWaitActive() bool {
 	c.decisionMu.Lock()
 	defer c.decisionMu.Unlock()
 	return len(c.pendingDecisions) > 0
+}
+
+// Only a deferred runtime may return from its producer while retaining a run
+// for user input. An inline runtime's return ends execution even when a late
+// decision notification was lost; durable finalization reconciles those rows.
+func (c *runControl) canParkForDecision() bool {
+	if c == nil {
+		return false
+	}
+	c.decisionMu.Lock()
+	defer c.decisionMu.Unlock()
+	return !c.decisionInline && len(c.pendingDecisions) > 0
 }
 
 // decisionKey identifies one decision across its pending and terminal
@@ -924,9 +937,10 @@ func (m *Manager) LivenessGeneration(ctx context.Context) (string, error) {
 // only in whether they carry a fencing token, and that difference should be
 // visible at the call site instead of being a positional zero.
 type runStart struct {
-	botID     string
-	sessionID string
-	runID     string
+	configurationOnly bool
+	botID             string
+	sessionID         string
+	runID             string
 	// fencingToken is the durable ownership token from the ledger claim. Zero
 	// means this reservation has no ledger row, so it gets no lease index entry
 	// either: there would be nothing for the reaper to transition.
@@ -1081,6 +1095,7 @@ func (m *Manager) startRun(ctx context.Context, start runStart) (RunHandle, Curs
 			RunID:               runID,
 			TurnID:              start.turnID,
 			InvocationID:        start.invocationID,
+			ConfigurationOnly:   start.configurationOnly,
 			Generation:          runGeneration,
 			FencingToken:        start.fencingToken,
 			Status:              RunStatusAdmitting,
@@ -1242,6 +1257,11 @@ func (m *Manager) startRun(ctx context.Context, start runStart) (RunHandle, Curs
 	if !ctrl.completeAdmissionForAbort() {
 		return RunHandle{}, Cursor{}, context.Canceled
 	}
+	// Every admitted run — not only edits/retries — changes the visible
+	// projection before its messages are persisted (a plain user turn already
+	// commits visible content at admission). Notify cached-view observers
+	// before the admitted run returns to its caller and starts generating.
+	m.observeAdmission(botID, sessionID)
 	ctrl.markReady()
 	return handle, activated.cursor(), nil
 }
@@ -1311,14 +1331,12 @@ func (m *Manager) finishRun(ctx context.Context, handle RunHandle, status, error
 		}
 		if ok && runMatchesHandle(snapshot.CurrentRunView, handle) &&
 			strings.EqualFold(snapshot.CurrentRunView.Status, RunStatusWaitingDecision) &&
-			ctrl.decisionWaitActive() {
+			ctrl.canParkForDecision() {
 			// The native stream ends after emitting a deferred decision. That is
 			// a parked execution, not a terminal run: retain ownership and the
 			// command executor so the response can resume this same run.
-			// The decisionWaitActive gate keeps an inline runtime whose turn
-			// died after its decision was already decided (or whose terminal
-			// decision event was lost) from being mistaken for a park — that
-			// mistake left runs in waiting_decision forever.
+			// Inline runtimes never park on return, including when their
+			// decision's terminal notification did not reach this manager.
 			ctrl.markDecisionReady()
 			return nil
 		}
@@ -1636,16 +1654,15 @@ func (m *Manager) cleanupFinishedRun(ctx context.Context, handle RunHandle) {
 }
 
 type agentTerminalProposal struct {
-	prepared  bool
-	status    string
-	errorCode string
-	error     string
-	at        time.Time
+	prepared bool
+	status   string
+	at       time.Time
 }
 
 // prepareAgentTerminalEvent persists the recoverable outcome before the live
-// projection enters finishing. A waiting decision is deliberately excluded:
-// Native closes that stream too, but the same run must resume after the answer.
+// projection enters finishing. Deferred Native decisions retain their run for
+// continuation; an inline runtime's terminal event ends execution even if a
+// decision notification was lost.
 func (m *Manager) prepareAgentTerminalEvent(
 	ctx context.Context,
 	handle RunHandle,
@@ -1662,7 +1679,8 @@ func (m *Manager) prepareAgentTerminalEvent(
 		return agentTerminalProposal{}, ErrRunOwnershipLost
 	}
 	run := snapshot.CurrentRunView
-	if strings.EqualFold(run.Status, RunStatusWaitingDecision) {
+	ctrl := m.localControlForHandle(handle)
+	if strings.EqualFold(run.Status, RunStatusWaitingDecision) && ctrl.canParkForDecision() {
 		return agentTerminalProposal{}, nil
 	}
 	status := RunStatusCompleted
@@ -1682,7 +1700,7 @@ func (m *Manager) prepareAgentTerminalEvent(
 		status,
 		errorCode,
 		"",
-		false,
+		ctrl.resumesOnTerminalDecision(),
 	)
 	if err != nil {
 		return agentTerminalProposal{}, err
@@ -1698,21 +1716,17 @@ func (m *Manager) prepareAgentTerminalEvent(
 			return agentTerminalProposal{}, ErrRunOwnershipLost
 		}
 		return agentTerminalProposal{
-			prepared:  true,
-			status:    liveRunStatus(prepared.State),
-			errorCode: strings.TrimSpace(prepared.ErrorCode),
-			error:     strings.TrimSpace(prepared.ErrorMessage),
-			at:        prepared.FinishProposedAt,
+			prepared: true,
+			status:   liveRunStatus(prepared.State),
+			at:       prepared.FinishProposedAt,
 		}, nil
 	}
 	if prepared.State == ledger.StateFinishing {
 		status = liveRunStatus(prepared.ProposedState)
 		return agentTerminalProposal{
-			prepared:  true,
-			status:    status,
-			errorCode: strings.TrimSpace(prepared.ProposedErrorCode),
-			error:     strings.TrimSpace(prepared.ProposedErrorMessage),
-			at:        prepared.FinishProposedAt,
+			prepared: true,
+			status:   status,
+			at:       prepared.FinishProposedAt,
 		}, nil
 	}
 	return agentTerminalProposal{}, ErrRunOwnershipLost
@@ -1825,7 +1839,12 @@ func (m *Manager) handleAgentEvent(ctx context.Context, handle RunHandle, event 
 	resumeLiveOnTerminal := ctrl.resumesOnTerminalDecision() && !ctrl.decisionWaitActive()
 	snapshot, changed, err := m.updateActiveAndPublish(ctx, handle, func(snapshot Snapshot, now time.Time) (Snapshot, bool, error) {
 		run := snapshot.CurrentRunView
-		if !runMatchesHandle(run, handle) || !m.runOwnerMatches(run) || !isEventAcceptingRunStatus(run.Status) {
+		// Finalization may replay a durable decision after the run entered
+		// finishing. Accept only terminal decision snapshots in that window;
+		// ordinary output and new pending requests cannot reopen execution.
+		acceptsEvent := run != nil && (isEventAcceptingRunStatus(run.Status) ||
+			(strings.EqualFold(run.Status, RunStatusFinishing) && terminalDecisionEvent(event)))
+		if !runMatchesHandle(run, handle) || !m.runOwnerMatches(run) || !acceptsEvent {
 			return snapshot, false, nil
 		}
 		snapshot.Seq++

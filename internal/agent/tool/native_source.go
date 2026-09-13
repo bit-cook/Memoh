@@ -216,6 +216,13 @@ func publicNativeToolResult(result any) any {
 		}
 		return value.Public
 	default:
+		// The reserved UI-only payload (e.g. the edit/write diff) is stripped
+		// by the native runtime wrapper, but this gateway path has no wrapper
+		// and no UI consumer — without the delete it would reach external
+		// runtimes' model context verbatim.
+		if m, ok := result.(map[string]any); ok {
+			delete(m, UIOutputMetadataKey)
+		}
 		return result
 	}
 }

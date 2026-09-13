@@ -2456,7 +2456,6 @@ CREATE TABLE IF NOT EXISTS public.bot_app_installations (
     team_id             UUID        NOT NULL DEFAULT public.memoh_current_team_id()
                                     REFERENCES public.teams(id) ON DELETE RESTRICT,
     bot_id              UUID        NOT NULL,
-    workspace_target_id TEXT        NOT NULL,
     registry_id         TEXT        NOT NULL,
     app_id              TEXT        NOT NULL,
     revision            TEXT        NOT NULL,
@@ -2474,7 +2473,7 @@ CREATE TABLE IF NOT EXISTS public.bot_app_installations (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT memoh_team_key_418800cc0ea5 UNIQUE (team_id, id),
     CONSTRAINT bot_app_installations_identity_key
-        UNIQUE (team_id, bot_id, workspace_target_id, registry_id, app_id),
+        UNIQUE (team_id, bot_id, registry_id, app_id),
     CONSTRAINT bot_app_installations_revision_check
         CHECK (revision ~ '^[0-9a-f]{64}$'),
     CONSTRAINT bot_app_installations_available_revision_check
@@ -3044,7 +3043,6 @@ CREATE TABLE IF NOT EXISTS public.bot_dependency_installations (
     team_id             UUID        NOT NULL DEFAULT public.memoh_current_team_id()
                                     REFERENCES public.teams(id) ON DELETE RESTRICT,
     bot_id              UUID        NOT NULL,
-    workspace_target_id TEXT        NOT NULL,
     dependency_id       TEXT        NOT NULL,
     source              TEXT        NOT NULL,
     status              TEXT        NOT NULL,
@@ -3061,7 +3059,7 @@ CREATE TABLE IF NOT EXISTS public.bot_dependency_installations (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT memoh_team_key_07a3be5666c2 UNIQUE (team_id, id),
     CONSTRAINT bot_dependency_installations_identity_key
-        UNIQUE (team_id, bot_id, workspace_target_id, dependency_id),
+        UNIQUE (team_id, bot_id, dependency_id),
     CONSTRAINT bot_dependency_installations_bot_id_fkey
         FOREIGN KEY (team_id, bot_id)
         REFERENCES public.bots(team_id, id) ON DELETE CASCADE,

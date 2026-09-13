@@ -72,7 +72,7 @@ DELETE FROM bot_app_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
   AND id = $2
-RETURNING id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
+RETURNING id, team_id, bot_id, registry_id, app_id, revision, version,
           status, reason, available_revision, available_version, last_checked_at, last_error,
           release, installed_at, updated_at
 `
@@ -89,7 +89,6 @@ func (q *Queries) DeleteBotAppInstallation(ctx context.Context, arg DeleteBotApp
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.RegistryID,
 		&i.AppID,
 		&i.Revision,
@@ -108,38 +107,30 @@ func (q *Queries) DeleteBotAppInstallation(ctx context.Context, arg DeleteBotApp
 }
 
 const getBotAppInstallation = `-- name: GetBotAppInstallation :one
-SELECT id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
+SELECT id, team_id, bot_id, registry_id, app_id, revision, version,
        status, reason, available_revision, available_version, last_checked_at, last_error,
        release, installed_at, updated_at
 FROM bot_app_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
-  AND workspace_target_id = $2
-  AND registry_id = $3
-  AND app_id = $4
+  AND registry_id = $2
+  AND app_id = $3
 LIMIT 1
 `
 
 type GetBotAppInstallationParams struct {
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-	RegistryID        string      `json:"registry_id"`
-	AppID             string      `json:"app_id"`
+	BotID      pgtype.UUID `json:"bot_id"`
+	RegistryID string      `json:"registry_id"`
+	AppID      string      `json:"app_id"`
 }
 
 func (q *Queries) GetBotAppInstallation(ctx context.Context, arg GetBotAppInstallationParams) (BotAppInstallation, error) {
-	row := q.db.QueryRow(ctx, getBotAppInstallation,
-		arg.BotID,
-		arg.WorkspaceTargetID,
-		arg.RegistryID,
-		arg.AppID,
-	)
+	row := q.db.QueryRow(ctx, getBotAppInstallation, arg.BotID, arg.RegistryID, arg.AppID)
 	var i BotAppInstallation
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.RegistryID,
 		&i.AppID,
 		&i.Revision,
@@ -158,7 +149,7 @@ func (q *Queries) GetBotAppInstallation(ctx context.Context, arg GetBotAppInstal
 }
 
 const getBotAppInstallationByID = `-- name: GetBotAppInstallationByID :one
-SELECT id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
+SELECT id, team_id, bot_id, registry_id, app_id, revision, version,
        status, reason, available_revision, available_version, last_checked_at, last_error,
        release, installed_at, updated_at
 FROM bot_app_installations
@@ -180,7 +171,6 @@ func (q *Queries) GetBotAppInstallationByID(ctx context.Context, arg GetBotAppIn
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.RegistryID,
 		&i.AppID,
 		&i.Revision,
@@ -237,27 +227,26 @@ func (q *Queries) ListAppConnectorRefs(ctx context.Context, installationID pgtyp
 
 const listAppConnectorRefsForBot = `-- name: ListAppConnectorRefsForBot :many
 SELECT r.id, r.team_id, r.installation_id, r.connector_type, r.connection_id, r.required,
-       r.created_at, r.updated_at, i.registry_id, i.app_id, i.workspace_target_id
+       r.created_at, r.updated_at, i.registry_id, i.app_id
 FROM bot_app_connector_refs r
 JOIN bot_app_installations i
   ON i.team_id = r.team_id AND i.id = r.installation_id
 WHERE r.team_id = public.memoh_current_team_id()
   AND i.bot_id = $1
-ORDER BY r.connector_type, i.registry_id, i.app_id, i.workspace_target_id
+ORDER BY r.connector_type, i.registry_id, i.app_id
 `
 
 type ListAppConnectorRefsForBotRow struct {
-	ID                pgtype.UUID        `json:"id"`
-	TeamID            pgtype.UUID        `json:"team_id"`
-	InstallationID    pgtype.UUID        `json:"installation_id"`
-	ConnectorType     string             `json:"connector_type"`
-	ConnectionID      string             `json:"connection_id"`
-	Required          bool               `json:"required"`
-	CreatedAt         pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
-	RegistryID        string             `json:"registry_id"`
-	AppID             string             `json:"app_id"`
-	WorkspaceTargetID string             `json:"workspace_target_id"`
+	ID             pgtype.UUID        `json:"id"`
+	TeamID         pgtype.UUID        `json:"team_id"`
+	InstallationID pgtype.UUID        `json:"installation_id"`
+	ConnectorType  string             `json:"connector_type"`
+	ConnectionID   string             `json:"connection_id"`
+	Required       bool               `json:"required"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	RegistryID     string             `json:"registry_id"`
+	AppID          string             `json:"app_id"`
 }
 
 func (q *Queries) ListAppConnectorRefsForBot(ctx context.Context, botID pgtype.UUID) ([]ListAppConnectorRefsForBotRow, error) {
@@ -280,7 +269,6 @@ func (q *Queries) ListAppConnectorRefsForBot(ctx context.Context, botID pgtype.U
 			&i.UpdatedAt,
 			&i.RegistryID,
 			&i.AppID,
-			&i.WorkspaceTargetID,
 		); err != nil {
 			return nil, err
 		}
@@ -326,7 +314,7 @@ func (q *Queries) ListAppDependencyRefs(ctx context.Context, installationID pgty
 	return items, nil
 }
 
-const listAppDependencyRefsForTarget = `-- name: ListAppDependencyRefsForTarget :many
+const listAppDependencyRefsForBot = `-- name: ListAppDependencyRefsForBot :many
 SELECT r.id, r.team_id, r.installation_id, r.dependency_id, r.created_at,
        i.registry_id, i.app_id
 FROM bot_app_dependency_refs r
@@ -334,16 +322,10 @@ JOIN bot_app_installations i
   ON i.team_id = r.team_id AND i.id = r.installation_id
 WHERE r.team_id = public.memoh_current_team_id()
   AND i.bot_id = $1
-  AND i.workspace_target_id = $2
 ORDER BY r.dependency_id, i.registry_id, i.app_id
 `
 
-type ListAppDependencyRefsForTargetParams struct {
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-}
-
-type ListAppDependencyRefsForTargetRow struct {
+type ListAppDependencyRefsForBotRow struct {
 	ID             pgtype.UUID        `json:"id"`
 	TeamID         pgtype.UUID        `json:"team_id"`
 	InstallationID pgtype.UUID        `json:"installation_id"`
@@ -353,15 +335,15 @@ type ListAppDependencyRefsForTargetRow struct {
 	AppID          string             `json:"app_id"`
 }
 
-func (q *Queries) ListAppDependencyRefsForTarget(ctx context.Context, arg ListAppDependencyRefsForTargetParams) ([]ListAppDependencyRefsForTargetRow, error) {
-	rows, err := q.db.Query(ctx, listAppDependencyRefsForTarget, arg.BotID, arg.WorkspaceTargetID)
+func (q *Queries) ListAppDependencyRefsForBot(ctx context.Context, botID pgtype.UUID) ([]ListAppDependencyRefsForBotRow, error) {
+	rows, err := q.db.Query(ctx, listAppDependencyRefsForBot, botID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListAppDependencyRefsForTargetRow
+	var items []ListAppDependencyRefsForBotRow
 	for rows.Next() {
-		var i ListAppDependencyRefsForTargetRow
+		var i ListAppDependencyRefsForBotRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.TeamID,
@@ -382,12 +364,12 @@ func (q *Queries) ListAppDependencyRefsForTarget(ctx context.Context, arg ListAp
 }
 
 const listBotAppInstallations = `-- name: ListBotAppInstallations :many
-SELECT id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
+SELECT id, team_id, bot_id, registry_id, app_id, revision, version,
        status, reason, available_revision, available_version, last_checked_at, last_error,
        release, installed_at, updated_at
 FROM bot_app_installations
 WHERE team_id = public.memoh_current_team_id() AND bot_id = $1
-ORDER BY registry_id, app_id, workspace_target_id
+ORDER BY registry_id, app_id
 `
 
 func (q *Queries) ListBotAppInstallations(ctx context.Context, botID pgtype.UUID) ([]BotAppInstallation, error) {
@@ -403,61 +385,6 @@ func (q *Queries) ListBotAppInstallations(ctx context.Context, botID pgtype.UUID
 			&i.ID,
 			&i.TeamID,
 			&i.BotID,
-			&i.WorkspaceTargetID,
-			&i.RegistryID,
-			&i.AppID,
-			&i.Revision,
-			&i.Version,
-			&i.Status,
-			&i.Reason,
-			&i.AvailableRevision,
-			&i.AvailableVersion,
-			&i.LastCheckedAt,
-			&i.LastError,
-			&i.Release,
-			&i.InstalledAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listBotAppInstallationsForTarget = `-- name: ListBotAppInstallationsForTarget :many
-SELECT id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
-       status, reason, available_revision, available_version, last_checked_at, last_error,
-       release, installed_at, updated_at
-FROM bot_app_installations
-WHERE team_id = public.memoh_current_team_id()
-  AND bot_id = $1
-  AND workspace_target_id = $2
-ORDER BY registry_id, app_id
-`
-
-type ListBotAppInstallationsForTargetParams struct {
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-}
-
-func (q *Queries) ListBotAppInstallationsForTarget(ctx context.Context, arg ListBotAppInstallationsForTargetParams) ([]BotAppInstallation, error) {
-	rows, err := q.db.Query(ctx, listBotAppInstallationsForTarget, arg.BotID, arg.WorkspaceTargetID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []BotAppInstallation
-	for rows.Next() {
-		var i BotAppInstallation
-		if err := rows.Scan(
-			&i.ID,
-			&i.TeamID,
-			&i.BotID,
-			&i.WorkspaceTargetID,
 			&i.RegistryID,
 			&i.AppID,
 			&i.Revision,
@@ -523,7 +450,7 @@ SET available_revision = $1,
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $4
   AND id = $5
-RETURNING id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
+RETURNING id, team_id, bot_id, registry_id, app_id, revision, version,
           status, reason, available_revision, available_version, last_checked_at, last_error,
           release, installed_at, updated_at
 `
@@ -549,7 +476,6 @@ func (q *Queries) UpdateBotAppInstallationCheck(ctx context.Context, arg UpdateB
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.RegistryID,
 		&i.AppID,
 		&i.Revision,
@@ -578,7 +504,7 @@ SET revision = $1,
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $4
   AND id = $5
-RETURNING id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
+RETURNING id, team_id, bot_id, registry_id, app_id, revision, version,
           status, reason, available_revision, available_version, last_checked_at, last_error,
           release, installed_at, updated_at
 `
@@ -604,7 +530,6 @@ func (q *Queries) UpdateBotAppInstallationRelease(ctx context.Context, arg Updat
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.RegistryID,
 		&i.AppID,
 		&i.Revision,
@@ -630,7 +555,7 @@ SET status = $1,
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $3
   AND id = $4
-RETURNING id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
+RETURNING id, team_id, bot_id, registry_id, app_id, revision, version,
           status, reason, available_revision, available_version, last_checked_at, last_error,
           release, installed_at, updated_at
 `
@@ -654,7 +579,6 @@ func (q *Queries) UpdateBotAppInstallationStatus(ctx context.Context, arg Update
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.RegistryID,
 		&i.AppID,
 		&i.Revision,
@@ -737,10 +661,10 @@ func (q *Queries) UpsertAppDependencyRef(ctx context.Context, arg UpsertAppDepen
 
 const upsertBotAppInstallation = `-- name: UpsertBotAppInstallation :one
 INSERT INTO bot_app_installations (
-  bot_id, workspace_target_id, registry_id, app_id, revision, version, status, reason, release
+  bot_id, registry_id, app_id, revision, version, status, reason, release
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-ON CONFLICT (team_id, bot_id, workspace_target_id, registry_id, app_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+ON CONFLICT (team_id, bot_id, registry_id, app_id)
 DO UPDATE SET revision = EXCLUDED.revision,
               version = EXCLUDED.version,
               status = EXCLUDED.status,
@@ -748,27 +672,25 @@ DO UPDATE SET revision = EXCLUDED.revision,
               release = EXCLUDED.release,
               last_error = '',
               updated_at = now()
-RETURNING id, team_id, bot_id, workspace_target_id, registry_id, app_id, revision, version,
+RETURNING id, team_id, bot_id, registry_id, app_id, revision, version,
           status, reason, available_revision, available_version, last_checked_at, last_error,
           release, installed_at, updated_at
 `
 
 type UpsertBotAppInstallationParams struct {
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-	RegistryID        string      `json:"registry_id"`
-	AppID             string      `json:"app_id"`
-	Revision          string      `json:"revision"`
-	Version           string      `json:"version"`
-	Status            string      `json:"status"`
-	Reason            string      `json:"reason"`
-	Release           []byte      `json:"release"`
+	BotID      pgtype.UUID `json:"bot_id"`
+	RegistryID string      `json:"registry_id"`
+	AppID      string      `json:"app_id"`
+	Revision   string      `json:"revision"`
+	Version    string      `json:"version"`
+	Status     string      `json:"status"`
+	Reason     string      `json:"reason"`
+	Release    []byte      `json:"release"`
 }
 
 func (q *Queries) UpsertBotAppInstallation(ctx context.Context, arg UpsertBotAppInstallationParams) (BotAppInstallation, error) {
 	row := q.db.QueryRow(ctx, upsertBotAppInstallation,
 		arg.BotID,
-		arg.WorkspaceTargetID,
 		arg.RegistryID,
 		arg.AppID,
 		arg.Revision,
@@ -782,7 +704,6 @@ func (q *Queries) UpsertBotAppInstallation(ctx context.Context, arg UpsertBotApp
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.RegistryID,
 		&i.AppID,
 		&i.Revision,

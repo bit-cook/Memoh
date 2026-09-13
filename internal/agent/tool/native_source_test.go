@@ -344,6 +344,48 @@ func TestNativeToolSourceReadMediaReturnsPublicResultOnly(t *testing.T) {
 	}
 }
 
+func TestNativeToolSourceStripsUIOnlyMetadata(t *testing.T) {
+	// The reserved _ui payload is stripped by the native runtime's tool wrapper
+	// before the SDK records the result. The gateway path has no such wrapper,
+	// so publicNativeToolResult must drop it — otherwise external runtimes
+	// receive the full diff in model context on every write/edit.
+	provider := &nativeSourceTestProvider{
+		tools: []sdk.Tool{{
+			Name:       ToolWrite().String(),
+			Parameters: map[string]any{"type": "object"},
+			Execute: func(_ *sdk.ToolExecContext, _ any) (any, error) {
+				return map[string]any{
+					"ok":                true,
+					UIOutputMetadataKey: map[string]any{"diff": "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-old\n+new\n"},
+				}, nil
+			},
+		}},
+	}
+	source := NewNativeToolSource(nil, []ToolProvider{provider}, NativeToolSourceOptions{
+		AllowTools: map[string]bool{ToolWrite().String(): true},
+	})
+
+	result, err := source.CallTool(context.Background(), mcp.ToolSessionContext{BotID: "bot-1"}, ToolWrite().String(), map[string]any{
+		"path": "f",
+	})
+	if err != nil {
+		t.Fatalf("CallTool(write) error = %v", err)
+	}
+	structured, ok := result["structuredContent"].(map[string]any)
+	if !ok {
+		t.Fatalf("structuredContent = %#v, want map", result["structuredContent"])
+	}
+	if _, leaked := structured[UIOutputMetadataKey]; leaked {
+		t.Fatalf("_ui payload leaked into gateway result: %#v", structured)
+	}
+	if structured["ok"] != true {
+		t.Fatalf("structuredContent = %#v, want ok:true preserved", structured)
+	}
+	if strings.Contains(fmt.Sprintf("%#v", result), "-old") {
+		t.Fatalf("diff text leaked into serialized gateway result: %#v", result)
+	}
+}
+
 func TestNativeToolSourceLimitsToolOutput(t *testing.T) {
 	large := "HEAD\n" + strings.Repeat("0123456789", 200) + "\nTAIL"
 	provider := &nativeSourceTestProvider{

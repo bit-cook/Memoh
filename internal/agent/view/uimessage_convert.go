@@ -21,6 +21,7 @@ var (
 	uiMessageCollapsedNewlinesRe = regexp.MustCompile(`\n{3,}`)
 	uiTaskNotificationRe         = regexp.MustCompile(`(?s)<task-notification>\s*(.*?)\s*</task-notification>`)
 	uiMetadataParseKeys          = [][]byte{
+		[]byte(`"agent_turn_id"`),
 		[]byte(`"forward"`),
 		[]byte(`"model_requested_skills"`),
 		[]byte(`"platform"`),
@@ -29,6 +30,8 @@ var (
 		[]byte(`"skill_activation"`),
 		[]byte(`"user_message_kind"`),
 		[]byte(`"error_code"`),
+		[]byte(`"diff"`),
+		[]byte(`"diffs"`),
 	}
 )
 
@@ -52,6 +55,7 @@ type uiExtractedToolCall struct {
 	Approval          *UIToolApproval
 	ExecutionLocation *UIExecutionLocation
 	UserInput         *UIUserInput
+	Diff              string
 }
 
 type uiExtractedToolResult struct {
@@ -130,6 +134,7 @@ func ConvertModelMessagesToUIAssistantMessages(messages []turn.ModelMessage) []U
 					Approval:          call.Approval,
 					ExecutionLocation: call.ExecutionLocation,
 					UserInput:         call.UserInput,
+					Diff:              call.Diff,
 				})
 				if call.ID != "" {
 					pending.ToolIndexes[call.ID] = len(pending.Turn.Messages) - 1
@@ -162,6 +167,7 @@ func ConvertModelMessagesToUIAssistantMessages(messages []turn.ModelMessage) []U
 // ConvertMessagesToUITurns converts persisted message rows into frontend-friendly turns.
 func ConvertMessagesToUITurns(messages []messagepkg.Message) []UITurn {
 	result := make([]UITurn, 0, len(messages))
+	runtimeForkable := make(map[string]bool)
 	var pending *uiPendingAssistantTurn
 	var backgroundToolRefs map[string]uiBackgroundToolRef
 
@@ -304,8 +310,21 @@ func ConvertMessagesToUITurns(messages []messagepkg.Message) []UITurn {
 
 		case "assistant":
 			ensurePersistedMetadata(&raw)
+			if anchor, _ := raw.Metadata["agent_turn_id"].(string); strings.TrimSpace(anchor) != "" {
+				runtimeForkable[rawTurnID] = true
+			}
 			modelMessage := decodePersistedModelMessage(raw)
 			toolCalls := extractPersistedToolCalls(&modelMessage)
+			// New rows carry diffs on the row's metadata (lifted out of
+			// content at persist time so they don't count against the history
+			// byte budget); older rows still have them in providerMetadata.
+			if rowDiffs := extractDiffsByToolCallID(raw.Metadata); len(rowDiffs) > 0 {
+				for i := range toolCalls {
+					if toolCalls[i].Diff == "" {
+						toolCalls[i].Diff = rowDiffs[toolCalls[i].ID]
+					}
+				}
+			}
 			text := extractPersistedMessageText(raw, &modelMessage)
 			reasonings := extractPersistedReasoning(&modelMessage)
 			attachments := uiAttachmentsFromMessageAssets(raw)
@@ -362,6 +381,7 @@ func ConvertMessagesToUITurns(messages []messagepkg.Message) []UITurn {
 				continue
 			}
 
+			ensurePersistedMetadata(&raw)
 			modelMessage := decodePersistedModelMessage(raw)
 			for _, toolResult := range extractPersistedToolResults(&modelMessage) {
 				idx, ok := pending.ToolIndexes[toolResult.ToolCallID]
@@ -370,11 +390,22 @@ func ConvertMessagesToUITurns(messages []messagepkg.Message) []UITurn {
 				}
 
 				applyToolResultToUIMessage(&pending.Turn.Messages[idx], toolResult.Output)
+				// The deferred-approval path persists the diff as row-level
+				// metadata on the tool message (the immediate path stores it
+				// under "diffs" on the assistant row instead).
+				if diff := extractDiffMetadata(raw.Metadata); diff != "" {
+					pending.Turn.Messages[idx].Diff = diff
+				}
 			}
 		}
 	}
 
 	flushPending()
+	for i := range result {
+		if result[i].Role == "assistant" {
+			result[i].RuntimeForkable = runtimeForkable[result[i].TurnID]
+		}
+	}
 	return result
 }
 
@@ -423,6 +454,9 @@ func upsertPendingToolCall(pending *uiPendingAssistantTurn, call uiExtractedTool
 			if call.UserInput != nil {
 				msg.UserInput = call.UserInput
 			}
+			if call.Diff != "" {
+				msg.Diff = call.Diff
+			}
 			msg.Running = uiBoolPtr(true)
 			return
 		}
@@ -436,6 +470,7 @@ func upsertPendingToolCall(pending *uiPendingAssistantTurn, call uiExtractedTool
 		Approval:          call.Approval,
 		ExecutionLocation: call.ExecutionLocation,
 		UserInput:         call.UserInput,
+		Diff:              call.Diff,
 	}
 	appendPendingAssistantMessage(pending, block)
 	if call.ID != "" {
@@ -776,6 +811,7 @@ func extractPersistedToolCalls(message *uiDecodedModelMessage) []uiExtractedTool
 			Approval:          extractApprovalMetadata(part.ProviderMetadata),
 			ExecutionLocation: extractExecutionLocationMetadata(part.ProviderMetadata),
 			UserInput:         extractUserInputMetadata(part.ProviderMetadata),
+			Diff:              extractDiffMetadata(part.ProviderMetadata),
 		})
 	}
 	if len(calls) > 0 {
@@ -883,6 +919,39 @@ func extractExecutionLocationMetadata(metadata map[string]any) *UIExecutionLocat
 		return nil
 	}
 	return location
+}
+
+// extractDiffMetadata reads the UI-only unified diff the runtime attached to
+// the tool call's ProviderMetadata at execution time (edit/write tools). It
+// lives beside the tool result, never inside it, so the model never sees it.
+func extractDiffMetadata(metadata map[string]any) string {
+	if metadata == nil {
+		return ""
+	}
+	diff, _ := metadata["diff"].(string)
+	return diff
+}
+
+// extractDiffsByToolCallID reads the row-level map the persist path stores
+// under ToolCallDiffsMetadataKey after lifting diffs out of content.
+func extractDiffsByToolCallID(metadata map[string]any) map[string]string {
+	if metadata == nil {
+		return nil
+	}
+	raw, ok := metadata[messagepkg.ToolCallDiffsMetadataKey].(map[string]any)
+	if !ok {
+		return nil
+	}
+	diffs := make(map[string]string, len(raw))
+	for callID, value := range raw {
+		if diff, ok := value.(string); ok && diff != "" {
+			diffs[callID] = diff
+		}
+	}
+	if len(diffs) == 0 {
+		return nil
+	}
+	return diffs
 }
 
 func extractUserInputMetadata(metadata map[string]any) *UIUserInput {

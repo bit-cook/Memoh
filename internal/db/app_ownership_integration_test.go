@@ -19,7 +19,7 @@ const (
 	appRevision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 )
 
-func TestRemoteRuntimeDeletionRemovesAppInstallation(t *testing.T) {
+func TestRemoteRuntimeDeletionPreservesAppInstallation(t *testing.T) {
 	ctx := context.Background()
 	pool := teamScopedPool(t)
 	seedAppBot(t, pool)
@@ -27,9 +27,9 @@ func TestRemoteRuntimeDeletionRemovesAppInstallation(t *testing.T) {
 
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO bot_app_installations
-			(id, bot_id, workspace_target_id, registry_id, app_id, revision, status)
-		VALUES ($1, $2, $3, 'openai', 'documents', $4, 'installed')`,
-		"30000000-0000-4000-8000-000000000001", appBotOneID, targetID, appRevision); err != nil {
+			(id, bot_id, registry_id, app_id, revision, status)
+		VALUES ($1, $2, 'openai', 'documents', $3, 'installed')`,
+		"30000000-0000-4000-8000-000000000001", appBotOneID, appRevision); err != nil {
 		t.Fatalf("seed App: %v", err)
 	}
 
@@ -43,11 +43,11 @@ func TestRemoteRuntimeDeletionRemovesAppInstallation(t *testing.T) {
 	var appCount int
 	if err := pool.QueryRow(ctx, `
 		SELECT count(*) FROM bot_app_installations
-		WHERE bot_id = $1 AND workspace_target_id = $2`, appBotOneID, targetID).Scan(&appCount); err != nil {
+		WHERE bot_id = $1`, appBotOneID).Scan(&appCount); err != nil {
 		t.Fatalf("count App installations: %v", err)
 	}
-	if appCount != 0 {
-		t.Fatalf("App installation count = %d, want 0", appCount)
+	if appCount != 1 {
+		t.Fatalf("App installation count = %d, want 1", appCount)
 	}
 	var bindingCount int
 	if err := pool.QueryRow(ctx, `
@@ -60,7 +60,7 @@ func TestRemoteRuntimeDeletionRemovesAppInstallation(t *testing.T) {
 	}
 }
 
-func TestUserRuntimeRevocationRemovesAppInstallations(t *testing.T) {
+func TestUserRuntimeRevocationPreservesAppInstallations(t *testing.T) {
 	ctx := context.Background()
 	pool := teamScopedPool(t)
 	seedAppBot(t, pool)
@@ -78,9 +78,9 @@ func TestUserRuntimeRevocationRemovesAppInstallations(t *testing.T) {
 	}
 	if _, err := pool.Exec(ctx, `
 		INSERT INTO bot_app_installations
-			(id, bot_id, workspace_target_id, registry_id, app_id, revision, status)
-		VALUES ($1, $2, $3, 'openai', 'documents', $4, 'installed')`,
-		"30000000-0000-4000-8000-000000000002", appBotOneID, targetID, appRevision); err != nil {
+			(id, bot_id, registry_id, app_id, revision, status)
+		VALUES ($1, $2, 'openai', 'documents', $3, 'installed')`,
+		"30000000-0000-4000-8000-000000000002", appBotOneID, appRevision); err != nil {
 		t.Fatalf("seed runtime App: %v", err)
 	}
 
@@ -94,11 +94,11 @@ func TestUserRuntimeRevocationRemovesAppInstallations(t *testing.T) {
 	var appCount int
 	if err := pool.QueryRow(ctx, `
 		SELECT count(*) FROM bot_app_installations
-		WHERE bot_id = $1 AND workspace_target_id = $2`, appBotOneID, targetID).Scan(&appCount); err != nil {
+		WHERE bot_id = $1`, appBotOneID).Scan(&appCount); err != nil {
 		t.Fatalf("count revoked runtime App installations: %v", err)
 	}
-	if appCount != 0 {
-		t.Fatalf("revoked runtime App installation count = %d, want 0", appCount)
+	if appCount != 1 {
+		t.Fatalf("revoked runtime App installation count = %d, want 1", appCount)
 	}
 }
 

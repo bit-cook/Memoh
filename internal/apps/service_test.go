@@ -36,11 +36,11 @@ func newMemoryStore() *memoryStore {
 	return &memoryStore{installations: map[string]Installation{}, depRefs: map[string]map[string]bool{}, connRefs: map[string]map[string]ConnectorRef{}}
 }
 
-func (m *memoryStore) Get(_ context.Context, botID, target, registryID, appID string) (Installation, error) {
+func (m *memoryStore) Get(_ context.Context, botID, registryID, appID string) (Installation, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, inst := range m.installations {
-		if inst.BotID == botID && inst.WorkspaceTargetID == target && inst.RegistryID == registryID && inst.AppID == appID {
+		if inst.BotID == botID && inst.RegistryID == registryID && inst.AppID == appID {
 			return inst, nil
 		}
 	}
@@ -69,23 +69,11 @@ func (m *memoryStore) ListForBot(_ context.Context, botID string) ([]Installatio
 	return out, nil
 }
 
-func (m *memoryStore) ListForTarget(_ context.Context, botID, target string) ([]Installation, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	var out []Installation
-	for _, inst := range m.installations {
-		if inst.BotID == botID && inst.WorkspaceTargetID == target {
-			out = append(out, inst)
-		}
-	}
-	return out, nil
-}
-
 func (m *memoryStore) Upsert(_ context.Context, in UpsertInstallation) (Installation, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, inst := range m.installations {
-		if inst.BotID == in.BotID && inst.WorkspaceTargetID == in.WorkspaceTargetID && inst.RegistryID == in.RegistryID && inst.AppID == in.AppID {
+		if inst.BotID == in.BotID && inst.RegistryID == in.RegistryID && inst.AppID == in.AppID {
 			inst.Revision, inst.Version, inst.Status, inst.Release, inst.LastError = in.Revision, in.Version, in.Status, in.Release, ""
 			if in.Reason == ReasonUser {
 				inst.Reason = ReasonUser
@@ -96,7 +84,7 @@ func (m *memoryStore) Upsert(_ context.Context, in UpsertInstallation) (Installa
 	}
 	m.next++
 	inst := Installation{
-		ID: fmt.Sprintf("inst-%d", m.next), BotID: in.BotID, WorkspaceTargetID: in.WorkspaceTargetID,
+		ID: fmt.Sprintf("inst-%d", m.next), BotID: in.BotID,
 		RegistryID: in.RegistryID, AppID: in.AppID, Revision: in.Revision, Version: in.Version,
 		Status: in.Status, Reason: in.Reason, Release: in.Release, InstalledAt: time.Now(), UpdatedAt: time.Now(),
 	}
@@ -165,17 +153,17 @@ func (m *memoryStore) ListDependencyRefs(_ context.Context, id string) ([]Depend
 	return out, nil
 }
 
-func (m *memoryStore) ListTargetDependencyRefs(_ context.Context, botID, target string) ([]TargetDependencyRef, error) {
+func (m *memoryStore) ListBotDependencyRefs(_ context.Context, botID string) ([]BotDependencyRef, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var out []TargetDependencyRef
+	var out []BotDependencyRef
 	for id, deps := range m.depRefs {
 		inst, ok := m.installations[id]
-		if !ok || inst.BotID != botID || inst.WorkspaceTargetID != target {
+		if !ok || inst.BotID != botID {
 			continue
 		}
 		for dep := range deps {
-			out = append(out, TargetDependencyRef{DependencyRef: DependencyRef{InstallationID: id, DependencyID: dep}, RegistryID: inst.RegistryID, AppID: inst.AppID})
+			out = append(out, BotDependencyRef{DependencyRef: DependencyRef{InstallationID: id, DependencyID: dep}, RegistryID: inst.RegistryID, AppID: inst.AppID})
 		}
 	}
 	return out, nil
@@ -218,7 +206,7 @@ func (m *memoryStore) ListBotConnectorRefs(_ context.Context, botID string) ([]B
 			continue
 		}
 		for _, ref := range refs {
-			out = append(out, BotConnectorRef{ConnectorRef: ref, RegistryID: inst.RegistryID, AppID: inst.AppID, WorkspaceTargetID: inst.WorkspaceTargetID})
+			out = append(out, BotConnectorRef{ConnectorRef: ref, RegistryID: inst.RegistryID, AppID: inst.AppID})
 		}
 	}
 	return out, nil
@@ -305,14 +293,7 @@ type fakePublisher struct {
 	txs        []*fakeTx
 }
 
-func (*fakePublisher) ResolveTargetID(_ context.Context, _, targetID string) (string, error) {
-	if targetID == "" {
-		return testTarget, nil
-	}
-	return targetID, nil
-}
-
-func (f *fakePublisher) PublishSkills(_ context.Context, _, _ string, pkg supermarket.AppDescriptor, _ string) (SkillTransaction, []supermarket.InstallSkillResponse, error) {
+func (f *fakePublisher) PublishSkills(_ context.Context, _ string, pkg supermarket.AppDescriptor, _ string) (SkillTransaction, []supermarket.InstallSkillResponse, error) {
 	if f.publishErr != nil {
 		return nil, nil, f.publishErr
 	}
@@ -326,7 +307,7 @@ func (f *fakePublisher) PublishSkills(_ context.Context, _, _ string, pkg superm
 	return tx, installed, nil
 }
 
-func (f *fakePublisher) RemoveSkills(_ context.Context, _, _, _, appID, _ string) (SkillTransaction, error) {
+func (f *fakePublisher) RemoveSkills(_ context.Context, _, _, appID, _ string) (SkillTransaction, error) {
 	f.removed = append(f.removed, appID)
 	tx := &fakeTx{}
 	f.txs = append(f.txs, tx)
@@ -349,19 +330,19 @@ func (f *fakeDeps) list() workspacedeps.ListResult {
 	return result
 }
 
-func (f *fakeDeps) List(context.Context, string, string) (workspacedeps.ListResult, error) {
+func (f *fakeDeps) List(context.Context, string) (workspacedeps.ListResult, error) {
 	return f.list(), nil
 }
 
-func (f *fakeDeps) Refresh(context.Context, string, string) (workspacedeps.ListResult, error) {
+func (f *fakeDeps) Refresh(context.Context, string) (workspacedeps.ListResult, error) {
 	return f.list(), nil
 }
 
-func (f *fakeDeps) CheckUpdates(context.Context, string, string) (workspacedeps.ListResult, error) {
+func (f *fakeDeps) CheckUpdates(context.Context, string) (workspacedeps.ListResult, error) {
 	return f.list(), nil
 }
 
-func (f *fakeDeps) Install(_ context.Context, _, _, depID, _ string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
+func (f *fakeDeps) Install(_ context.Context, _, depID, _ string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
 	if err := f.installErr[depID]; err != nil {
 		return workspacedeps.OperationResult{}, err
 	}
@@ -378,7 +359,7 @@ func (f *fakeDeps) Install(_ context.Context, _, _, depID, _ string, sink worksp
 	return workspacedeps.OperationResult{DependencyID: depID, Version: "1.0.0"}, nil
 }
 
-func (f *fakeDeps) Update(_ context.Context, _, _, depID, _ string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
+func (f *fakeDeps) Update(_ context.Context, _, depID, _ string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
 	if err := f.installErr[depID]; err != nil {
 		return workspacedeps.OperationResult{}, err
 	}
@@ -393,7 +374,9 @@ func (f *fakeDeps) Update(_ context.Context, _, _, depID, _ string, sink workspa
 	return workspacedeps.OperationResult{DependencyID: depID, Version: "2.0.0"}, nil
 }
 
-func (f *fakeDeps) Remove(_ context.Context, _, _, depID string, _ workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
+func (*fakeDeps) EnsureRunning(context.Context, string) error { return nil }
+
+func (f *fakeDeps) Remove(_ context.Context, _, depID string, _ workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
 	f.removed = append(f.removed, depID)
 	delete(f.present, depID)
 	return workspacedeps.OperationResult{DependencyID: depID}, nil
@@ -606,7 +589,7 @@ func TestInstallFailsWhenSkillsCannotBePublished(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "bridge down") {
 		t.Fatalf("Install error = %v", err)
 	}
-	inst, err := h.store.Get(context.Background(), testBotID, testTarget, "memoh", "pdf")
+	inst, err := h.store.Get(context.Background(), testBotID, "memoh", "pdf")
 	if err != nil || inst.Status != StatusFailed {
 		t.Fatalf("installation = %+v, %v", inst, err)
 	}
@@ -738,7 +721,7 @@ func TestListShowsDiscoveredDependenciesThroughTheirCanonicalApp(t *testing.T) {
 	h.publish(pkg)
 	h.install(t, pkg)
 
-	result, err := h.service.List(context.Background(), testBotID, "", false)
+	result, err := h.service.List(context.Background(), testBotID, false)
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -765,7 +748,7 @@ func TestCheckUpdatesRecordsNewerRevisionAndUpdatePrunesDroppedReferences(t *tes
 	h.publish(v1)
 	result, _ := h.install(t, v1)
 
-	checked, err := h.service.CheckUpdates(context.Background(), testBotID, "")
+	checked, err := h.service.CheckUpdates(context.Background(), testBotID)
 	if err != nil {
 		t.Fatalf("CheckUpdates: %v", err)
 	}
@@ -775,7 +758,7 @@ func TestCheckUpdatesRecordsNewerRevisionAndUpdatePrunesDroppedReferences(t *tes
 
 	v2 := release("memoh", "python", "b", "1.1.0", []string{"py", "py-extra"}, []string{"uv"}, nil)
 	h.publish(v2)
-	checked, err = h.service.CheckUpdates(context.Background(), testBotID, "")
+	checked, err = h.service.CheckUpdates(context.Background(), testBotID)
 	if err != nil {
 		t.Fatalf("CheckUpdates: %v", err)
 	}
@@ -831,7 +814,7 @@ func TestRemoveUnreferencedRequiredApps(t *testing.T) {
 	if _, err := h.service.Remove(context.Background(), testBotID, appResult.Installation.ID, RemoveOptions{RemoveUnreferencedRequired: true}, nil); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
-	remaining, _ := h.store.ListForTarget(context.Background(), testBotID, testTarget)
+	remaining, _ := h.store.ListForBot(context.Background(), testBotID)
 	if len(remaining) != 0 {
 		t.Fatalf("remaining installations = %+v", remaining)
 	}

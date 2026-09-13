@@ -31,19 +31,27 @@ on:
 
 permissions:
   contents: read
+  statuses: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  format:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/contribution-format.yml
   lint:
+    needs: format
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-go@v5
         with:
@@ -56,11 +64,15 @@ jobs:
           only-new-issues: true
 
   test:
+    needs: format
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -75,6 +87,8 @@ jobs:
           if-no-files-found: error
 
   pgvector-bootstrap:
+    needs: format
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Pgvector bootstrap
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -94,6 +108,8 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -104,6 +120,8 @@ jobs:
         run: go test -count=1 ./internal/db/pgvector ./internal/memory/adapters/builtin
 
   session-runtime-backend:
+    needs: format
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Session Runtime (${{ matrix.target }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -129,6 +147,8 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -141,6 +161,8 @@ jobs:
         run: env "$RUNTIME_ENV_NAME=$RUNTIME_URL" go test -v -race -count=1 -timeout 90s ./internal/agent/runtime/session
 
   session-runtime-postgres:
+    needs: format
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Session Runtime (PostgreSQL fencing)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -160,6 +182,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -178,3 +202,9 @@ jobs:
             -run '^TestPostgresRuntimeFence' ./internal/agent/runtime/acp
           TEST_POSTGRES_BOOTSTRAP_SCHEMA=0 go test -v -race -count=1 -timeout 90s \
             ./internal/agent/runtime/session/ledger
+      - name: Verify atomic connector disconnect and tenant isolation
+        env:
+          TEST_POSTGRES_DSN: postgres://postgres:postgres@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/memoh_runtime_test?sslmode=disable
+        run: >-
+          go test -v -race -tags=integration -count=1 -timeout 90s
+          -run '^TestConnectorDisconnectFinalizationIsAtomicAndScoped$' ./internal/db

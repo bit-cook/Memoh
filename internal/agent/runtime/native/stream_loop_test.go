@@ -440,6 +440,7 @@ func TestRunMidStreamRetryMarksTextLoopCancellationAsAborted(t *testing.T) {
 		},
 		nil,
 		nil,
+		newToolExecutionMetadataRegistry(nil),
 		nil,
 		&sdk.StreamResult{Messages: []sdk.Message{sdk.UserMessage("previous step")}},
 		&stepMessageCapture{},

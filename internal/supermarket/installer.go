@@ -159,7 +159,7 @@ func uniqueSortedStrings(values []string) []string {
 }
 
 // AppInstallationLockKey names the resource one App installation on
-// one workspace target occupies.
-func AppInstallationLockKey(botID, targetID, registryID, appID string) string {
-	return strings.Join([]string{"app", botID, targetID, registryID, appID}, "\x00")
+// one bot's isolated workspace occupies.
+func AppInstallationLockKey(botID, registryID, appID string) string {
+	return strings.Join([]string{"app", botID, registryID, appID}, "\x00")
 }

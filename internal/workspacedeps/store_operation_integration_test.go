@@ -22,7 +22,7 @@ func TestPostgresOperationClaimsFenceCompetingServersAndStaleReceipts(t *testing
 	store := NewPostgresStore(postgresstore.NewQueries(dbsqlc.New(pool))).(*postgresStore)
 	for _, existing := range []bool{false, true} {
 		t.Run(fmt.Sprintf("existing=%v", existing), func(t *testing.T) {
-			key := InstallationKey{BotID: createDependencyBot(t, ctx, pool), WorkspaceTargetID: "native", DependencyID: "codex"}
+			key := InstallationKey{BotID: createDependencyBot(t, ctx, pool), DependencyID: "codex"}
 			if existing {
 				_, err := store.Upsert(ctx, UpsertInstallation{InstallationKey: key, Source: InstallationSourceImage, Status: StatusInstalled, InstalledVersion: "old-version", ManifestDigest: "sha256:old", SourceURL: "https://old.example", RegistryID: "memoh", DefinitionRevision: "old-revision"})
 				if err != nil {
@@ -148,7 +148,7 @@ func TestPostgresOperationFinishCannotCrossTeam(t *testing.T) {
 	ctx := t.Context()
 	pool := openDependencyPostgres(t, ctx)
 	store := NewPostgresStore(postgresstore.NewQueries(dbsqlc.New(pool))).(*postgresStore)
-	key := InstallationKey{BotID: createDependencyBot(t, ctx, pool), WorkspaceTargetID: "native", DependencyID: "codex"}
+	key := InstallationKey{BotID: createDependencyBot(t, ctx, pool), DependencyID: "codex"}
 	token := strings.Repeat("a", 32)
 	if _, err := store.ClaimOperation(ctx, UpsertInstallation{InstallationKey: key, Source: InstallationSourceManaged, Status: StatusInstalling}, token); err != nil {
 		t.Fatal(err)

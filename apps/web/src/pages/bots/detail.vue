@@ -393,11 +393,11 @@ const canManageBot = computed(() => {
 const capabilitiesStore = useCapabilitiesStore()
 
 // Sidebar count for the Apps tab: Apps that need a hand (partial,
-// failed, update available). Same query key as the tab itself (bot + the
-// Server-resolved primary target), so opening the tab reuses this fetch;
+// failed, update available). Same bot-scoped query key as the tab itself,
+// so opening the tab reuses this fetch;
 // chat-only members never see the tab, so they never fetch.
 const appBadgeBotId = computed(() => (canManageBot.value ? botId.value : '')) as Ref<string>
-const { data: appList } = useBotAppsQuery(appBadgeBotId, ref(''))
+const { data: appList } = useBotAppsQuery(appBadgeBotId)
 const appAttentionCount = computed(() => (appList.value?.items ?? []).filter(appNeedsAttention).length)
 
 const tabList = computed(() => {

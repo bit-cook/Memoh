@@ -14,7 +14,7 @@ import (
 )
 
 // DependencyItem is one dependency reference of an App as seen on a
-// workspace target.
+// bot workspace.
 type DependencyItem struct {
 	ID string
 	// Entry is the reconciled dependency, nil when the catalog does not
@@ -34,7 +34,7 @@ type ConnectorItem struct {
 	Connector *connectors.Connector
 }
 
-// Item is one App on a workspace target: an installation record with its
+// Item is one App in a bot's isolated workspace: an installation record with its
 // components, or a dependency the workspace already carries shown through
 // its canonical App.
 type Item struct {
@@ -52,38 +52,33 @@ type Item struct {
 	Connectors   []ConnectorItem
 }
 
-// ListResult is the App view of one workspace target.
+// ListResult is the App view of one bot's isolated workspace.
 type ListResult struct {
-	WorkspaceTargetID      string
 	Workspace              workspacedeps.WorkspaceState
 	DataRoot               string
 	DependencyCatalogStale bool
 	Items                  []Item
 }
 
-// List returns every installed App of a workspace target together with
+// List returns every installed App of a bot workspace together with
 // the canonical Apps of dependencies no installation references.
-func (s *Service) List(ctx context.Context, botID, targetID string, refresh bool) (ListResult, error) {
-	targetID, err := s.skills.ResolveTargetID(ctx, botID, targetID)
-	if err != nil {
-		return ListResult{}, err
-	}
-	installations, err := s.store.ListForTarget(ctx, botID, targetID)
+func (s *Service) List(ctx context.Context, botID string, refresh bool) (ListResult, error) {
+	installations, err := s.store.ListForBot(ctx, botID)
 	if err != nil {
 		return ListResult{}, fmt.Errorf("apps: list installations: %w", err)
 	}
 	var deps workspacedeps.ListResult
 	if s.dependencies != nil {
 		if refresh {
-			deps, err = s.dependencies.Refresh(ctx, botID, targetID)
+			deps, err = s.dependencies.Refresh(ctx, botID)
 		} else {
-			deps, err = s.dependencies.List(ctx, botID, targetID)
+			deps, err = s.dependencies.List(ctx, botID)
 		}
 		if err != nil {
 			return ListResult{}, err
 		}
 	}
-	return s.assemble(ctx, botID, targetID, installations, deps)
+	return s.assemble(ctx, botID, installations, deps)
 }
 
 // Get returns one installation with its components.
@@ -94,12 +89,12 @@ func (s *Service) Get(ctx context.Context, botID, installationID string) (Item, 
 	}
 	var deps workspacedeps.ListResult
 	if s.dependencies != nil {
-		deps, err = s.dependencies.List(ctx, botID, inst.WorkspaceTargetID)
+		deps, err = s.dependencies.List(ctx, botID)
 		if err != nil {
 			return Item{}, err
 		}
 	}
-	result, err := s.assemble(ctx, botID, inst.WorkspaceTargetID, []Installation{inst}, deps)
+	result, err := s.assemble(ctx, botID, []Installation{inst}, deps)
 	if err != nil {
 		return Item{}, err
 	}
@@ -111,19 +106,18 @@ func (s *Service) Get(ctx context.Context, botID, installationID string) (Item, 
 	return Item{}, ErrNotInstalled
 }
 
-func (s *Service) assemble(ctx context.Context, botID, targetID string, installations []Installation, deps workspacedeps.ListResult) (ListResult, error) {
+func (s *Service) assemble(ctx context.Context, botID string, installations []Installation, deps workspacedeps.ListResult) (ListResult, error) {
 	entries := indexEntries(deps)
-	targetRefs, err := s.store.ListTargetDependencyRefs(ctx, botID, targetID)
+	botRefs, err := s.store.ListBotDependencyRefs(ctx, botID)
 	if err != nil {
 		return ListResult{}, fmt.Errorf("apps: list dependency references: %w", err)
 	}
-	refCounts := make(map[string]int, len(targetRefs))
-	for _, ref := range targetRefs {
+	refCounts := make(map[string]int, len(botRefs))
+	for _, ref := range botRefs {
 		refCounts[ref.DependencyID]++
 	}
 	connectionsByID := s.connectionsByID(ctx, botID)
 	result := ListResult{
-		WorkspaceTargetID:      targetID,
 		Workspace:              deps.Workspace,
 		DataRoot:               deps.DataRoot,
 		DependencyCatalogStale: deps.CatalogStale,
@@ -222,12 +216,8 @@ func (s *Service) connectionsByID(ctx context.Context, botID string) map[string]
 // CheckUpdates compares every installed App with the registry's current
 // release, records what is available, refreshes the dependency update
 // checks, and returns the refreshed view.
-func (s *Service) CheckUpdates(ctx context.Context, botID, targetID string) (ListResult, error) {
-	targetID, err := s.skills.ResolveTargetID(ctx, botID, targetID)
-	if err != nil {
-		return ListResult{}, err
-	}
-	installations, err := s.store.ListForTarget(ctx, botID, targetID)
+func (s *Service) CheckUpdates(ctx context.Context, botID string) (ListResult, error) {
+	installations, err := s.store.ListForBot(ctx, botID)
 	if err != nil {
 		return ListResult{}, fmt.Errorf("apps: list installations: %w", err)
 	}
@@ -251,20 +241,20 @@ func (s *Service) CheckUpdates(ctx context.Context, botID, targetID string) (Lis
 	}
 	var deps workspacedeps.ListResult
 	if s.dependencies != nil {
-		deps, err = s.dependencies.CheckUpdates(ctx, botID, targetID)
+		deps, err = s.dependencies.CheckUpdates(ctx, botID)
 		if err != nil {
 			s.logger.Warn("check dependency updates", slog.String("bot_id", botID), slog.Any("error", err))
-			deps, err = s.dependencies.List(ctx, botID, targetID)
+			deps, err = s.dependencies.List(ctx, botID)
 			if err != nil {
 				return ListResult{}, err
 			}
 		}
 	}
-	installations, err = s.store.ListForTarget(ctx, botID, targetID)
+	installations, err = s.store.ListForBot(ctx, botID)
 	if err != nil {
 		return ListResult{}, fmt.Errorf("apps: list installations: %w", err)
 	}
-	return s.assemble(ctx, botID, targetID, installations, deps)
+	return s.assemble(ctx, botID, installations, deps)
 }
 
 func isNotFound(err error) bool {

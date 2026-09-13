@@ -64,24 +64,23 @@ type fakeWorkspaceDependencyService struct {
 	preview    workspacedeps.ScriptPreview
 	previewErr error
 
-	calls     []string
-	targetIDs []string
-	versions  []string
-	depIDs    [][]string
-	actions   []catalog.Action
+	calls []string
+
+	versions []string
+	depIDs   [][]string
+	actions  []catalog.Action
 }
 
-func (f *fakeWorkspaceDependencyService) Refresh(ctx context.Context, botID, targetID string) (workspacedeps.ListResult, error) {
-	return f.List(ctx, botID, targetID)
+func (f *fakeWorkspaceDependencyService) Refresh(ctx context.Context, botID string) (workspacedeps.ListResult, error) {
+	return f.List(ctx, botID)
 }
 
 func (*fakeWorkspaceDependencyService) Icon(context.Context, string) ([]byte, error) {
 	return nil, workspacedeps.ErrDependencyNotFound
 }
 
-func (f *fakeWorkspaceDependencyService) record(name, targetID string) {
+func (f *fakeWorkspaceDependencyService) record(name string) {
 	f.calls = append(f.calls, name)
-	f.targetIDs = append(f.targetIDs, targetID)
 }
 
 func (f *fakeWorkspaceDependencyService) Dependency(_ context.Context, depID string) (catalog.Dependency, error) {
@@ -95,7 +94,7 @@ func (f *fakeWorkspaceDependencyService) Dependency(_ context.Context, depID str
 // Catalog returns the fixture dependencies by id, the order the real catalog
 // keeps.
 func (f *fakeWorkspaceDependencyService) Catalog(_ context.Context, _ bool) (workspacedeps.CatalogView, error) {
-	f.record("catalog", "")
+	f.record("catalog")
 	ids := make([]string, 0, len(f.deps))
 	for id := range f.deps {
 		ids = append(ids, id)
@@ -108,19 +107,19 @@ func (f *fakeWorkspaceDependencyService) Catalog(_ context.Context, _ bool) (wor
 	return workspacedeps.CatalogView{Items: deps}, nil
 }
 
-func (f *fakeWorkspaceDependencyService) List(_ context.Context, _, targetID string) (workspacedeps.ListResult, error) {
-	f.record("list", targetID)
+func (f *fakeWorkspaceDependencyService) List(_ context.Context, _ string) (workspacedeps.ListResult, error) {
+	f.record("list")
 	return f.list, f.listErr
 }
 
-func (f *fakeWorkspaceDependencyService) Preflight(_ context.Context, _, targetID string, depIDs []string) (workspacedeps.PreflightResult, error) {
-	f.record("preflight", targetID)
+func (f *fakeWorkspaceDependencyService) Preflight(_ context.Context, _ string, depIDs []string) (workspacedeps.PreflightResult, error) {
+	f.record("preflight")
 	f.depIDs = append(f.depIDs, depIDs)
 	return f.preflight, nil
 }
 
-func (f *fakeWorkspaceDependencyService) run(ctx context.Context, name, targetID string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
-	f.record(name, targetID)
+func (f *fakeWorkspaceDependencyService) run(ctx context.Context, name string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
+	f.record(name)
 	if f.beforeRun != nil {
 		f.beforeRun(ctx)
 	}
@@ -133,43 +132,43 @@ func (f *fakeWorkspaceDependencyService) run(ctx context.Context, name, targetID
 	return f.operation, f.opErr
 }
 
-func (f *fakeWorkspaceDependencyService) Install(ctx context.Context, _, targetID, _, version string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
+func (f *fakeWorkspaceDependencyService) Install(ctx context.Context, _, _, version string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
 	f.versions = append(f.versions, version)
-	return f.run(ctx, "install", targetID, sink)
+	return f.run(ctx, "install", sink)
 }
 
-func (f *fakeWorkspaceDependencyService) Update(ctx context.Context, _, targetID, _, version string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
+func (f *fakeWorkspaceDependencyService) Update(ctx context.Context, _, _, version string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
 	f.versions = append(f.versions, version)
-	return f.run(ctx, "update", targetID, sink)
+	return f.run(ctx, "update", sink)
 }
 
-func (f *fakeWorkspaceDependencyService) Reinstall(ctx context.Context, _, targetID, _, version string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
+func (f *fakeWorkspaceDependencyService) Reinstall(ctx context.Context, _, _, version string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
 	f.versions = append(f.versions, version)
-	return f.run(ctx, "reinstall", targetID, sink)
+	return f.run(ctx, "reinstall", sink)
 }
 
-func (f *fakeWorkspaceDependencyService) Remove(ctx context.Context, _, targetID, _ string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
-	return f.run(ctx, "remove", targetID, sink)
+func (f *fakeWorkspaceDependencyService) Remove(ctx context.Context, _, _ string, sink workspacedeps.LogSink) (workspacedeps.OperationResult, error) {
+	return f.run(ctx, "remove", sink)
 }
 
-func (f *fakeWorkspaceDependencyService) Rollback(_ context.Context, _, targetID, _ string) (workspacedeps.OperationResult, error) {
-	f.record("rollback", targetID)
+func (f *fakeWorkspaceDependencyService) Rollback(_ context.Context, _, _ string) (workspacedeps.OperationResult, error) {
+	f.record("rollback")
 	return f.operation, f.opErr
 }
 
-func (f *fakeWorkspaceDependencyService) CheckUpdates(_ context.Context, _, targetID string) (workspacedeps.ListResult, error) {
-	f.record("check_updates", targetID)
+func (f *fakeWorkspaceDependencyService) CheckUpdates(_ context.Context, _ string) (workspacedeps.ListResult, error) {
+	f.record("check_updates")
 	return f.list, f.listErr
 }
 
-func (f *fakeWorkspaceDependencyService) ScriptPreviewDetails(_ context.Context, _, targetID, depID string, action catalog.Action) (workspacedeps.ScriptPreview, error) {
+func (f *fakeWorkspaceDependencyService) ScriptPreviewDetails(_ context.Context, _, depID string, action catalog.Action) (workspacedeps.ScriptPreview, error) {
 	if _, ok := f.deps[depID]; !ok {
 		return workspacedeps.ScriptPreview{}, workspacedeps.ErrDependencyNotFound
 	}
 	if !workspacedeps.ActionSupported(f.deps[depID], action) {
 		return workspacedeps.ScriptPreview{}, workspacedeps.ErrActionUnsupported
 	}
-	f.record("script", targetID)
+	f.record("script")
 	f.actions = append(f.actions, action)
 	return f.preview, f.previewErr
 }
@@ -521,25 +520,11 @@ func TestListWorkspaceDependenciesReportsDiscoveryError(t *testing.T) {
 	}
 }
 
-func TestListWorkspaceDependenciesPassesWorkspaceTarget(t *testing.T) {
-	svc := &fakeWorkspaceDependencyService{deps: depsTestCatalog()}
-	h := newDepsTestHandler("admin", svc)
-	if _, err := (depsCall{method: http.MethodGet, target: "/bots/x/dependencies?workspace_target_id=remote-1"}).invoke(t, h.ListWorkspaceDependencies); err != nil {
-		t.Fatalf("ListWorkspaceDependencies: %v", err)
-	}
-	if _, err := (depsCall{method: http.MethodGet, target: "/bots/x/dependencies"}).invoke(t, h.ListWorkspaceDependencies); err != nil {
-		t.Fatalf("ListWorkspaceDependencies (default target): %v", err)
-	}
-	if len(svc.targetIDs) != 2 || svc.targetIDs[0] != "remote-1" || svc.targetIDs[1] != workspacedeps.TargetNative {
-		t.Fatalf("target ids = %v", svc.targetIDs)
-	}
-}
-
 func TestListWorkspaceDependenciesMapsServiceErrors(t *testing.T) {
-	svc := &fakeWorkspaceDependencyService{deps: depsTestCatalog(), listErr: workspacedeps.ErrRemoteOffline}
+	svc := &fakeWorkspaceDependencyService{deps: depsTestCatalog(), listErr: workspacedeps.ErrWorkspaceMissing}
 	h := newDepsTestHandler("admin", svc)
 	_, err := depsCall{method: http.MethodGet, target: "/bots/x/dependencies"}.invoke(t, h.ListWorkspaceDependencies)
-	requireAppErrorCode(t, err, apperror.CodeWorkspaceDependencyRemoteOffline)
+	requireAppErrorCode(t, err, apperror.CodeWorkspaceDependencyWorkspaceMissing)
 
 	svc.listErr = errors.New("boom")
 	_, err = depsCall{method: http.MethodGet, target: "/bots/x/dependencies"}.invoke(t, h.ListWorkspaceDependencies)
@@ -581,7 +566,7 @@ func TestPreflightWorkspaceDependenciesStates(t *testing.T) {
 		},
 	}
 	h := newDepsTestHandler("admin", svc)
-	body := WorkspaceDependencyPreflightRequest{DependencyIDs: []string{" codex ", "claude-code", "", "mac-only", "nope"}, WorkspaceTargetID: "remote-2"}
+	body := WorkspaceDependencyPreflightRequest{DependencyIDs: []string{" codex ", "claude-code", "", "mac-only", "nope"}}
 	rec, err := depsCall{method: http.MethodPost, target: "/bots/x/dependencies/preflight", body: body}.invoke(t, h.PreflightWorkspaceDependencies)
 	if err != nil {
 		t.Fatalf("PreflightWorkspaceDependencies: %v", err)
@@ -604,9 +589,6 @@ func TestPreflightWorkspaceDependenciesStates(t *testing.T) {
 	}
 	if len(svc.depIDs) != 1 || strings.Join(svc.depIDs[0], ",") != "codex,claude-code,mac-only,nope" {
 		t.Errorf("dependency ids passed = %v", svc.depIDs)
-	}
-	if svc.targetIDs[0] != "remote-2" {
-		t.Errorf("target from body = %q", svc.targetIDs[0])
 	}
 }
 
@@ -647,7 +629,7 @@ func TestUpdateWorkspaceDependencyStreamsEvents(t *testing.T) {
 	}
 	h := newDepsTestHandler("admin", svc)
 	body := WorkspaceDependencyInstallRequest{Version: " 0.151.0 "}
-	rec, err := depsCall{method: http.MethodPost, target: "/bots/x/dependencies/codex/update?workspace_target_id=remote-3", depID: "codex", body: body}.invoke(t, h.UpdateWorkspaceDependency)
+	rec, err := depsCall{method: http.MethodPost, target: "/bots/x/dependencies/codex/update", depID: "codex", body: body}.invoke(t, h.UpdateWorkspaceDependency)
 	if err != nil {
 		t.Fatalf("UpdateWorkspaceDependency: %v", err)
 	}
@@ -677,8 +659,8 @@ func TestUpdateWorkspaceDependencyStreamsEvents(t *testing.T) {
 	if entrypoints, _ := frames[4]["entrypoints"].(map[string]any); entrypoints["codex"] != "/data/.memoh/deps/codex/current/bin/codex" {
 		t.Errorf("done entrypoints = %v", frames[4]["entrypoints"])
 	}
-	if len(svc.calls) != 2 || svc.calls[0] != "script" || svc.calls[1] != "update" || svc.targetIDs[1] != "remote-3" {
-		t.Errorf("service call = %v %v", svc.calls, svc.targetIDs)
+	if len(svc.calls) != 2 || svc.calls[0] != "script" || svc.calls[1] != "update" {
+		t.Errorf("service call = %v", svc.calls)
 	}
 
 	// No body means latest: started carries no version and the service gets
@@ -950,7 +932,6 @@ func TestWorkspaceDependencyErrorMapping(t *testing.T) {
 		apperror.CodeWorkspaceDependencyBusy:                workspacedeps.ErrBusy,
 		apperror.CodeWorkspaceDependencyWorkspaceNotRunning: workspacedeps.ErrWorkspaceNotRunning,
 		apperror.CodeWorkspaceDependencyWorkspaceMissing:    workspacedeps.ErrWorkspaceMissing,
-		apperror.CodeWorkspaceDependencyRemoteOffline:       workspacedeps.ErrRemoteOffline,
 		apperror.CodeWorkspaceDependencyRollbackUnavailable: workspacedeps.ErrRollbackUnavailable,
 		apperror.CodeWorkspaceDependencyOperationFailed:     errors.New("unexpected"),
 	}

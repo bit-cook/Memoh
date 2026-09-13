@@ -430,6 +430,8 @@ function buildTrayMenu(bots: TrayBot[] = []): Electron.Menu {
     },
     { type: 'separator' },
     {
+      // 该标签被 self-install.ts 的"请先退出"提示文案引用;改名或本地化
+      // 时(含菜单栏展开样式改版)要同步那边的 runningDetail。
       label: `Quit ${DESKTOP_PRODUCT_NAME}`,
       click: quitFromTray,
     },

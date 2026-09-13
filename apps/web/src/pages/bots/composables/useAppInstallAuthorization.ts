@@ -35,7 +35,6 @@ export function useAppInstallAuthorization(operation: Ref<AppOperation | null>, 
     try {
       const { data } = await getBotsByBotIdApps({
         path: { bot_id: active.botId },
-        query: { workspace_target_id: active.targetId || undefined },
         signal: controller.signal,
         throwOnError: true,
       })

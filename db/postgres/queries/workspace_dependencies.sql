@@ -1,44 +1,33 @@
 -- name: GetBotDependencyInstallation :one
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+SELECT id, team_id, bot_id, dependency_id, source, status,
        installed_version, latest_version, last_checked_at, last_error,
        manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
-  AND workspace_target_id = $2
-  AND dependency_id = $3
+  AND dependency_id = $2
 LIMIT 1;
 
--- name: ListBotDependencyInstallationsForTarget :many
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+-- name: ListBotDependencyInstallations :many
+SELECT id, team_id, bot_id, dependency_id, source, status,
        installed_version, latest_version, last_checked_at, last_error,
        manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
-  AND workspace_target_id = $2
 ORDER BY dependency_id;
 
--- name: ListBotDependencyInstallations :many
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
-       installed_version, latest_version, last_checked_at, last_error,
-       manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
-FROM bot_dependency_installations
-WHERE team_id = public.memoh_current_team_id()
-  AND bot_id = $1
-ORDER BY workspace_target_id, dependency_id;
-
 -- name: ListBotDependencyInstallationsByStatus :many
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+SELECT id, team_id, bot_id, dependency_id, source, status,
        installed_version, latest_version, last_checked_at, last_error,
        manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND status = $1
-ORDER BY bot_id, workspace_target_id, dependency_id;
+ORDER BY bot_id, dependency_id;
 
 -- name: ListStaleBotDependencyOperations :many
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+SELECT id, team_id, bot_id, dependency_id, source, status,
        installed_version, latest_version, last_checked_at, last_error,
        manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 FROM bot_dependency_installations
@@ -49,11 +38,11 @@ ORDER BY updated_at, id;
 
 -- name: UpsertBotDependencyInstallationIntent :one
 INSERT INTO bot_dependency_installations (
-  bot_id, workspace_target_id, dependency_id, source, status,
+  bot_id, dependency_id, source, status,
   installed_version, manifest_digest, source_url, registry_id, definition_revision
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-ON CONFLICT (team_id, bot_id, workspace_target_id, dependency_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (team_id, bot_id, dependency_id)
 DO UPDATE SET source = EXCLUDED.source,
               last_error = '',
               status = EXCLUDED.status,
@@ -63,7 +52,7 @@ DO UPDATE SET source = EXCLUDED.source,
               definition_revision = EXCLUDED.definition_revision,
               updated_at = now()
 WHERE bot_dependency_installations.operation_id = ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at;
 
@@ -74,10 +63,9 @@ SET status = sqlc.arg(status),
     updated_at = now()
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = sqlc.arg(bot_id)
-  AND workspace_target_id = sqlc.arg(workspace_target_id)
   AND dependency_id = sqlc.arg(dependency_id)
   AND operation_id = ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at;
 
@@ -95,10 +83,9 @@ SET source = COALESCE(sqlc.narg(source)::text, source),
     updated_at = now()
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = sqlc.arg(bot_id)
-  AND workspace_target_id = sqlc.arg(workspace_target_id)
   AND dependency_id = sqlc.arg(dependency_id)
   AND operation_id = ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at;
 
@@ -106,23 +93,22 @@ RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, statu
 DELETE FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
-  AND workspace_target_id = $2
-  AND dependency_id = $3
+  AND dependency_id = $2
   AND operation_id = '';
 
 -- name: ClaimBotDependencyOperation :one
 INSERT INTO bot_dependency_installations (
-  bot_id, workspace_target_id, dependency_id, source, status,
+  bot_id, dependency_id, source, status,
   installed_version, manifest_digest, source_url, registry_id, definition_revision, operation_id
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-ON CONFLICT (team_id, bot_id, workspace_target_id, dependency_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT (team_id, bot_id, dependency_id)
 DO UPDATE SET status = EXCLUDED.status,
               last_error = '',
               operation_id = EXCLUDED.operation_id,
               updated_at = now()
 WHERE bot_dependency_installations.status NOT IN ('installing', 'updating', 'removing')
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at;
 
@@ -142,10 +128,9 @@ SET source = sqlc.arg(source),
     updated_at = now()
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = sqlc.arg(bot_id)
-  AND workspace_target_id = sqlc.arg(workspace_target_id)
   AND dependency_id = sqlc.arg(dependency_id)
   AND operation_id = sqlc.arg(operation_id) AND operation_id <> ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at;
 
@@ -153,9 +138,8 @@ RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, statu
 DELETE FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = sqlc.arg(bot_id)
-  AND workspace_target_id = sqlc.arg(workspace_target_id)
   AND dependency_id = sqlc.arg(dependency_id)
   AND operation_id = sqlc.arg(operation_id) AND operation_id <> ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at;

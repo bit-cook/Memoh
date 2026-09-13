@@ -3,7 +3,7 @@ import { getSupermarketRegistriesByRegistryIdAppsByAppId, postBotsByBotIdContain
 import i18n from '@/i18n'
 import { preflightDependencies } from '@/composables/api/useWorkspaceDependencies'
 import { agentDependencyRequirement, resolveEnableFlowStep } from '@/pages/bots/components/dependency-enable-flow'
-import { acpAgentDisplayName } from '@/utils/acp'
+import { externalAgentDisplayName } from '@/utils/external-agent'
 import { resolveApiErrorMessage } from '@/utils/api-error'
 import { useAppOperationsStore } from './app-operations'
 
@@ -13,7 +13,7 @@ export async function installCreatedAgent(botId: string, agent: BotagentsBotAgen
   const t = i18n.global.t
   const requirement = agentDependencyRequirement(agent)
   if (!requirement) throw new Error(t('bots.dependencies.preflight.failed'))
-  const check = () => preflightDependencies(botId, '', [requirement.dependencyId])
+  const check = () => preflightDependencies(botId, [requirement.dependencyId])
   let response = await check()
   if (response.workspace_state === 'not_running') {
     await postBotsByBotIdContainerStart({ path: { bot_id: botId }, throwOnError: true })
@@ -21,7 +21,6 @@ export async function installCreatedAgent(botId: string, agent: BotagentsBotAgen
   }
   const step = resolveEnableFlowStep(requirement, response)
   if (step.kind === 'satisfied') return
-  if (step.kind === 'remote_offline') throw new Error(t('bots.agent.dependencyRemoteOffline'))
   if (step.kind === 'platform_unsupported') throw new Error(t('bots.dependencies.preflight.platformUnsupported', { name: step.item.name }))
   if (step.kind !== 'install') throw new Error(t('bots.dependencies.preflight.failed'))
 
@@ -33,8 +32,8 @@ export async function installCreatedAgent(botId: string, agent: BotagentsBotAgen
   if (!data.revision) throw new Error(t('supermarket.loadError'))
   const operations = useAppOperationsStore()
   const result = operations.start({
-    botId, targetId: '', registryId: 'memoh', appId: requirement.dependencyId,
-    name: acpAgentDisplayName(agent.runtime ?? '', agent.name ?? ''), action: 'install',
+    botId, registryId: 'memoh', appId: requirement.dependencyId,
+    name: externalAgentDisplayName(agent.runtime ?? '', agent.name ?? ''), action: 'install',
     install: { registryId: 'memoh', appId: requirement.dependencyId, revision: data.revision },
   })
   if (result.kind === 'busy') throw new Error(t('apps.busy'))

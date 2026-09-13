@@ -30,8 +30,8 @@
 | 部分安装 | 允许，app 有 `partial` 状态 |
 | 哪些 registry 可含 deps 与 connector | 第一期仅 `memoh` registry；远程 registry 的 app 只有 skills |
 | dep 的 revision 是否被 app 锁定 | 不锁定，安装与更新时总是解析 dep 当前定义，与现有 workspacedeps 行为一致 |
-| 工作区目标粒度 | app 安装记录与 dep 引用按 `(bot, workspace_target)`；connector 引用挂在安装记录上，但 connection 是 bot 级共享 |
-| 子项删除 | skills、deps、connector 不能在 app 之外单独删除；dep 子项保留 update、reinstall、rollback、查看脚本，connector 子项保留授权、重新授权、启停 |
+| 安装粒度 | App 与依赖仅安装到 Bot 的隔离工作区，安装记录与 dep 引用按 Bot 管理；connection 仍为 Bot 级共享 |
+| 子项删除 | skills、deps、connector 不能在 app 之外单独删除；dep 子项保留 update、reinstall、rollback、查看脚本，connector 子项保留授权、重新授权、启停、断开（断开会吊销 Bot 级连接并让引用它的 app 重新要求授权） |
 | 自动带装的包 | 不自动回收，删除确认框提供“同时移除仅被它使用的自动安装包”勾选，默认不勾 |
 
 ## 3. Registry 侧（Supermarket 仓库）
@@ -173,11 +173,11 @@ RLS 策略与现有表一致。
 
 流式操作的 SSE 若在中途断开（代理抖动、5 秒写超时遇到卡顿的连接），服务端会继续执行；前端操作 store 改为轮询应用列表直到该包不再处于进行中状态，再按记录的结果收尾，只有超过 10 分钟仍未确认才显示“结果未确认”。
 
-输入 `(bot, workspace_target, registry, app, revision)`。
+输入 `(bot, registry, app, revision)`。
 
 1. 拉取并校验 release，检查 `dependencies` 与 `connectors` 非空时 registry 必须是 `memoh`。
 2. 写安装记录，状态 `installing`。
-3. 逐个处理 dependency 引用：若该 `(bot, target, dep)` 已安装或镜像自带，只写引用；否则调用 workspacedeps 安装，日志流透传给客户端。任一失败记录 `last_error` 但继续。
+3. 逐个处理 dependency 引用：若该 `(bot, dep)` 已安装或镜像自带，只写引用；否则调用 workspacedeps 安装，日志流透传给客户端。任一失败记录 `last_error` 但继续。
 4. 发布 skills，原子替换，失败则整个安装记为 `failed` 并回滚 skills。
 5. 逐个处理 connector 引用：bot 上已有该 type 的 active connection 则复用并写引用；否则写空 `connection_id` 的引用，等待用户授权。
 6. 汇总状态：全部完成为 `installed`；有 dep 失败或必需 connector 未授权为 `partial`；skills 失败为 `failed`。
@@ -188,7 +188,7 @@ RLS 策略与现有表一致。
 
 1. 状态置 `removing`。
 2. 移除 skills。
-3. 对每个 dependency 引用：删除引用；若该 dep 在同一 `(bot, target)` 上不再被任何安装记录引用，且不是镜像自带来源，调用 workspacedeps 的 `Remove`。
+3. 对每个 dependency 引用：删除引用；若该 dep 在同一 `bot` 上不再被任何安装记录引用，且不是镜像自带来源，调用 workspacedeps 的 `Remove`。
 4. 对每个 connector 引用：删除引用；若该 connection 不再被任何安装记录引用，调用 connectors 的 `Delete`。
 5. 若请求带 `remove_unreferenced_required=true`，对 `reason=required` 且引用的 dep 均已无其他引用的安装记录递归执行同一流程。
 6. 删除安装记录。
@@ -211,7 +211,7 @@ RLS 策略与现有表一致。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET | `/bots/:bot_id/apps` | 安装列表，含子项状态与发现的规范包，参数 `workspace_target_id` |
+| GET | `/bots/:bot_id/apps` | 安装列表，含子项状态与发现的规范包，固定读取 Bot 隔离工作区 |
 | POST | `/bots/:bot_id/apps` | 安装，SSE |
 | GET | `/bots/:bot_id/apps/:installation_id` | 详情 |
 | GET | `/bots/:bot_id/apps/:installation_id/removal-preview` | 删除预览 |
@@ -247,14 +247,14 @@ RLS 策略与现有表一致。
 
 - `pages/supermarket/index.vue`：删除三个 tab 与 `?tab=`，改为单一列表；筛选为 registry、分类、组件类型三组；搜索框统一。卡片显示版本、分类、组件计数徽章。
 - `pages/supermarket/app-detail.vue`：路由改为 `/supermarket/:registryId/:appId`；新增 Dependencies 与 Connectors 两节，依赖通过其规范包（`memoh/<dep-id>`）展示名称、图标与描述；Information 节增加版本、作者、主页、仓库、许可证、分类。connector 的名称、图标与授权方式从 `/connectors/catalog` 补全，connect-it 未配置时显示“此包需要 connector，当前部署未启用”。
-- `pages/supermarket/components/install-app-dialog.vue`：选择 bot 与 workspace target 后展示安装预览，包括将安装的 deps、将发布的 skills、需授权的 connectors；提交后进入进度对话框。
+- `pages/supermarket/components/install-app-dialog.vue`：选择 Bot 后展示安装预览，包括将安装的 deps、将发布的 skills、需授权的 connectors；提交后进入进度对话框。
 - 删除 `install-dependency-dialog.vue`、`connect-connector-dialog.vue` 的独立入口，授权表单逻辑迁移为子项组件复用。
 
 ### 5.2 Bot 详情页
 
 - `pages/bots/detail.vue`：删除 `connectors`、`dependencies` 两个 tab，新增 `apps` tab；`skills` tab 保留，只管理用户自建、发现的 skill 与发现路径。
 - 新增 `pages/bots/components/bot-apps.vue`：app 以两列卡片网格显示（复用市场页的 `market-item-card.vue`，只有图标、名称、描述），点击进入二级页（`app-detail-panel.vue`，版式同市场详情页：返回/操作行、大图标与标题、描述）展示 Skills / 依赖 / 连接器；有可用更新时行上直接显示 Update，点击弹出多选对话框（`app-update-dialog.vue`）批量更新；其余操作为检查更新、继续安装、删除。
-- 子项组件：`app-dependency-item.vue` 复用现有 `dependency-row.vue` 的状态与动作决策，去掉 remove；`app-connector-item.vue` 提供授权、重新授权、启停；`app-skill-item.vue` 提供查看。
+- 子项组件：`app-dependency-item.vue` 复用现有 `dependency-row.vue` 的状态与动作决策，去掉 remove；`app-connector-item.vue` 提供授权、重新授权、启停、断开；`app-skill-item.vue` 提供查看。
 - 删除确认框显示删除预览，含“同时移除仅被它使用的自动安装包”勾选。
 - `store/dependency-operations.ts` 泛化为 `store/app-operations.ts`，以安装记录为 key 持有 SSE 流，`step` 事件驱动进度对话框分组显示。
 - `pages/home/components/dependency-missing-block.vue` 跳转目标改为 apps tab 并定位到规范包。
@@ -278,7 +278,7 @@ RLS 策略与现有表一致。
 ## 7. 假设与后续
 
 - connect-it 未配置的部署上，含 connector 的包仍可安装，connector 子项显示不可用，包状态按 `required` 决定是否 `partial`。
-- 远程工作区目标离线时，dep 步骤失败进入 `partial`，用户在工作区恢复后点“继续安装”。
+- 隔离工作区依赖安装失败时，dep 步骤失败进入 `partial`，用户在工作区恢复后点“继续安装”。
 - 远程 registry 的 app 未来若要映射 `mcpServers` 为 connector，需要 connect-it 先提供对应 type，不在本期。
 - 第三方 dependency registry 与递归前置解析仍不在范围内。
 
@@ -291,3 +291,11 @@ Memoh #1197 与 Supermarket #22 必须配套升级。清单为 `app.yaml`（sche
 迁移 0149 尚未发布，直接替换成 App 版本，同时保持 0001 初始 schema 为最终结构。已运行旧 PR 的开发数据库先用旧迁移回退到 148，再切换代码并升级到 149；旧安装记录和相关工作区的安装产物需要重建。不要直接在已标记 149 的数据库上重跑 migrate up，也不要仅修改迁移版本号。
 
 本轮保留应用列表中的运行环境条目、现有分类和交互。市场入口显示“应用市场”，Bot 入口显示“应用”；Supermarket 仍是服务名称。应用用途与运行依赖的展示层次另行设计。
+
+## 隔离工作区边界
+
+迁移 `0152_native_workspace_apps` 移除 App／依赖安装表的设备字段和唯一键维度，保留 native 安装记录，清除远程安装记录及其引用。历史 0148／0149 不重写，0001 保持最终结构。
+
+App、依赖管理及 App 自带 Skills 发布不读取 Primary 设备或聊天的设备选择。请求和响应不再携带 `workspace_target_id`；旧客户端显式传入该参数时返回 400，不能静默切换执行位置。正常远程文件与命令功能仍由各自的授权路径处理。
+
+升级前备份数据库并停止旧 Server 接收新操作，等待在途操作结束，再运行迁移并同步升级 Server 与 Web；不能混跑旧后端。迁移不会执行远程卸载或清理用户电脑文件。down 仅恢复字段与唯一键，远程记录只能从升级前备份恢复。

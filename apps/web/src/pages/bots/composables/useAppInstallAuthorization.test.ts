@@ -21,7 +21,7 @@ const item = (connectors: unknown[], status = 'partial') => ({
 })
 function setup(status = 'running', action = 'install') {
   const operation = ref({
-    key: 'bot/memoh/example', botId: 'bot', targetId: 'remote-target', registryId: 'memoh',
+    key: 'bot/memoh/example', botId: 'bot', registryId: 'memoh',
     appId: 'example', status, action, result: 'partial',
     steps: [{ kind: 'connector', id: 'notion', status: 'needs_auth' }],
   } as AppOperation)
@@ -40,7 +40,7 @@ describe('installation authorization', () => {
     expect(mocks.list).not.toHaveBeenCalled()
     operation.value.status = 'done'
     await flush()
-    expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ path: { bot_id: 'bot' }, query: { workspace_target_id: 'remote-target' } }))
+    expect(mocks.list).toHaveBeenCalledWith(expect.objectContaining({ path: { bot_id: 'bot' } }))
     expect(flow.current.value?.type).toBe('notion')
     expect(flow.needsSetup.value).toBe(true)
     expect(operation.value.installationId).toBe('installation')

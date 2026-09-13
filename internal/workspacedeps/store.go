@@ -46,24 +46,24 @@ type Installation struct {
 	DefinitionRevision string
 	ID                 string
 	BotID              string
-	WorkspaceTargetID  string
-	DependencyID       string
-	Source             string
-	Status             Status
-	InstalledVersion   string
-	LatestVersion      string
-	LastCheckedAt      *time.Time
-	LastError          string
-	ManifestDigest     string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+
+	DependencyID     string
+	Source           string
+	Status           Status
+	InstalledVersion string
+	LatestVersion    string
+	LastCheckedAt    *time.Time
+	LastError        string
+	ManifestDigest   string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
-// InstallationKey identifies a record; the triple is unique per team.
+// InstallationKey identifies a record; the pair is unique per team.
 type InstallationKey struct {
-	BotID             string
-	WorkspaceTargetID string
-	DependencyID      string
+	BotID string
+
+	DependencyID string
 }
 
 // UpsertInstallation creates or replaces the intent portion of a record.
@@ -107,7 +107,6 @@ type Store interface {
 	// owned by operationID. A superseded operation returns ErrBusy.
 	FinishOperation(ctx context.Context, key InstallationKey, operationID string, terminal *Installation) (Installation, error)
 	Get(ctx context.Context, key InstallationKey) (Installation, error)
-	ListForTarget(ctx context.Context, botID, workspaceTargetID string) ([]Installation, error)
 	ListForBot(ctx context.Context, botID string) ([]Installation, error)
 	// ListByStatus returns every record in the given status across bots.
 	ListByStatus(ctx context.Context, status Status) ([]Installation, error)

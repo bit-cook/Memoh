@@ -111,6 +111,7 @@ func runRound8MidStreamRetry(
 		cfg,
 		nil,
 		nil,
+		newToolExecutionMetadataRegistry(nil),
 		nil,
 		prevResult,
 		&stepMessageCapture{},

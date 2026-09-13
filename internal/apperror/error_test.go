@@ -267,7 +267,7 @@ func TestWorkspaceDependencyErrorCatalog(t *testing.T) {
 		CodeWorkspaceDependencyBusy:                http.StatusConflict,
 		CodeWorkspaceDependencyWorkspaceNotRunning: http.StatusConflict,
 		CodeWorkspaceDependencyWorkspaceMissing:    http.StatusConflict,
-		CodeWorkspaceDependencyRemoteOffline:       http.StatusConflict,
+
 		CodeWorkspaceDependencyRollbackUnavailable: http.StatusConflict,
 		CodeWorkspaceDependencyOperationFailed:     http.StatusInternalServerError,
 	}

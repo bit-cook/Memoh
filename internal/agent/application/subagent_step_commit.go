@@ -131,6 +131,7 @@ func (c *subagentStepCommitter) persist(ctx context.Context, stepIndex int, step
 		if msg.Role == sdk.MessageRoleUser {
 			continue
 		}
+		msg, toolCallDiffs := historyfrag.ExtractToolCallDiffsFromSDK(msg)
 		content, err := historyfrag.MarshalStoredSDKMessage(msg)
 		if err != nil {
 			continue
@@ -142,6 +143,12 @@ func (c *subagentStepCommitter) persist(ctx context.Context, stepIndex int, step
 		var metadata map[string]any
 		if interrupted && msg.Role == sdk.MessageRoleAssistant {
 			metadata = map[string]any{messagepkg.AgentStepInterruptedMetadataKey: true}
+		}
+		if len(toolCallDiffs) > 0 {
+			if metadata == nil {
+				metadata = make(map[string]any, 1)
+			}
+			metadata[messagepkg.ToolCallDiffsMetadataKey] = toolCallDiffs
 		}
 		inputs = append(inputs, messagepkg.PersistInput{
 			BotID:                c.botID,

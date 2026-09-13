@@ -24,13 +24,13 @@ func NewPostgresStore(q dbstore.Queries) Store {
 	return &postgresStore{q: q}
 }
 
-func (s *postgresStore) Get(ctx context.Context, botID, workspaceTargetID, registryID, appID string) (Installation, error) {
+func (s *postgresStore) Get(ctx context.Context, botID, registryID, appID string) (Installation, error) {
 	botUUID, err := db.ParseUUID(botID)
 	if err != nil {
 		return Installation{}, err
 	}
 	row, err := s.q.GetBotAppInstallation(ctx, dbsqlc.GetBotAppInstallationParams{
-		BotID: botUUID, WorkspaceTargetID: strings.TrimSpace(workspaceTargetID),
+		BotID:      botUUID,
 		RegistryID: strings.TrimSpace(registryID), AppID: strings.TrimSpace(appID),
 	})
 	return installationResult(row, err)
@@ -54,17 +54,6 @@ func (s *postgresStore) ListForBot(ctx context.Context, botID string) ([]Install
 	return installationsResult(rows, err)
 }
 
-func (s *postgresStore) ListForTarget(ctx context.Context, botID, workspaceTargetID string) ([]Installation, error) {
-	botUUID, err := db.ParseUUID(botID)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := s.q.ListBotAppInstallationsForTarget(ctx, dbsqlc.ListBotAppInstallationsForTargetParams{
-		BotID: botUUID, WorkspaceTargetID: strings.TrimSpace(workspaceTargetID),
-	})
-	return installationsResult(rows, err)
-}
-
 func (s *postgresStore) Upsert(ctx context.Context, in UpsertInstallation) (Installation, error) {
 	botUUID, err := db.ParseUUID(in.BotID)
 	if err != nil {
@@ -75,7 +64,7 @@ func (s *postgresStore) Upsert(ctx context.Context, in UpsertInstallation) (Inst
 		release = []byte{}
 	}
 	row, err := s.q.UpsertBotAppInstallation(ctx, dbsqlc.UpsertBotAppInstallationParams{
-		BotID: botUUID, WorkspaceTargetID: strings.TrimSpace(in.WorkspaceTargetID),
+		BotID:      botUUID,
 		RegistryID: in.RegistryID, AppID: in.AppID, Revision: in.Revision, Version: in.Version,
 		Status: string(in.Status), Reason: string(in.Reason), Release: release,
 	})
@@ -145,20 +134,18 @@ func (s *postgresStore) ListDependencyRefs(ctx context.Context, installationID s
 	return refs, nil
 }
 
-func (s *postgresStore) ListTargetDependencyRefs(ctx context.Context, botID, workspaceTargetID string) ([]TargetDependencyRef, error) {
+func (s *postgresStore) ListBotDependencyRefs(ctx context.Context, botID string) ([]BotDependencyRef, error) {
 	botUUID, err := db.ParseUUID(botID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListAppDependencyRefsForTarget(ctx, dbsqlc.ListAppDependencyRefsForTargetParams{
-		BotID: botUUID, WorkspaceTargetID: strings.TrimSpace(workspaceTargetID),
-	})
+	rows, err := s.q.ListAppDependencyRefsForBot(ctx, botUUID)
 	if err != nil {
 		return nil, err
 	}
-	refs := make([]TargetDependencyRef, 0, len(rows))
+	refs := make([]BotDependencyRef, 0, len(rows))
 	for _, row := range rows {
-		refs = append(refs, TargetDependencyRef{
+		refs = append(refs, BotDependencyRef{
 			DependencyRef: DependencyRef{InstallationID: row.InstallationID.String(), DependencyID: row.DependencyID},
 			RegistryID:    row.RegistryID, AppID: row.AppID,
 		})
@@ -219,7 +206,7 @@ func (s *postgresStore) ListBotConnectorRefs(ctx context.Context, botID string) 
 				InstallationID: row.InstallationID.String(), ConnectorType: row.ConnectorType,
 				ConnectionID: row.ConnectionID, Required: row.Required,
 			},
-			RegistryID: row.RegistryID, AppID: row.AppID, WorkspaceTargetID: row.WorkspaceTargetID,
+			RegistryID: row.RegistryID, AppID: row.AppID,
 		})
 	}
 	return refs, nil
@@ -299,7 +286,7 @@ func installationsResult(rows []dbsqlc.BotAppInstallation, err error) ([]Install
 
 func installationFromRow(row dbsqlc.BotAppInstallation) Installation {
 	inst := Installation{
-		ID: row.ID.String(), BotID: row.BotID.String(), WorkspaceTargetID: row.WorkspaceTargetID,
+		ID: row.ID.String(), BotID: row.BotID.String(),
 		RegistryID: row.RegistryID, AppID: row.AppID, Revision: row.Revision, Version: row.Version,
 		Status: Status(row.Status), Reason: Reason(row.Reason),
 		AvailableRevision: row.AvailableRevision, AvailableVersion: row.AvailableVersion,

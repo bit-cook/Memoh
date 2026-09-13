@@ -2230,9 +2230,59 @@ const docTemplate = `{
                 }
             }
         },
+        "/bots/{bot_id}/agents/{id}/runtime-controls": {
+            "get": {
+                "tags": [
+                    "bot-agents"
+                ],
+                "summary": "Get bot Agent default runtime controls",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Agent ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/external.Controls"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            }
+        },
         "/bots/{bot_id}/apps": {
             "get": {
-                "description": "Every App installed on the workspace target with its Skills, dependency references and connector references, plus the canonical Apps of dependencies the workspace carries that no App references.",
+                "description": "Every App installed on the bot workspace with its Skills, dependency references and connector references, plus the canonical Apps of dependencies the workspace carries that no App references.",
                 "produces": [
                     "application/json"
                 ],
@@ -2247,12 +2297,6 @@ const docTemplate = `{
                         "name": "bot_id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
                     },
                     {
                         "type": "boolean",
@@ -2381,12 +2425,6 @@ const docTemplate = `{
                         "name": "bot_id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -3281,6 +3319,76 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Delete the Connect-It credential, remove its bot binding and unlink it from every App that referenced it; those Apps ask for authorization again.",
+                "tags": [
+                    "connectors"
+                ],
+                "summary": "Disconnect a connector",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Connect-It connection ID",
+                        "name": "connection_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/apperror.Problem"
                         }
@@ -5257,12 +5365,6 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
-                    },
-                    {
                         "type": "boolean",
                         "description": "Refresh definitions and workspace discovery",
                         "name": "refresh",
@@ -5326,12 +5428,6 @@ const docTemplate = `{
                         "name": "bot_id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -5394,12 +5490,6 @@ const docTemplate = `{
                         "name": "bot_id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
                     },
                     {
                         "description": "Dependencies to check",
@@ -5480,12 +5570,6 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
-                    },
-                    {
                         "description": "Version to install (optional)",
                         "name": "payload",
                         "in": "body",
@@ -5563,12 +5647,6 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
-                    },
-                    {
                         "description": "Version to install (optional)",
                         "name": "payload",
                         "in": "body",
@@ -5641,12 +5719,6 @@ const docTemplate = `{
                         "name": "dep_id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -5742,12 +5814,6 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
                         "description": "Keep a previously prepared definition revision",
                         "name": "definition_revision",
                         "in": "query"
@@ -5820,12 +5886,6 @@ const docTemplate = `{
                         "name": "dep_id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Workspace target ID (defaults to the bot's current target)",
-                        "name": "workspace_target_id",
-                        "in": "query"
                     },
                     {
                         "description": "Version to update to (optional)",
@@ -9596,6 +9656,290 @@ const docTemplate = `{
                 }
             }
         },
+        "/bots/{bot_id}/sessions/{session_id}/runtime-controls": {
+            "get": {
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Get session runtime controls",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/external.Controls"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            }
+        },
+        "/bots/{bot_id}/sessions/{session_id}/runtime-controls/commands": {
+            "post": {
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Execute a read or operation runtime command",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Runtime command",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RuntimeCommandRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RuntimeCommandResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            }
+        },
+        "/bots/{bot_id}/sessions/{session_id}/runtime-controls/goal": {
+            "get": {
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Get the runtime-owned goal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RuntimeGoalResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Pause or clear a runtime-owned goal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Goal action",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RuntimeGoalRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            }
+        },
+        "/bots/{bot_id}/sessions/{session_id}/runtime-controls/mode": {
+            "patch": {
+                "tags": [
+                    "sessions"
+                ],
+                "summary": "Set session runtime permission or planning mode",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Permission mode",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.RuntimeModeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/external.ModeState"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            }
+        },
         "/bots/{bot_id}/sessions/{session_id}/status": {
             "get": {
                 "description": "Get aggregated info for a chat session including message count, context usage, cache stats, and used skills",
@@ -11193,6 +11537,128 @@ const docTemplate = `{
                         "description": "Not Found",
                         "schema": {
                             "$ref": "#/definitions/handlers.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bots/{bot_id}/workdirs/{workdir_id}/git-branch": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workdirs"
+                ],
+                "summary": "Read a workdir's current Git branch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Workdir ID",
+                        "name": "workdir_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/workdir.GitBranchResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "workdirs"
+                ],
+                "summary": "Switch a workdir to an existing local Git branch",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Bot ID",
+                        "name": "bot_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Workdir ID",
+                        "name": "workdir_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Local branch",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/workdir.SwitchGitBranchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/workdir.GitBranchResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
                         }
                     }
                 }
@@ -20868,6 +21334,10 @@ const docTemplate = `{
                 "content": {
                     "type": "string"
                 },
+                "diff": {
+                    "description": "Diff is a UI-only unified diff attached to the tool call at execution\ntime (edit/write tools). It never reaches the model: rows persist it\nunder the diffs metadata key — on the assistant row (lifted out of\nproviderMetadata at store time) or, for the deferred-approval path, on\nthe tool message row — never inside the tool result.",
+                    "type": "string"
+                },
                 "execution_location": {
                     "$ref": "#/definitions/conversation.UIExecutionLocation"
                 },
@@ -21039,6 +21509,10 @@ const docTemplate = `{
                         "assistant",
                         "system"
                     ]
+                },
+                "runtime_forkable": {
+                    "description": "RuntimeForkable means this persisted turn has a runtime fork anchor.\nSession-level runtime support and access permissions still apply.",
+                    "type": "boolean"
                 },
                 "sender_avatar_url": {
                     "type": "string"
@@ -21359,6 +21833,66 @@ const docTemplate = `{
                 },
                 "provider": {
                     "type": "string"
+                }
+            }
+        },
+        "external.Controls": {
+            "type": "object",
+            "properties": {
+                "capabilities": {
+                    "$ref": "#/definitions/turn.RuntimeControlCapabilities"
+                },
+                "commands": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/turn.RuntimeCommand"
+                    }
+                },
+                "modes": {
+                    "$ref": "#/definitions/turn.RuntimeModeState"
+                },
+                "plan_mode": {
+                    "$ref": "#/definitions/turn.RuntimeModeState"
+                },
+                "session_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "external.Goal": {
+            "type": "object",
+            "properties": {
+                "objective": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "time_used_seconds": {
+                    "type": "integer"
+                },
+                "token_budget": {
+                    "type": "integer"
+                },
+                "tokens_used": {
+                    "type": "integer"
+                }
+            }
+        },
+        "external.ModeState": {
+            "type": "object",
+            "properties": {
+                "available_modes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/turn.RuntimeMode"
+                    }
+                },
+                "current_mode_id": {
+                    "type": "string"
+                },
+                "supported": {
+                    "type": "boolean"
                 }
             }
         },
@@ -21721,7 +22255,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "shared": {
-                    "description": "Shared is set when another installed App references the same\ndependency on this workspace target.",
+                    "description": "Shared is set when another installed App references the same\ndependency on this bot workspace.",
                     "type": "boolean"
                 }
             }
@@ -21741,9 +22275,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "revision": {
-                    "type": "string"
-                },
-                "workspace_target_id": {
                     "type": "string"
                 }
             }
@@ -21882,12 +22413,8 @@ const docTemplate = `{
                     "enum": [
                         "running",
                         "not_running",
-                        "missing",
-                        "remote_offline"
+                        "missing"
                     ]
-                },
-                "workspace_target_id": {
-                    "type": "string"
                 }
             }
         },
@@ -22087,9 +22614,6 @@ const docTemplate = `{
                 "release": {
                     "description": "Release moves the installation to the registry's current release.",
                     "type": "boolean"
-                },
-                "workspace_target_id": {
-                    "type": "string"
                 }
             }
         },
@@ -23228,6 +23752,58 @@ const docTemplate = `{
             "properties": {
                 "version": {
                     "type": "integer"
+                }
+            }
+        },
+        "handlers.RuntimeCommandRequest": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.RuntimeCommandResponse": {
+            "type": "object",
+            "properties": {
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
+        "handlers.RuntimeGoalRequest": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "pause",
+                        "clear"
+                    ]
+                }
+            }
+        },
+        "handlers.RuntimeGoalResponse": {
+            "type": "object",
+            "properties": {
+                "goal": {
+                    "$ref": "#/definitions/external.Goal"
+                }
+            }
+        },
+        "handlers.RuntimeModeRequest": {
+            "type": "object",
+            "properties": {
+                "mode_id": {
+                    "type": "string"
+                },
+                "mode_kind": {
+                    "description": "Omitted means permission; plan changes the independent planning mode.",
+                    "type": "string",
+                    "enum": [
+                        "permission",
+                        "plan"
+                    ]
                 }
             }
         },
@@ -24403,8 +24979,7 @@ const docTemplate = `{
                     "enum": [
                         "running",
                         "not_running",
-                        "missing",
-                        "remote_offline"
+                        "missing"
                     ]
                 }
             }
@@ -24480,10 +25055,6 @@ const docTemplate = `{
                     "items": {
                         "type": "string"
                     }
-                },
-                "workspace_target_id": {
-                    "description": "WorkspaceTargetID overrides the query parameter of the same name.",
-                    "type": "string"
                 }
             }
         },
@@ -24501,8 +25072,7 @@ const docTemplate = `{
                     "enum": [
                         "running",
                         "not_running",
-                        "missing",
-                        "remote_offline"
+                        "missing"
                     ]
                 }
             }
@@ -27099,6 +27669,98 @@ const docTemplate = `{
                 }
             }
         },
+        "turn.RuntimeCommand": {
+            "type": "object",
+            "properties": {
+                "completed_text": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "input_hint": {
+                    "type": "string"
+                },
+                "kind": {
+                    "$ref": "#/definitions/turn.RuntimeCommandKind"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "running_text": {
+                    "type": "string"
+                }
+            }
+        },
+        "turn.RuntimeCommandKind": {
+            "type": "string",
+            "enum": [
+                "turn",
+                "read",
+                "operation"
+            ],
+            "x-enum-varnames": [
+                "RuntimeCommandTurn",
+                "RuntimeCommandRead",
+                "RuntimeCommandOperation"
+            ]
+        },
+        "turn.RuntimeControlCapabilities": {
+            "type": "object",
+            "properties": {
+                "compact": {
+                    "type": "boolean"
+                },
+                "goal": {
+                    "type": "boolean"
+                },
+                "permission_modes": {
+                    "type": "boolean"
+                },
+                "plan_mode": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "turn.RuntimeMode": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "icon": {
+                    "description": "Icon is a presentation hint; clients may fall back for unknown values.",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "warning": {
+                    "description": "Warning marks a runtime-declared elevated permission option.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "turn.RuntimeModeState": {
+            "type": "object",
+            "properties": {
+                "available_modes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/turn.RuntimeMode"
+                    }
+                },
+                "current_mode_id": {
+                    "type": "string"
+                },
+                "supported": {
+                    "type": "boolean"
+                }
+            }
+        },
         "userinput.UIAnswer": {
             "type": "object",
             "properties": {
@@ -27437,6 +28099,34 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "workspace_target_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "workdir.GitBranchResponse": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string"
+                },
+                "branches": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "busy": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "workdir.SwitchGitBranchRequest": {
+            "type": "object",
+            "required": [
+                "branch"
+            ],
+            "properties": {
+                "branch": {
                     "type": "string"
                 }
             }

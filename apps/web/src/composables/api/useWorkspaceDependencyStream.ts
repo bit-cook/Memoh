@@ -46,7 +46,6 @@ export interface WorkspaceDependencyStreamOptions extends WorkspaceDependencyStr
   depId: string
   action: DependencyOperationAction
   /** Omitted → the Server uses the bot's current target. */
-  workspaceTargetId?: string
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
@@ -89,17 +88,15 @@ export async function* streamDependencyOperation(
   botId: string,
   depId: string,
   action: DependencyOperationAction,
-  workspaceTargetId?: string,
   options: WorkspaceDependencyStreamRequestOptions = {},
 ): AsyncGenerator<WorkspaceDependencyStreamEvent, void, unknown> {
   let streamError: unknown
 
   // One options object for the three generated SSE functions: their *Data
-  // shapes are identical (path bot_id/dep_id, optional workspace_target_id),
+  // shapes are identical (path bot_id/dep_id),
   // and the generated functions keep each route's URL single-sourced.
   const request = {
     path: { bot_id: botId, dep_id: depId },
-    query: workspaceTargetId ? { workspace_target_id: workspaceTargetId } : undefined,
     headers: { Accept: 'text/event-stream' },
     signal: options.signal,
     fetch: fetchSSEProblem,
@@ -157,7 +154,6 @@ export function openWorkspaceDependencyStream(
       options.botId,
       options.depId,
       options.action,
-      options.workspaceTargetId,
       { version: options.version, definitionRevision: options.definitionRevision, sessionId: options.sessionId, signal: options.signal },
     ),
   }

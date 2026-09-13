@@ -216,7 +216,6 @@
       "busy": "Another operation on this dependency is in progress.",
       "workspace_not_running": "The workspace isn't running. Start it first.",
       "workspace_missing": "The workspace hasn't been created yet.",
-      "remote_offline": "That computer is offline.",
       "rollback_unavailable": "No previous version to roll back to.",
       "operation_failed": "The dependency operation failed. Check the log and try again.",
       "catalog_unavailable": "The dependency catalog is unavailable. Please try again later.",
@@ -287,6 +286,24 @@
       "limit": "Close other pending authorizations and try again.",
       "failed": "Account authorization failed. Please try again.",
       "code_invalid": "The authorization code is invalid or expired. Copy the complete code from Claude or connect again."
+    },
+    "workdir": {
+      "git_busy": "An agent is using this working directory. Wait for it to finish before switching branches.",
+      "git_branch_unavailable": "This local branch is unavailable. Refresh and select an existing branch.",
+      "git_switch_failed": "Git could not switch branches. Check uncommitted changes and whether the branch is used by another worktree.",
+      "git_unavailable": "The Git working directory could not be read. Check the workspace and try again."
+    },
+    "runtime_control": {
+      "goal_requires_default_mode": "Exit Plan mode before creating or resuming a goal.",
+      "steer_failed": "The additional instruction could not be delivered. Send it again after this turn finishes.",
+      "unsupported": "This runtime does not support this control.",
+      "command_unavailable": "This runtime command is no longer available. Refresh and try again.",
+      "mode_unavailable": "This permission mode is unavailable. Refresh and choose a supported mode.",
+      "thread_unavailable": "Start a conversation before using this operation.",
+      "failed": "The runtime control could not be completed. Try again.",
+      "forbidden": "You do not have access to this conversation.",
+      "request_invalid": "The runtime control request is invalid.",
+      "cancelled": "Operation cancelled."
     }
   },
   "auth": {
@@ -357,7 +374,7 @@
     "people": "Members",
     "appearance": "Appearance",
     "keyboard": "Keyboard",
-    "supermarket": "App Store",
+    "supermarket": "Supermarket",
     "about": "About",
     "userMenu": "Account menu",
     "switchBot": "Switch bot",
@@ -1051,11 +1068,14 @@
       "exitCode": "exit {code}",
       "approve": "Allow",
       "reject": "Reject",
-      "pendingApproval": "pending approval",
+      "pendingApproval": "Awaiting approval",
+      "approvalDeclined": "Declined",
+      "approvalCanceled": "Canceled",
+      "approvalExpired": "Expired",
       "executionLocation": "Execution location",
       "pendingUserInput": "waiting for input",
       "userInputSubmitted": "answered",
-      "userInputCanceled": "canceled",
+      "userInputCanceled": "Canceled",
       "userInputFailed": "failed",
       "userInputExpired": "expired",
       "userInputPlaceholder": "Answer",
@@ -1464,7 +1484,49 @@
         "rtt": "RTT"
       }
     },
-    "modelDefaultNamed": "Default ({model})"
+    "modelDefaultNamed": "Default ({model})",
+    "codexProject": {
+      "chooseBranch": "Switch branch",
+      "noBranches": "No local branches yet",
+      "detachedHead": "Detached HEAD",
+      "expand": "Show workspace",
+      "collapse": "Hide workspace",
+      "choose": "Choose project",
+      "clear": "Don't work in a project",
+      "none": "No project",
+      "workspace": "Memoh workspace",
+      "empty": "Add a folder in the sidebar to choose a project."
+    },
+    "planMode": {
+      "commandLabel": "Plan mode",
+      "label": "Plan",
+      "enable": "Turn plan mode on",
+      "disable": "Turn plan mode off",
+      "placeholder": "Describe your task to generate a plan…",
+      "changeFailed": "Could not change plan mode. Please try again."
+    },
+    "sessionPermissionMode": "Session permission mode",
+    "permissionMode": "Permission mode",
+    "goal": {
+      "label": "Goal",
+      "description": "Set a goal to keep pursuing",
+      "placeholder": "Describe your goal and what completing it means",
+      "cancelDraft": "Cancel goal input",
+      "sentAsGoal": "Sent as goal",
+      "pause": "Pause goal",
+      "resume": "Resume goal",
+      "clear": "Clear goal",
+      "elapsed": "{seconds}s",
+      "textOnly": "Send the goal as text without attachments or skills.",
+      "status": {
+        "active": "Pursuing goal",
+        "paused": "Goal paused",
+        "blocked": "Goal blocked",
+        "usageLimited": "Usage limit reached",
+        "budgetLimited": "Token budget reached",
+        "complete": "Goal completed"
+      }
+    }
   },
   "models": {
     "title": "Models",
@@ -2404,7 +2466,6 @@
       "modelsLoadFailed": "Couldn’t load Agent models. Check the Agent setup and try again.",
       "openSettings": "Open Agent settings",
       "dependencyChecking": "Checking dependency…",
-      "dependencyRemoteOffline": "The bot's connected computer is offline. Dependencies can be checked once it is back online.",
       "dependencyInstalledEnableHint": "{name} installed. Turn the agent on to use it.",
       "claudeAccount": "Claude account",
       "claudeAccountDescription": "Authorize Claude Code with your Claude subscription account.",
@@ -2412,7 +2473,9 @@
       "openAuthorizationPage": "Open authorization page",
       "authorizationCode": "Authorization code",
       "authorizationCodePlaceholder": "Paste the complete authorization code",
-      "completeAuthorization": "Complete authorization"
+      "completeAuthorization": "Complete authorization",
+      "defaultPermissionMode": "Default permission mode",
+      "defaultPermissionModeDescription": "New sessions use this mode. A session selection overrides the default."
     },
     "dependencies": {
       "title": "Workspace dependencies",
@@ -2453,8 +2516,6 @@
         "start": "Start workspace",
         "missingTitle": "No workspace yet",
         "goToContainer": "Open workspace tab",
-        "remoteOfflineTitle": "\"{name}\" is offline",
-        "remoteOfflineDescription": "Dependencies can be managed once it is online.",
         "discoveryErrorTitle": "Couldn't detect dependencies in the workspace right now",
         "discoveryErrorRetry": "Retry"
       },
@@ -2470,8 +2531,6 @@
         "version": "Version",
         "versionPlaceholder": "Latest",
         "versionHelp": "Leave blank to install the latest version.",
-        "remoteWarningTitle": "Runs on your computer \"{name}\"",
-        "remoteWarningDescription": "The script downloads and writes files on that computer.",
         "installConfirm": "Install",
         "updateConfirm": "Update",
         "installAndEnable": "Install and enable",
@@ -3579,7 +3638,7 @@
     "colOutputTokens": "Output"
   },
   "supermarket": {
-    "title": "App Store",
+    "title": "Supermarket",
     "searchPlaceholder": "Search Apps...",
     "skillsSection": "Skills",
     "noResults": "No results found",
@@ -3588,7 +3647,6 @@
     "installToBot": "Install to Bot",
     "selectBot": "Select a bot",
     "selectBotPlaceholder": "Choose a bot to install to...",
-    "selectWorkspaceTarget": "Workspace",
     "envVariables": "Environment Variables",
     "envDescription": "Configure the required environment variables",
     "installSuccess": "Installed successfully",
@@ -3657,7 +3715,7 @@
     "reauthorize": "Reauthorize",
     "disconnect": "Disconnect",
     "disconnectTitle": "Disconnect connector?",
-    "disconnectDescription": "This will remove {name} from the Bot and delete its stored connection.",
+    "disconnectDescription": "This deletes the stored {name} connection. Apps that use it will ask for authorization again.",
     "disconnected": "Connector disconnected",
     "disconnectFailed": "Failed to disconnect connector",
     "loadFailed": "Failed to load connectors",
@@ -3812,6 +3870,7 @@
     "components": "{count} component | {count} components",
     "workspaceNotRunningDescription": "Installing and updating Apps needs a running workspace. The list shows the last recorded state.",
     "action": {
+      "restore": "Restore installation",
       "install": "Install",
       "resume": "Continue setup",
       "update": "Update",
@@ -3851,6 +3910,7 @@
       }
     },
     "progress": {
+      "recoveryHint": "To continue a failed uninstall, choose Uninstall. Restore installation sets up the App again and may reinstall removed components.",
       "installing": "Installing {name}",
       "updating": "Updating {name}",
       "resuming": "Continuing setup of {name}",
@@ -3886,6 +3946,7 @@
       "skipped": "Skipped",
       "removed": "Removed",
       "kept": "Kept",
+      "unlinked": "Unlinked",
       "disconnected": "Disconnected",
       "updated": "Updated"
     },

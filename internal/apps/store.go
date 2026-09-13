@@ -26,7 +26,7 @@ const (
 	StatusInstalling Status = "installing"
 	StatusUpdating   Status = "updating"
 	StatusRemoving   Status = "removing"
-	// StatusFailed means the Skills could not be materialized.
+	// StatusFailed means materialization or its reference cleanup failed.
 	StatusFailed Status = "failed"
 )
 
@@ -44,9 +44,9 @@ const (
 
 // Installation is one row of bot_app_installations.
 type Installation struct {
-	ID                string
-	BotID             string
-	WorkspaceTargetID string
+	ID    string
+	BotID string
+
 	RegistryID        string
 	AppID             string
 	Revision          string
@@ -66,15 +66,15 @@ type Installation struct {
 
 // UpsertInstallation creates or replaces the identity portion of a record.
 type UpsertInstallation struct {
-	BotID             string
-	WorkspaceTargetID string
-	RegistryID        string
-	AppID             string
-	Revision          string
-	Version           string
-	Status            Status
-	Reason            Reason
-	Release           []byte
+	BotID string
+
+	RegistryID string
+	AppID      string
+	Revision   string
+	Version    string
+	Status     Status
+	Reason     Reason
+	Release    []byte
 }
 
 // DependencyRef links an installation to a workspace dependency ID.
@@ -83,8 +83,8 @@ type DependencyRef struct {
 	DependencyID   string
 }
 
-// TargetDependencyRef is a DependencyRef joined with its App identity.
-type TargetDependencyRef struct {
+// BotDependencyRef is a DependencyRef joined with its App identity.
+type BotDependencyRef struct {
 	DependencyRef
 	RegistryID string
 	AppID      string
@@ -102,9 +102,8 @@ type ConnectorRef struct {
 // BotConnectorRef is a ConnectorRef joined with its App identity.
 type BotConnectorRef struct {
 	ConnectorRef
-	RegistryID        string
-	AppID             string
-	WorkspaceTargetID string
+	RegistryID string
+	AppID      string
 }
 
 // ErrNotInstalled is returned by lookups for unknown installations.
@@ -113,10 +112,9 @@ var ErrNotInstalled = errors.New("app is not installed")
 // Store persists App installations and their references. Rows are team
 // scoped by row level security on the connection.
 type Store interface {
-	Get(ctx context.Context, botID, workspaceTargetID, registryID, appID string) (Installation, error)
+	Get(ctx context.Context, botID, registryID, appID string) (Installation, error)
 	GetByID(ctx context.Context, botID, installationID string) (Installation, error)
 	ListForBot(ctx context.Context, botID string) ([]Installation, error)
-	ListForTarget(ctx context.Context, botID, workspaceTargetID string) ([]Installation, error)
 	Upsert(ctx context.Context, in UpsertInstallation) (Installation, error)
 	SetStatus(ctx context.Context, botID, installationID string, status Status, lastError string) (Installation, error)
 	SetRelease(ctx context.Context, botID, installationID, revision, version string, release []byte) (Installation, error)
@@ -124,7 +122,7 @@ type Store interface {
 	Delete(ctx context.Context, botID, installationID string) (Installation, error)
 
 	ListDependencyRefs(ctx context.Context, installationID string) ([]DependencyRef, error)
-	ListTargetDependencyRefs(ctx context.Context, botID, workspaceTargetID string) ([]TargetDependencyRef, error)
+	ListBotDependencyRefs(ctx context.Context, botID string) ([]BotDependencyRef, error)
 	AddDependencyRef(ctx context.Context, installationID, dependencyID string) error
 	RemoveDependencyRef(ctx context.Context, installationID, dependencyID string) error
 

@@ -26,14 +26,14 @@ var appConnectorTypePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // appService is the slice of *apps.Service the routes use.
 type appService interface {
-	List(ctx context.Context, botID, targetID string, refresh bool) (apps.ListResult, error)
+	List(ctx context.Context, botID string, refresh bool) (apps.ListResult, error)
 	Get(ctx context.Context, botID, installationID string) (apps.Item, error)
 	Install(ctx context.Context, botID string, req apps.InstallRequest, sink apps.EventSink) (apps.OperationResult, error)
 	Resume(ctx context.Context, botID, installationID string, sink apps.EventSink) (apps.OperationResult, error)
 	UpdateSelection(ctx context.Context, botID string, req apps.UpdateRequest, sink apps.EventSink) (apps.OperationResult, error)
 	Remove(ctx context.Context, botID, installationID string, opts apps.RemoveOptions, sink apps.EventSink) (apps.OperationResult, error)
 	RemovalPreview(ctx context.Context, botID, installationID string) (apps.RemovalPreview, error)
-	CheckUpdates(ctx context.Context, botID, targetID string) (apps.ListResult, error)
+	CheckUpdates(ctx context.Context, botID string) (apps.ListResult, error)
 	BeginConnectorOAuth(ctx context.Context, botID, installationID, connectorType, authMethod string) (connectsdk.OAuthAuthorization, error)
 	CreateConnectorCredential(ctx context.Context, botID, installationID, connectorType, authMethod string, fields map[string]string) (connectors.Connector, error)
 }
@@ -88,7 +88,7 @@ type AppSkillItem struct {
 type AppDependencyItem struct {
 	ID string `json:"id"`
 	// Shared is set when another installed App references the same
-	// dependency on this workspace target.
+	// dependency on this bot workspace.
 	Shared     bool                     `json:"shared"`
 	Dependency *WorkspaceDependencyItem `json:"dependency,omitempty"`
 }
@@ -103,7 +103,7 @@ type AppConnectorItem struct {
 	Connector *connectors.Connector `json:"connector,omitempty"`
 }
 
-// AppItem is one App on a workspace target.
+// AppItem is one App on a bot workspace.
 type AppItem struct {
 	// InstallationID is empty for a discovered App: a dependency the
 	// workspace carries that no installed App references, shown through
@@ -140,28 +140,26 @@ type AppItem struct {
 	UpdatedAt         *time.Time                                  `json:"updated_at,omitempty"`
 }
 
-// AppListResponse is the App view of one workspace target.
+// AppListResponse is the App view of one bot workspace.
 type AppListResponse struct {
-	WorkspaceTargetID      string    `json:"workspace_target_id"`
-	WorkspaceState         string    `json:"workspace_state,omitempty" enums:"running,not_running,missing,remote_offline"`
+	WorkspaceState         string    `json:"workspace_state,omitempty" enums:"running,not_running,missing"`
 	DependencyCatalogStale bool      `json:"dependency_catalog_stale"`
 	Items                  []AppItem `json:"items"`
 }
 
 // AppInstallRequest names one immutable App release to install.
 type AppInstallRequest struct {
-	RegistryID        string `json:"registry_id" validate:"required"`
-	AppID             string `json:"app_id" validate:"required"`
-	Revision          string `json:"revision" validate:"required"`
-	WorkspaceTargetID string `json:"workspace_target_id,omitempty"`
+	RegistryID string `json:"registry_id" validate:"required"`
+	AppID      string `json:"app_id" validate:"required"`
+	Revision   string `json:"revision" validate:"required"`
 }
 
 // AppUpdateRequest selects what to update for one App on a workspace
 // target: its dependencies, its release, or both.
 type AppUpdateRequest struct {
-	RegistryID        string `json:"registry_id" validate:"required"`
-	AppID             string `json:"app_id" validate:"required"`
-	WorkspaceTargetID string `json:"workspace_target_id,omitempty"`
+	RegistryID string `json:"registry_id" validate:"required"`
+	AppID      string `json:"app_id" validate:"required"`
+
 	// Release moves the installation to the registry's current release.
 	Release bool `json:"release"`
 	// Dependencies are updated to their latest version.
@@ -239,11 +237,10 @@ type AppStreamEvent struct {
 
 // List godoc
 // @Summary List the Apps installed for a bot
-// @Description Every App installed on the workspace target with its Skills, dependency references and connector references, plus the canonical Apps of dependencies the workspace carries that no App references.
+// @Description Every App installed on the bot workspace with its Skills, dependency references and connector references, plus the canonical Apps of dependencies the workspace carries that no App references.
 // @Tags apps
 // @Produce json
 // @Param bot_id path string true "Bot ID"
-// @Param workspace_target_id query string false "Workspace target ID (defaults to the bot's current target)"
 // @Param refresh query bool false "Refresh workspace discovery"
 // @Success 200 {object} AppListResponse
 // @Failure 400 {object} ErrorResponse
@@ -257,7 +254,7 @@ func (h *AppsHandler) List(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	result, err := h.service.List(c.Request().Context(), botID, strings.TrimSpace(c.QueryParam("workspace_target_id")), c.QueryParam("refresh") == "true")
+	result, err := h.service.List(c.Request().Context(), botID, c.QueryParam("refresh") == "true")
 	if err != nil {
 		return h.httpError(err)
 	}
@@ -297,7 +294,6 @@ func (h *AppsHandler) Get(c echo.Context) error {
 // @Tags apps
 // @Produce json
 // @Param bot_id path string true "Bot ID"
-// @Param workspace_target_id query string false "Workspace target ID (defaults to the bot's current target)"
 // @Success 200 {object} AppListResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 500 {object} apperror.Problem
@@ -308,7 +304,7 @@ func (h *AppsHandler) CheckUpdates(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	result, err := h.service.CheckUpdates(c.Request().Context(), botID, strings.TrimSpace(c.QueryParam("workspace_target_id")))
+	result, err := h.service.CheckUpdates(c.Request().Context(), botID)
 	if err != nil {
 		return h.httpError(err)
 	}
@@ -377,7 +373,7 @@ func (h *AppsHandler) Install(c echo.Context) error {
 		return err
 	}
 	var req AppInstallRequest
-	if err := c.Bind(&req); err != nil {
+	if err := bindWorkspaceManagementRequest(c, &req); err != nil {
 		return apperror.Wrap(apperror.CodeAppRequestInvalid, err, nil)
 	}
 	if strings.TrimSpace(req.RegistryID) == "" || strings.TrimSpace(req.AppID) == "" || !supermarketclient.IsCanonicalSHA256(strings.TrimSpace(req.Revision)) {
@@ -386,7 +382,6 @@ func (h *AppsHandler) Install(c echo.Context) error {
 	return h.stream(c, "install", func(ctx context.Context, sink apps.EventSink) (apps.OperationResult, error) {
 		return h.service.Install(ctx, botID, apps.InstallRequest{
 			RegistryID: req.RegistryID, AppID: req.AppID, Revision: req.Revision,
-			WorkspaceTargetID: req.WorkspaceTargetID,
 		}, sink)
 	})
 }
@@ -436,7 +431,7 @@ func (h *AppsHandler) UpdateSelection(c echo.Context) error {
 		return err
 	}
 	var req AppUpdateRequest
-	if err := c.Bind(&req); err != nil {
+	if err := bindWorkspaceManagementRequest(c, &req); err != nil {
 		return apperror.Wrap(apperror.CodeAppRequestInvalid, err, nil)
 	}
 	if strings.TrimSpace(req.RegistryID) == "" || strings.TrimSpace(req.AppID) == "" || (!req.Release && len(req.Dependencies) == 0) {
@@ -444,7 +439,7 @@ func (h *AppsHandler) UpdateSelection(c echo.Context) error {
 	}
 	return h.stream(c, "update", func(ctx context.Context, sink apps.EventSink) (apps.OperationResult, error) {
 		return h.service.UpdateSelection(ctx, botID, apps.UpdateRequest{
-			RegistryID: req.RegistryID, AppID: req.AppID, WorkspaceTargetID: req.WorkspaceTargetID,
+			RegistryID: req.RegistryID, AppID: req.AppID,
 			Release: req.Release, Dependencies: req.Dependencies,
 		}, sink)
 	})
@@ -504,7 +499,7 @@ func (h *AppsHandler) BeginConnectorOAuth(c echo.Context) error {
 		return err
 	}
 	var req AppConnectorOAuthRequest
-	if err := c.Bind(&req); err != nil {
+	if err := bindWorkspaceManagementRequest(c, &req); err != nil {
 		return apperror.Wrap(apperror.CodeAppRequestInvalid, err, nil)
 	}
 	result, err := h.service.BeginConnectorOAuth(c.Request().Context(), botID, installationID, connectorType, req.AuthMethod)
@@ -541,7 +536,7 @@ func (h *AppsHandler) CreateConnectorCredential(c echo.Context) error {
 		return err
 	}
 	var req AppConnectorCredentialRequest
-	if err := c.Bind(&req); err != nil {
+	if err := bindWorkspaceManagementRequest(c, &req); err != nil {
 		return apperror.Wrap(apperror.CodeAppRequestInvalid, err, nil)
 	}
 	result, err := h.service.CreateConnectorCredential(c.Request().Context(), botID, installationID, connectorType, req.AuthMethod, req.Fields)
@@ -554,6 +549,9 @@ func (h *AppsHandler) CreateConnectorCredential(c echo.Context) error {
 // --- helpers ---
 
 func (h *AppsHandler) authorize(c echo.Context) (string, error) {
+	if c.QueryParams().Has("workspace_target_id") {
+		return "", apperror.New(apperror.CodeAppRequestInvalid, nil)
+	}
 	if h.service == nil {
 		return "", echo.NewHTTPError(http.StatusServiceUnavailable, "app service not configured")
 	}
@@ -654,7 +652,7 @@ func (h *AppsHandler) httpError(err error) error {
 	case errors.Is(err, connectors.ErrInvalidInput), errors.Is(err, connectors.ErrNotConfigured), errors.Is(err, connectors.ErrUpstreamUnavailable):
 		return connectorHTTPError(err)
 	case errors.Is(err, workspacedeps.ErrWorkspaceNotRunning), errors.Is(err, workspacedeps.ErrWorkspaceMissing),
-		errors.Is(err, workspacedeps.ErrRemoteOffline), errors.Is(err, workspacedeps.ErrBusy),
+		errors.Is(err, workspacedeps.ErrBusy),
 		errors.Is(err, workspacedeps.ErrDependencyNotFound), errors.Is(err, workspacedeps.ErrCatalogUnavailable),
 		errors.Is(err, workspacedeps.ErrDefinitionInvalid), errors.Is(err, workspacedeps.ErrDefinitionUnavailable):
 		return workspaceDependencyError(err)
@@ -669,7 +667,6 @@ func (h *AppsHandler) httpError(err error) error {
 
 func appListResponse(result apps.ListResult) AppListResponse {
 	resp := AppListResponse{
-		WorkspaceTargetID:      result.WorkspaceTargetID,
 		WorkspaceState:         string(result.Workspace),
 		DependencyCatalogStale: result.DependencyCatalogStale,
 		Items:                  make([]AppItem, 0, len(result.Items)),

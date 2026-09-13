@@ -10,6 +10,12 @@ const (
 	AgentStepInterruptedMetadataKey     = "agent_step_interrupted"
 	HistoryErrorCodeMetadataKey         = "error_code"
 	AgentStepInterruptedReasoningPrefix = "[Previous assistant response was interrupted during reasoning. Continue from this checkpoint:]\n"
+	// ToolCallDiffsMetadataKey carries UI-only edit/write diffs lifted out of
+	// assistant message content at persist time. Value shape:
+	// map[toolCallID]unifiedDiff. Keeping them on the row's metadata column —
+	// not inside content — keeps them out of the history byte budget, which
+	// measures octet_length(content) only.
+	ToolCallDiffsMetadataKey = "diffs"
 )
 
 // LatestInterruptedCheckpoint returns the last assistant entry only when it is

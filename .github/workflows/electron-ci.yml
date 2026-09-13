@@ -21,13 +21,20 @@ on:
 
 permissions:
   contents: read
+  statuses: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  format:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/contribution-format.yml
   build:
+    needs: format
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Build desktop (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -43,6 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          persist-credentials: false
           submodules: recursive
 
       - uses: pnpm/action-setup@v4

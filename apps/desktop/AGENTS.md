@@ -57,6 +57,7 @@ The renderer imports web modules through public subpath exports in
 `apps/web/package.json`, including:
 
 - `@memohai/web/style.css`
+- `@memohai/web/routes` — shared business routes via `createAppRoutes('desktop')`
 - `@memohai/web/i18n`
 - `@memohai/web/api-client`
 - `@memohai/web/store/settings`
@@ -70,6 +71,11 @@ Do not import the full web `main.ts`. Desktop has its own bootstrap so it can us
 memory-history routing, provide `DesktopShellKey`, wire native menus into the
 shared command registry, and keep native cache synchronization out of the web
 bundle.
+
+Business page routes belong in `apps/web/src/routes.ts`; do not maintain a second
+Desktop page catalog. Desktop adds `/connect` and owns its memory history and
+navigation guards. The shared factory preserves Desktop session URLs and the
+settings landing redirect without creating a standalone Web router.
 
 ## Type Stubbing
 

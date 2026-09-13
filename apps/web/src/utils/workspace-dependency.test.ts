@@ -180,7 +180,7 @@ describe('dependencyPrimaryAction', () => {
     expect(dependencyPrimaryAction(item({ platform_supported: false, actions: ['install'] }), running)).toBeNull()
   })
 
-  it.each(['not_running', 'missing', 'remote_offline', undefined] as const)('disables the button while the workspace is %s', (state) => {
+  it.each(['not_running', 'missing', undefined] as const)('disables the button while the workspace is %s', (state) => {
     expect(dependencyPrimaryAction(item({ actions: ['install'] }), state)).toMatchObject({ kind: 'install', disabled: true })
   })
 })

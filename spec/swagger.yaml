@@ -2586,6 +2586,14 @@ definitions:
         type: string
       content:
         type: string
+      diff:
+        description: |-
+          Diff is a UI-only unified diff attached to the tool call at execution
+          time (edit/write tools). It never reaches the model: rows persist it
+          under the diffs metadata key — on the assistant row (lifted out of
+          providerMetadata at store time) or, for the deferred-approval path, on
+          the tool message row — never inside the tool result.
+        type: string
       execution_location:
         $ref: '#/definitions/conversation.UIExecutionLocation'
       id:
@@ -2703,6 +2711,11 @@ definitions:
         - assistant
         - system
         type: string
+      runtime_forkable:
+        description: |-
+          RuntimeForkable means this persisted turn has a runtime fork anchor.
+          Session-level runtime support and access permissions still apply.
+        type: boolean
       sender_avatar_url:
         type: string
       sender_display_name:
@@ -2923,6 +2936,45 @@ definitions:
         type: string
       provider:
         type: string
+    type: object
+  external.Controls:
+    properties:
+      capabilities:
+        $ref: '#/definitions/turn.RuntimeControlCapabilities'
+      commands:
+        items:
+          $ref: '#/definitions/turn.RuntimeCommand'
+        type: array
+      modes:
+        $ref: '#/definitions/turn.RuntimeModeState'
+      plan_mode:
+        $ref: '#/definitions/turn.RuntimeModeState'
+      session_id:
+        type: string
+    type: object
+  external.Goal:
+    properties:
+      objective:
+        type: string
+      status:
+        type: string
+      time_used_seconds:
+        type: integer
+      token_budget:
+        type: integer
+      tokens_used:
+        type: integer
+    type: object
+  external.ModeState:
+    properties:
+      available_modes:
+        items:
+          $ref: '#/definitions/turn.RuntimeMode'
+        type: array
+      current_mode_id:
+        type: string
+      supported:
+        type: boolean
     type: object
   external.ModelCatalog:
     properties:
@@ -3165,7 +3217,7 @@ definitions:
       shared:
         description: |-
           Shared is set when another installed App references the same
-          dependency on this workspace target.
+          dependency on this bot workspace.
         type: boolean
     type: object
   handlers.AppInstallRequest:
@@ -3175,8 +3227,6 @@ definitions:
       registry_id:
         type: string
       revision:
-        type: string
-      workspace_target_id:
         type: string
     required:
     - app_id
@@ -3282,9 +3332,6 @@ definitions:
         - running
         - not_running
         - missing
-        - remote_offline
-        type: string
-      workspace_target_id:
         type: string
     type: object
   handlers.AppRemovalPreviewApp:
@@ -3419,8 +3466,6 @@ definitions:
       release:
         description: Release moves the installation to the registry's current release.
         type: boolean
-      workspace_target_id:
-        type: string
     required:
     - app_id
     - registry_id
@@ -4177,6 +4222,41 @@ definitions:
     properties:
       version:
         type: integer
+    type: object
+  handlers.RuntimeCommandRequest:
+    properties:
+      command:
+        type: string
+    type: object
+  handlers.RuntimeCommandResponse:
+    properties:
+      text:
+        type: string
+    type: object
+  handlers.RuntimeGoalRequest:
+    properties:
+      action:
+        enum:
+        - pause
+        - clear
+        type: string
+    type: object
+  handlers.RuntimeGoalResponse:
+    properties:
+      goal:
+        $ref: '#/definitions/external.Goal'
+    type: object
+  handlers.RuntimeModeRequest:
+    properties:
+      mode_id:
+        type: string
+      mode_kind:
+        description: Omitted means permission; plan changes the independent planning
+          mode.
+        enum:
+        - permission
+        - plan
+        type: string
     type: object
   handlers.SafeSkillsResponse:
     properties:
@@ -5023,7 +5103,6 @@ definitions:
         - running
         - not_running
         - missing
-        - remote_offline
         type: string
     type: object
   handlers.WorkspaceDependencyOperationResponse:
@@ -5074,9 +5153,6 @@ definitions:
         items:
           type: string
         type: array
-      workspace_target_id:
-        description: WorkspaceTargetID overrides the query parameter of the same name.
-        type: string
     type: object
   handlers.WorkspaceDependencyPreflightResponse:
     properties:
@@ -5089,7 +5165,6 @@ definitions:
         - running
         - not_running
         - missing
-        - remote_offline
         type: string
     type: object
   handlers.WorkspaceDependencyScriptEnv:
@@ -6931,6 +7006,69 @@ definitions:
       state:
         type: string
     type: object
+  turn.RuntimeCommand:
+    properties:
+      completed_text:
+        type: string
+      description:
+        type: string
+      input_hint:
+        type: string
+      kind:
+        $ref: '#/definitions/turn.RuntimeCommandKind'
+      name:
+        type: string
+      running_text:
+        type: string
+    type: object
+  turn.RuntimeCommandKind:
+    enum:
+    - turn
+    - read
+    - operation
+    type: string
+    x-enum-varnames:
+    - RuntimeCommandTurn
+    - RuntimeCommandRead
+    - RuntimeCommandOperation
+  turn.RuntimeControlCapabilities:
+    properties:
+      compact:
+        type: boolean
+      goal:
+        type: boolean
+      permission_modes:
+        type: boolean
+      plan_mode:
+        type: boolean
+    type: object
+  turn.RuntimeMode:
+    properties:
+      description:
+        type: string
+      icon:
+        description: Icon is a presentation hint; clients may fall back for unknown
+          values.
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      warning:
+        description: Warning marks a runtime-declared elevated permission option.
+        type: boolean
+    type: object
+  turn.RuntimeModeState:
+    properties:
+      available_modes:
+        items:
+          $ref: '#/definitions/turn.RuntimeMode'
+        type: array
+      current_mode_id:
+        type: string
+      supported:
+        type: boolean
+    type: object
   userinput.UIAnswer:
     properties:
       custom_text:
@@ -7158,6 +7296,24 @@ definitions:
     required:
     - name
     - path
+    type: object
+  workdir.GitBranchResponse:
+    properties:
+      branch:
+        type: string
+      branches:
+        items:
+          type: string
+        type: array
+      busy:
+        type: boolean
+    type: object
+  workdir.SwitchGitBranchRequest:
+    properties:
+      branch:
+        type: string
+    required:
+    - branch
     type: object
   workdir.UpdateRequest:
     properties:
@@ -8610,9 +8766,42 @@ paths:
       summary: List models available to a bot Agent
       tags:
       - bot-agents
+  /bots/{bot_id}/agents/{id}/runtime-controls:
+    get:
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Agent ID
+        in: path
+        name: id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/external.Controls'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Get bot Agent default runtime controls
+      tags:
+      - bot-agents
   /bots/{bot_id}/apps:
     get:
-      description: Every App installed on the workspace target with its Skills, dependency
+      description: Every App installed on the bot workspace with its Skills, dependency
         references and connector references, plus the canonical Apps of dependencies
         the workspace carries that no App references.
       parameters:
@@ -8620,10 +8809,6 @@ paths:
         in: path
         name: bot_id
         required: true
-        type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
         type: string
       - description: Refresh workspace discovery
         in: query
@@ -8971,10 +9156,6 @@ paths:
         name: bot_id
         required: true
         type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
-        type: string
       produces:
       - application/json
       responses:
@@ -9298,6 +9479,54 @@ paths:
       tags:
       - connectors
   /bots/{bot_id}/connectors/{connection_id}:
+    delete:
+      description: Delete the Connect-It credential, remove its bot binding and unlink
+        it from every App that referenced it; those Apps ask for authorization again.
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Connect-It connection ID
+        in: path
+        name: connection_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/handlers.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Disconnect a connector
+      tags:
+      - connectors
     get:
       description: Get one Connect-It connection bound to a bot.
       parameters:
@@ -10634,10 +10863,6 @@ paths:
         name: bot_id
         required: true
         type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
-        type: string
       - description: Refresh definitions and workspace discovery
         in: query
         name: refresh
@@ -10690,10 +10915,6 @@ paths:
         in: path
         name: dep_id
         required: true
-        type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
         type: string
       - description: Version to install (optional)
         in: body
@@ -10748,10 +10969,6 @@ paths:
         name: dep_id
         required: true
         type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
-        type: string
       - description: Version to install (optional)
         in: body
         name: payload
@@ -10801,10 +11018,6 @@ paths:
         in: path
         name: dep_id
         required: true
-        type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
         type: string
       produces:
       - application/json
@@ -10871,10 +11084,6 @@ paths:
         in: query
         name: action
         type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
-        type: string
       - description: Keep a previously prepared definition revision
         in: query
         name: definition_revision
@@ -10928,10 +11137,6 @@ paths:
         name: dep_id
         required: true
         type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
-        type: string
       - description: Version to update to (optional)
         in: body
         name: payload
@@ -10977,10 +11182,6 @@ paths:
         name: bot_id
         required: true
         type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
-        type: string
       produces:
       - application/json
       responses:
@@ -11023,10 +11224,6 @@ paths:
         in: path
         name: bot_id
         required: true
-        type: string
-      - description: Workspace target ID (defaults to the bot's current target)
-        in: query
-        name: workspace_target_id
         type: string
       - description: Dependencies to check
         in: body
@@ -13511,6 +13708,194 @@ paths:
       summary: List pending steer and follow-up inputs in one response
       tags:
       - sessions
+  /bots/{bot_id}/sessions/{session_id}/runtime-controls:
+    get:
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/external.Controls'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Get session runtime controls
+      tags:
+      - sessions
+  /bots/{bot_id}/sessions/{session_id}/runtime-controls/commands:
+    post:
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Runtime command
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RuntimeCommandRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.RuntimeCommandResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Execute a read or operation runtime command
+      tags:
+      - sessions
+  /bots/{bot_id}/sessions/{session_id}/runtime-controls/goal:
+    get:
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.RuntimeGoalResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Get the runtime-owned goal
+      tags:
+      - sessions
+    post:
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Goal action
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RuntimeGoalRequest'
+      responses:
+        "204":
+          description: No Content
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Pause or clear a runtime-owned goal
+      tags:
+      - sessions
+  /bots/{bot_id}/sessions/{session_id}/runtime-controls/mode:
+    patch:
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Permission mode
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.RuntimeModeRequest'
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/external.ModeState'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Set session runtime permission or planning mode
+      tags:
+      - sessions
   /bots/{bot_id}/sessions/{session_id}/status:
     get:
       description: Get aggregated info for a chat session including message count,
@@ -14646,6 +15031,87 @@ paths:
           schema:
             $ref: '#/definitions/handlers.ErrorResponse'
       summary: Rename a Bot workdir
+      tags:
+      - workdirs
+  /bots/{bot_id}/workdirs/{workdir_id}/git-branch:
+    get:
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Workdir ID
+        in: path
+        name: workdir_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/workdir.GitBranchResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Read a workdir's current Git branch
+      tags:
+      - workdirs
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: Bot ID
+        in: path
+        name: bot_id
+        required: true
+        type: string
+      - description: Workdir ID
+        in: path
+        name: workdir_id
+        required: true
+        type: string
+      - description: Local branch
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/workdir.SwitchGitBranchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/workdir.GitBranchResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: Switch a workdir to an existing local Git branch
       tags:
       - workdirs
   /bots/{bot_id}/workspace-targets:

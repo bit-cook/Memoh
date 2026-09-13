@@ -166,16 +166,6 @@ func (q *Queries) CreateUserRuntime(ctx context.Context, arg CreateUserRuntimePa
 }
 
 const deleteBotRemoteRuntimeMount = `-- name: DeleteBotRemoteRuntimeMount :one
-WITH deleted_apps AS (
-  DELETE FROM bot_app_installations AS app
-  USING bot_remote_runtime_bindings AS binding
-  WHERE app.team_id = public.memoh_current_team_id()
-    AND app.bot_id = binding.bot_id
-    AND app.workspace_target_id = binding.id::text
-    AND binding.team_id = public.memoh_current_team_id()
-    AND binding.bot_id = $1
-    AND binding.id = $2
-)
 DELETE FROM bot_remote_runtime_bindings AS binding
 WHERE binding.team_id = public.memoh_current_team_id()
   AND binding.bot_id = $1
@@ -196,15 +186,6 @@ func (q *Queries) DeleteBotRemoteRuntimeMount(ctx context.Context, arg DeleteBot
 }
 
 const deleteBotRemoteRuntimeMountsByRuntime = `-- name: DeleteBotRemoteRuntimeMountsByRuntime :exec
-WITH deleted_apps AS (
-  DELETE FROM bot_app_installations AS app
-  USING bot_remote_runtime_bindings AS binding
-  WHERE app.team_id = public.memoh_current_team_id()
-    AND app.bot_id = binding.bot_id
-    AND app.workspace_target_id = binding.id::text
-    AND binding.team_id = public.memoh_current_team_id()
-    AND binding.runtime_id = $1
-)
 DELETE FROM bot_remote_runtime_bindings AS binding
 WHERE binding.team_id = public.memoh_current_team_id()
   AND binding.runtime_id = $1

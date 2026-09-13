@@ -151,7 +151,7 @@ func TestRunMidStreamRetryLoopsOnRetryableStreamError(t *testing.T) {
 	ch := make(chan StreamEvent, 256)
 	result, aborted := New(Deps{}).runMidStreamRetry(
 		context.Background(), streamCtx, cancel, newToolAbortRegistry(), ch,
-		cfg, nil, nil, nil,
+		cfg, nil, nil, newToolExecutionMetadataRegistry(nil), nil,
 		&sdk.StreamResult{}, &stepMessageCapture{}, nil,
 		&interruptedStepCapture{}, 0, "api error 429: initial failure",
 		&strings.Builder{}, nil,
@@ -206,7 +206,7 @@ func TestRunMidStreamRetryExhaustsAttemptsOnPersistent429(t *testing.T) {
 	ch := make(chan StreamEvent, 256)
 	result, aborted := New(Deps{}).runMidStreamRetry(
 		context.Background(), streamCtx, cancel, newToolAbortRegistry(), ch,
-		cfg, nil, nil, nil,
+		cfg, nil, nil, newToolExecutionMetadataRegistry(nil), nil,
 		prevResult, &stepMessageCapture{}, nil,
 		&interruptedStepCapture{}, 0, "api error 429: initial failure",
 		&strings.Builder{}, nil,
@@ -249,7 +249,7 @@ func TestRunMidStreamRetryStopsOnNonRetryableStreamError(t *testing.T) {
 	ch := make(chan StreamEvent, 256)
 	_, aborted := New(Deps{}).runMidStreamRetry(
 		context.Background(), streamCtx, cancel, newToolAbortRegistry(), ch,
-		cfg, nil, nil, nil,
+		cfg, nil, nil, newToolExecutionMetadataRegistry(nil), nil,
 		&sdk.StreamResult{}, &stepMessageCapture{}, nil,
 		&interruptedStepCapture{}, 0, "api error 429: initial failure",
 		&strings.Builder{}, nil,
@@ -303,7 +303,7 @@ func TestRunMidStreamRetryFoldsCommittedStepIntoNextAttempt(t *testing.T) {
 	ch := make(chan StreamEvent, 256)
 	result, aborted := New(Deps{}).runMidStreamRetry(
 		context.Background(), streamCtx, cancel, newToolAbortRegistry(), ch,
-		cfg, tools, nil, nil,
+		cfg, tools, nil, newToolExecutionMetadataRegistry(nil), nil,
 		&sdk.StreamResult{}, &stepMessageCapture{}, onStepCommitted,
 		&interruptedStepCapture{}, 0, "api error 429: initial failure",
 		&strings.Builder{}, nil,
@@ -357,7 +357,7 @@ func TestRunMidStreamRetryBackoffHonorsContextCancel(t *testing.T) {
 		ch := make(chan StreamEvent, 256)
 		_, aborted := New(Deps{}).runMidStreamRetry(
 			context.Background(), streamCtx, cancel, newToolAbortRegistry(), ch,
-			cfg, nil, nil, nil,
+			cfg, nil, nil, newToolExecutionMetadataRegistry(nil), nil,
 			&sdk.StreamResult{}, &stepMessageCapture{}, nil,
 			&interruptedStepCapture{}, 0, "api error 429: initial failure",
 			&strings.Builder{}, nil,

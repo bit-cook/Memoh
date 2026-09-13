@@ -13,24 +13,23 @@ import (
 
 const claimBotDependencyOperation = `-- name: ClaimBotDependencyOperation :one
 INSERT INTO bot_dependency_installations (
-  bot_id, workspace_target_id, dependency_id, source, status,
+  bot_id, dependency_id, source, status,
   installed_version, manifest_digest, source_url, registry_id, definition_revision, operation_id
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-ON CONFLICT (team_id, bot_id, workspace_target_id, dependency_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+ON CONFLICT (team_id, bot_id, dependency_id)
 DO UPDATE SET status = EXCLUDED.status,
               last_error = '',
               operation_id = EXCLUDED.operation_id,
               updated_at = now()
 WHERE bot_dependency_installations.status NOT IN ('installing', 'updating', 'removing')
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 `
 
 type ClaimBotDependencyOperationParams struct {
 	BotID              pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID  string      `json:"workspace_target_id"`
 	DependencyID       string      `json:"dependency_id"`
 	Source             string      `json:"source"`
 	Status             string      `json:"status"`
@@ -45,7 +44,6 @@ type ClaimBotDependencyOperationParams struct {
 func (q *Queries) ClaimBotDependencyOperation(ctx context.Context, arg ClaimBotDependencyOperationParams) (BotDependencyInstallation, error) {
 	row := q.db.QueryRow(ctx, claimBotDependencyOperation,
 		arg.BotID,
-		arg.WorkspaceTargetID,
 		arg.DependencyID,
 		arg.Source,
 		arg.Status,
@@ -61,7 +59,6 @@ func (q *Queries) ClaimBotDependencyOperation(ctx context.Context, arg ClaimBotD
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.DependencyID,
 		&i.Source,
 		&i.Status,
@@ -84,19 +81,17 @@ const deleteBotDependencyInstallation = `-- name: DeleteBotDependencyInstallatio
 DELETE FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
-  AND workspace_target_id = $2
-  AND dependency_id = $3
+  AND dependency_id = $2
   AND operation_id = ''
 `
 
 type DeleteBotDependencyInstallationParams struct {
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-	DependencyID      string      `json:"dependency_id"`
+	BotID        pgtype.UUID `json:"bot_id"`
+	DependencyID string      `json:"dependency_id"`
 }
 
 func (q *Queries) DeleteBotDependencyInstallation(ctx context.Context, arg DeleteBotDependencyInstallationParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteBotDependencyInstallation, arg.BotID, arg.WorkspaceTargetID, arg.DependencyID)
+	result, err := q.db.Exec(ctx, deleteBotDependencyInstallation, arg.BotID, arg.DependencyID)
 	if err != nil {
 		return 0, err
 	}
@@ -107,34 +102,26 @@ const deleteBotDependencyOperation = `-- name: DeleteBotDependencyOperation :one
 DELETE FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
-  AND workspace_target_id = $2
-  AND dependency_id = $3
-  AND operation_id = $4 AND operation_id <> ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+  AND dependency_id = $2
+  AND operation_id = $3 AND operation_id <> ''
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 `
 
 type DeleteBotDependencyOperationParams struct {
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-	DependencyID      string      `json:"dependency_id"`
-	OperationID       string      `json:"operation_id"`
+	BotID        pgtype.UUID `json:"bot_id"`
+	DependencyID string      `json:"dependency_id"`
+	OperationID  string      `json:"operation_id"`
 }
 
 func (q *Queries) DeleteBotDependencyOperation(ctx context.Context, arg DeleteBotDependencyOperationParams) (BotDependencyInstallation, error) {
-	row := q.db.QueryRow(ctx, deleteBotDependencyOperation,
-		arg.BotID,
-		arg.WorkspaceTargetID,
-		arg.DependencyID,
-		arg.OperationID,
-	)
+	row := q.db.QueryRow(ctx, deleteBotDependencyOperation, arg.BotID, arg.DependencyID, arg.OperationID)
 	var i BotDependencyInstallation
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.DependencyID,
 		&i.Source,
 		&i.Status,
@@ -169,10 +156,9 @@ SET source = $1,
     updated_at = now()
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $11
-  AND workspace_target_id = $12
-  AND dependency_id = $13
-  AND operation_id = $14 AND operation_id <> ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+  AND dependency_id = $12
+  AND operation_id = $13 AND operation_id <> ''
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 `
@@ -189,7 +175,6 @@ type FinishBotDependencyOperationParams struct {
 	RegistryID         string             `json:"registry_id"`
 	DefinitionRevision string             `json:"definition_revision"`
 	BotID              pgtype.UUID        `json:"bot_id"`
-	WorkspaceTargetID  string             `json:"workspace_target_id"`
 	DependencyID       string             `json:"dependency_id"`
 	OperationID        string             `json:"operation_id"`
 }
@@ -207,7 +192,6 @@ func (q *Queries) FinishBotDependencyOperation(ctx context.Context, arg FinishBo
 		arg.RegistryID,
 		arg.DefinitionRevision,
 		arg.BotID,
-		arg.WorkspaceTargetID,
 		arg.DependencyID,
 		arg.OperationID,
 	)
@@ -216,7 +200,6 @@ func (q *Queries) FinishBotDependencyOperation(ctx context.Context, arg FinishBo
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.DependencyID,
 		&i.Source,
 		&i.Status,
@@ -236,31 +219,28 @@ func (q *Queries) FinishBotDependencyOperation(ctx context.Context, arg FinishBo
 }
 
 const getBotDependencyInstallation = `-- name: GetBotDependencyInstallation :one
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+SELECT id, team_id, bot_id, dependency_id, source, status,
        installed_version, latest_version, last_checked_at, last_error,
        manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
-  AND workspace_target_id = $2
-  AND dependency_id = $3
+  AND dependency_id = $2
 LIMIT 1
 `
 
 type GetBotDependencyInstallationParams struct {
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-	DependencyID      string      `json:"dependency_id"`
+	BotID        pgtype.UUID `json:"bot_id"`
+	DependencyID string      `json:"dependency_id"`
 }
 
 func (q *Queries) GetBotDependencyInstallation(ctx context.Context, arg GetBotDependencyInstallationParams) (BotDependencyInstallation, error) {
-	row := q.db.QueryRow(ctx, getBotDependencyInstallation, arg.BotID, arg.WorkspaceTargetID, arg.DependencyID)
+	row := q.db.QueryRow(ctx, getBotDependencyInstallation, arg.BotID, arg.DependencyID)
 	var i BotDependencyInstallation
 	err := row.Scan(
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.DependencyID,
 		&i.Source,
 		&i.Status,
@@ -280,13 +260,13 @@ func (q *Queries) GetBotDependencyInstallation(ctx context.Context, arg GetBotDe
 }
 
 const listBotDependencyInstallations = `-- name: ListBotDependencyInstallations :many
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+SELECT id, team_id, bot_id, dependency_id, source, status,
        installed_version, latest_version, last_checked_at, last_error,
        manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $1
-ORDER BY workspace_target_id, dependency_id
+ORDER BY dependency_id
 `
 
 func (q *Queries) ListBotDependencyInstallations(ctx context.Context, botID pgtype.UUID) ([]BotDependencyInstallation, error) {
@@ -302,7 +282,6 @@ func (q *Queries) ListBotDependencyInstallations(ctx context.Context, botID pgty
 			&i.ID,
 			&i.TeamID,
 			&i.BotID,
-			&i.WorkspaceTargetID,
 			&i.DependencyID,
 			&i.Source,
 			&i.Status,
@@ -329,13 +308,13 @@ func (q *Queries) ListBotDependencyInstallations(ctx context.Context, botID pgty
 }
 
 const listBotDependencyInstallationsByStatus = `-- name: ListBotDependencyInstallationsByStatus :many
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+SELECT id, team_id, bot_id, dependency_id, source, status,
        installed_version, latest_version, last_checked_at, last_error,
        manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 FROM bot_dependency_installations
 WHERE team_id = public.memoh_current_team_id()
   AND status = $1
-ORDER BY bot_id, workspace_target_id, dependency_id
+ORDER BY bot_id, dependency_id
 `
 
 func (q *Queries) ListBotDependencyInstallationsByStatus(ctx context.Context, status string) ([]BotDependencyInstallation, error) {
@@ -351,62 +330,6 @@ func (q *Queries) ListBotDependencyInstallationsByStatus(ctx context.Context, st
 			&i.ID,
 			&i.TeamID,
 			&i.BotID,
-			&i.WorkspaceTargetID,
-			&i.DependencyID,
-			&i.Source,
-			&i.Status,
-			&i.InstalledVersion,
-			&i.LatestVersion,
-			&i.LastCheckedAt,
-			&i.LastError,
-			&i.ManifestDigest,
-			&i.SourceUrl,
-			&i.RegistryID,
-			&i.DefinitionRevision,
-			&i.OperationID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listBotDependencyInstallationsForTarget = `-- name: ListBotDependencyInstallationsForTarget :many
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
-       installed_version, latest_version, last_checked_at, last_error,
-       manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
-FROM bot_dependency_installations
-WHERE team_id = public.memoh_current_team_id()
-  AND bot_id = $1
-  AND workspace_target_id = $2
-ORDER BY dependency_id
-`
-
-type ListBotDependencyInstallationsForTargetParams struct {
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-}
-
-func (q *Queries) ListBotDependencyInstallationsForTarget(ctx context.Context, arg ListBotDependencyInstallationsForTargetParams) ([]BotDependencyInstallation, error) {
-	rows, err := q.db.Query(ctx, listBotDependencyInstallationsForTarget, arg.BotID, arg.WorkspaceTargetID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []BotDependencyInstallation
-	for rows.Next() {
-		var i BotDependencyInstallation
-		if err := rows.Scan(
-			&i.ID,
-			&i.TeamID,
-			&i.BotID,
-			&i.WorkspaceTargetID,
 			&i.DependencyID,
 			&i.Source,
 			&i.Status,
@@ -433,7 +356,7 @@ func (q *Queries) ListBotDependencyInstallationsForTarget(ctx context.Context, a
 }
 
 const listStaleBotDependencyOperations = `-- name: ListStaleBotDependencyOperations :many
-SELECT id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+SELECT id, team_id, bot_id, dependency_id, source, status,
        installed_version, latest_version, last_checked_at, last_error,
        manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 FROM bot_dependency_installations
@@ -456,7 +379,6 @@ func (q *Queries) ListStaleBotDependencyOperations(ctx context.Context, olderTha
 			&i.ID,
 			&i.TeamID,
 			&i.BotID,
-			&i.WorkspaceTargetID,
 			&i.DependencyID,
 			&i.Source,
 			&i.Status,
@@ -496,10 +418,9 @@ SET source = COALESCE($1::text, source),
     updated_at = now()
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $10
-  AND workspace_target_id = $11
-  AND dependency_id = $12
+  AND dependency_id = $11
   AND operation_id = ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 `
@@ -515,7 +436,6 @@ type UpdateBotDependencyInstallationObservedParams struct {
 	RegistryID         pgtype.Text        `json:"registry_id"`
 	DefinitionRevision pgtype.Text        `json:"definition_revision"`
 	BotID              pgtype.UUID        `json:"bot_id"`
-	WorkspaceTargetID  string             `json:"workspace_target_id"`
 	DependencyID       string             `json:"dependency_id"`
 }
 
@@ -531,7 +451,6 @@ func (q *Queries) UpdateBotDependencyInstallationObserved(ctx context.Context, a
 		arg.RegistryID,
 		arg.DefinitionRevision,
 		arg.BotID,
-		arg.WorkspaceTargetID,
 		arg.DependencyID,
 	)
 	var i BotDependencyInstallation
@@ -539,7 +458,6 @@ func (q *Queries) UpdateBotDependencyInstallationObserved(ctx context.Context, a
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.DependencyID,
 		&i.Source,
 		&i.Status,
@@ -565,20 +483,18 @@ SET status = $1,
     updated_at = now()
 WHERE team_id = public.memoh_current_team_id()
   AND bot_id = $3
-  AND workspace_target_id = $4
-  AND dependency_id = $5
+  AND dependency_id = $4
   AND operation_id = ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 `
 
 type UpdateBotDependencyInstallationStatusParams struct {
-	Status            string      `json:"status"`
-	LastError         string      `json:"last_error"`
-	BotID             pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID string      `json:"workspace_target_id"`
-	DependencyID      string      `json:"dependency_id"`
+	Status       string      `json:"status"`
+	LastError    string      `json:"last_error"`
+	BotID        pgtype.UUID `json:"bot_id"`
+	DependencyID string      `json:"dependency_id"`
 }
 
 func (q *Queries) UpdateBotDependencyInstallationStatus(ctx context.Context, arg UpdateBotDependencyInstallationStatusParams) (BotDependencyInstallation, error) {
@@ -586,7 +502,6 @@ func (q *Queries) UpdateBotDependencyInstallationStatus(ctx context.Context, arg
 		arg.Status,
 		arg.LastError,
 		arg.BotID,
-		arg.WorkspaceTargetID,
 		arg.DependencyID,
 	)
 	var i BotDependencyInstallation
@@ -594,7 +509,6 @@ func (q *Queries) UpdateBotDependencyInstallationStatus(ctx context.Context, arg
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.DependencyID,
 		&i.Source,
 		&i.Status,
@@ -615,11 +529,11 @@ func (q *Queries) UpdateBotDependencyInstallationStatus(ctx context.Context, arg
 
 const upsertBotDependencyInstallationIntent = `-- name: UpsertBotDependencyInstallationIntent :one
 INSERT INTO bot_dependency_installations (
-  bot_id, workspace_target_id, dependency_id, source, status,
+  bot_id, dependency_id, source, status,
   installed_version, manifest_digest, source_url, registry_id, definition_revision
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-ON CONFLICT (team_id, bot_id, workspace_target_id, dependency_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (team_id, bot_id, dependency_id)
 DO UPDATE SET source = EXCLUDED.source,
               last_error = '',
               status = EXCLUDED.status,
@@ -629,14 +543,13 @@ DO UPDATE SET source = EXCLUDED.source,
               definition_revision = EXCLUDED.definition_revision,
               updated_at = now()
 WHERE bot_dependency_installations.operation_id = ''
-RETURNING id, team_id, bot_id, workspace_target_id, dependency_id, source, status,
+RETURNING id, team_id, bot_id, dependency_id, source, status,
           installed_version, latest_version, last_checked_at, last_error,
           manifest_digest, source_url, registry_id, definition_revision, operation_id, created_at, updated_at
 `
 
 type UpsertBotDependencyInstallationIntentParams struct {
 	BotID              pgtype.UUID `json:"bot_id"`
-	WorkspaceTargetID  string      `json:"workspace_target_id"`
 	DependencyID       string      `json:"dependency_id"`
 	Source             string      `json:"source"`
 	Status             string      `json:"status"`
@@ -650,7 +563,6 @@ type UpsertBotDependencyInstallationIntentParams struct {
 func (q *Queries) UpsertBotDependencyInstallationIntent(ctx context.Context, arg UpsertBotDependencyInstallationIntentParams) (BotDependencyInstallation, error) {
 	row := q.db.QueryRow(ctx, upsertBotDependencyInstallationIntent,
 		arg.BotID,
-		arg.WorkspaceTargetID,
 		arg.DependencyID,
 		arg.Source,
 		arg.Status,
@@ -665,7 +577,6 @@ func (q *Queries) UpsertBotDependencyInstallationIntent(ctx context.Context, arg
 		&i.ID,
 		&i.TeamID,
 		&i.BotID,
-		&i.WorkspaceTargetID,
 		&i.DependencyID,
 		&i.Source,
 		&i.Status,

@@ -111,7 +111,7 @@ type Service struct {
 	background                *background.Manager
 	operationSessionValidator func(context.Context, string, string) error
 	resolverMu                sync.Mutex
-	// installs maps a (bot, target, dependency) to the background install the
+	// installs maps a (bot, dependency) to the background install the
 	// resolver started for it, until that task finishes.
 	installs map[InstallationKey]string
 	// launched remembers the path ResolveLauncher last handed out per key so
@@ -173,7 +173,7 @@ func NewService(opts Options) *Service {
 	return s
 }
 
-// Entry is one catalog dependency as seen for a (bot, target) pair after
+// Entry is one catalog dependency as seen for a bot after
 // reconciliation.
 type Entry struct {
 	Dependency catalog.Dependency
@@ -206,19 +206,18 @@ type Entry struct {
 }
 
 // ListResult is the reconciled view of every catalog dependency for one
-// (bot, target) pair.
+// bot.
 type ListResult struct {
 	CatalogStale     bool
 	CatalogFetchedAt time.Time
 	// Platform is zero when the workspace is not running and was never
 	// probed.
 	Platform Platform
-	// Workspace is the target's state; Entries carry no discovery data
+	// Workspace is the bot workspace state; Entries carry no discovery data
 	// unless it is WorkspaceRunning.
 	Workspace WorkspaceState
 	// DataRoot is the workspace data root every managed dependency lives
-	// below. It is empty when the target cannot be resolved,
-	// which only happens for offline remote targets.
+	// below, inside the isolated workspace.
 	DataRoot string
 	Entries  []Entry
 	// DiscoveryError is set when the workspace is running but could not be
@@ -265,26 +264,32 @@ type OperationResult struct {
 // snapshot when one is fresh. Reconciliation writes back to the store: it
 // flips confirmed records between installed and missing, corrects observed
 // facts, and adopts unrecorded copies.
-func (s *Service) List(ctx context.Context, botID, targetID string) (ListResult, error) {
-	return s.list(ctx, botID, targetID, false)
+func (s *Service) List(ctx context.Context, botID string) (ListResult, error) {
+	return s.list(ctx, botID, false)
 }
 
 // Refresh is List with a forced re-discovery.
-func (s *Service) Refresh(ctx context.Context, botID, targetID string) (ListResult, error) {
-	return s.list(ctx, botID, targetID, true)
+func (s *Service) Refresh(ctx context.Context, botID string) (ListResult, error) {
+	return s.list(ctx, botID, true)
 }
 
-func (s *Service) list(ctx context.Context, botID, targetID string, force bool) (ListResult, error) {
+// EnsureRunning starts a stopped native workspace the way a mutating
+// operation would, so a caller can act on live discovery facts.
+func (s *Service) EnsureRunning(ctx context.Context, botID string) error {
+	return s.ensureWorkspace(ctx, botID)
+}
+
+func (s *Service) list(ctx context.Context, botID string, force bool) (ListResult, error) {
 	ctx, catalogResult, err := s.prepareCatalog(ctx, force, false)
 	if err != nil {
 		return ListResult{}, err
 	}
-	targetID = normalizeTargetID(targetID)
-	state, err := s.workspace.State(ctx, botID, targetID)
+
+	state, err := s.workspace.State(ctx, botID)
 	if err != nil {
 		return ListResult{}, fmt.Errorf("workspacedeps: workspace state: %w", err)
 	}
-	records, err := s.store.ListForTarget(ctx, botID, targetID)
+	records, err := s.store.ListForBot(ctx, botID)
 	if err != nil {
 		return ListResult{}, fmt.Errorf("workspacedeps: list installations: %w", err)
 	}
@@ -293,9 +298,8 @@ func (s *Service) list(ctx context.Context, botID, targetID string, force bool) 
 	}
 	byDep := indexRecords(records)
 	result := ListResult{Workspace: state, CatalogStale: catalogResult.Stale, CatalogFetchedAt: catalogResult.FetchedAt}
-	// The data root is a constant for native targets and a resolved mount for
-	// remote ones; an offline remote target simply has none to report.
-	if dataRoot, err := s.workspace.DataRoot(ctx, botID, targetID); err == nil {
+	// The data root always belongs to the isolated workspace.
+	if dataRoot, err := s.workspace.DataRoot(ctx, botID); err == nil {
 		result.DataRoot = dataRoot
 	}
 	deps := s.catalogFor(ctx).List()
@@ -303,7 +307,7 @@ func (s *Service) list(ctx context.Context, botID, targetID string, force bool) 
 	if state != WorkspaceRunning {
 		// A stopped workspace keeps its last probed platform in the cache,
 		// which is enough to grey out unsupported dependencies.
-		if snap, ok := s.cache.Get(botID, targetID); ok {
+		if snap, ok := s.cache.Get(botID); ok {
 			result.Platform = snap.Platform
 		}
 		for _, dep := range deps {
@@ -312,7 +316,7 @@ func (s *Service) list(ctx context.Context, botID, targetID string, force bool) 
 		return result, nil
 	}
 
-	snap, err := s.snapshot(ctx, botID, targetID, force)
+	snap, err := s.snapshot(ctx, botID, force)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ListResult{}, err
@@ -324,11 +328,10 @@ func (s *Service) list(ctx context.Context, botID, targetID string, force bool) 
 		// here; it keeps its own semantics above.
 		s.logger.Warn("workspace dependency discovery failed; listing records only",
 			slog.String("bot_id", botID),
-			slog.String("workspace_target_id", targetID),
 			slog.Any("error", err),
 		)
 		result.DiscoveryError = truncateMessage(err.Error())
-		if snap, ok := s.cache.Get(botID, targetID); ok {
+		if snap, ok := s.cache.Get(botID); ok {
 			result.Platform = snap.Platform
 		}
 		for _, dep := range deps {
@@ -338,7 +341,7 @@ func (s *Service) list(ctx context.Context, botID, targetID string, force bool) 
 	}
 	result.Platform = snap.Platform
 	for _, dep := range deps {
-		key := InstallationKey{BotID: botID, WorkspaceTargetID: targetID, DependencyID: dep.ID}
+		key := InstallationKey{BotID: botID, DependencyID: dep.ID}
 		entry, err := s.reconcile(ctx, key, dep, snap, byDep[dep.ID])
 		if err != nil {
 			return ListResult{}, err
@@ -348,15 +351,15 @@ func (s *Service) list(ctx context.Context, botID, targetID string, force bool) 
 	return result, nil
 }
 
-// snapshot returns the cached discovery for (bot, target) or performs one.
-func (s *Service) snapshot(ctx context.Context, botID, targetID string, force bool) (Snapshot, error) {
+// snapshot returns the cached discovery for the bot or performs one.
+func (s *Service) snapshot(ctx context.Context, botID string, force bool) (Snapshot, error) {
 	fingerprint := s.catalogFor(ctx).Fingerprint()
 	if !force {
-		if snap, ok := s.cache.Get(botID, targetID); ok && (s.provider == nil || snap.CatalogDigest == fingerprint) {
+		if snap, ok := s.cache.Get(botID); ok && (s.provider == nil || snap.CatalogDigest == fingerprint) {
 			return snap, nil
 		}
 	}
-	client, dataRoot, err := s.target(ctx, botID, targetID)
+	client, dataRoot, err := s.target(ctx, botID)
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -369,7 +372,7 @@ func (s *Service) snapshot(ctx context.Context, botID, targetID string, force bo
 		return Snapshot{}, err
 	}
 	snap := Snapshot{Platform: platform, Observed: observed, At: s.now(), CatalogDigest: fingerprint}
-	s.cache.Put(botID, targetID, snap)
+	s.cache.Put(botID, snap)
 	return snap, nil
 }
 
@@ -396,7 +399,8 @@ func (s *Service) reconcile(ctx context.Context, key InstallationKey, dep catalo
 		if !errors.Is(err, ErrBusy) {
 			return
 		}
-		current, getErr := s.store.Get(ctx, key)
+		current, getErr := s.store.Get(
+			ctx, key)
 		if getErr == nil {
 			entry = buildEntry(Entry{Dependency: dep, Observed: snap.Observed[dep.ID], PlatformSupported: dep.SupportsPlatform(snap.Platform.OS, snap.Platform.Arch, snap.Platform.Libc)}, dep, &current, snap.Observed[dep.ID])
 			err = nil
@@ -410,7 +414,8 @@ func (s *Service) reconcile(ctx context.Context, key InstallationKey, dep catalo
 	if rec != nil && rec.Status.InProgress() && !obs.LockHeld && receiptMatches(*rec, obs.Receipt) && obs.Receipt.Completed && s.locks.tryLock(key) {
 		defer s.locks.unlock(key)
 		// Another local caller may have completed between discovery and admission.
-		current, err := s.store.Get(ctx, key)
+		current, err := s.store.Get(
+			ctx, key)
 		if err != nil {
 			return Entry{}, err
 		}
@@ -420,7 +425,7 @@ func (s *Service) reconcile(ctx context.Context, key InstallationKey, dep catalo
 				return Entry{}, err
 			}
 			rec = recovered
-			if refreshed, err := s.snapshot(ctx, key.BotID, key.WorkspaceTargetID, true); err == nil {
+			if refreshed, err := s.snapshot(ctx, key.BotID, true); err == nil {
 				snap, obs = refreshed, refreshed.Observed[dep.ID]
 			}
 		} else {
@@ -440,7 +445,6 @@ func (s *Service) reconcile(ctx context.Context, key InstallationKey, dep catalo
 		}
 		s.logger.Warn("interrupted dependency operation marked failed",
 			slog.String("bot_id", key.BotID),
-			slog.String("workspace_target_id", key.WorkspaceTargetID),
 			slog.String("dependency_id", key.DependencyID),
 			slog.String("status", string(rec.Status)),
 		)
@@ -712,10 +716,10 @@ func availableActions(dep catalog.Dependency, rec *Installation, obs Observed) [
 		} else if rec != nil {
 			actions = append(actions, catalog.ActionReinstall)
 		}
-		imageCopy := rec != nil && rec.WorkspaceTargetID == TargetNative && (imageCandidate(obs).Path != "" || obs.Source == SourceToolkit)
+		imageCopy := rec != nil && (imageCandidate(obs).Path != "" || obs.Source == SourceToolkit)
 		if ActionSupported(dep, catalog.ActionRemove) && ((rec != nil && !obs.Present) || imageCopy) {
 			// Remove clears native image copies as well as missing/failed
-			// installation records; remote software stays recipe-owned.
+			// installation records.
 			actions = append(actions, catalog.ActionRemove)
 		}
 	default:
@@ -733,13 +737,13 @@ func availableActions(dep catalog.Dependency, rec *Installation, obs Observed) [
 // Preflight checks whether every dependency in depIDs is present. It never
 // starts a workspace: when the target cannot be inspected
 // Items is empty and Workspace says why.
-func (s *Service) Preflight(ctx context.Context, botID, targetID string, depIDs []string) (PreflightResult, error) {
+func (s *Service) Preflight(ctx context.Context, botID string, depIDs []string) (PreflightResult, error) {
 	ctx, _, err := s.prepareCatalog(ctx, false, false)
 	if err != nil {
 		return PreflightResult{}, err
 	}
-	targetID = normalizeTargetID(targetID)
-	state, err := s.workspace.State(ctx, botID, targetID)
+
+	state, err := s.workspace.State(ctx, botID)
 	if err != nil {
 		return PreflightResult{}, fmt.Errorf("workspacedeps: workspace state: %w", err)
 	}
@@ -747,7 +751,7 @@ func (s *Service) Preflight(ctx context.Context, botID, targetID string, depIDs 
 	if state != WorkspaceRunning {
 		return result, nil
 	}
-	snap, err := s.snapshot(ctx, botID, targetID, false)
+	snap, err := s.snapshot(ctx, botID, false)
 	if err != nil {
 		return PreflightResult{}, err
 	}
@@ -784,15 +788,15 @@ func preflightItem(cat *catalog.Catalog, snap Snapshot, depID string) PreflightI
 // version to install; empty means the manifest pin when there is one and
 // otherwise whatever the script considers latest. The version recorded is
 // the one the script reports, not the one requested. A stopped native
-// workspace is started first; a missing one or an offline remote target is
-// refused. For a dependency the image already ships the result
+// workspace is started first; a missing one is refused.
+// For a dependency the image already ships the result
 // is a managed overlay that shadows the image copy.
-func (s *Service) Install(ctx context.Context, botID, targetID, depID, version string, sink LogSink) (OperationResult, error) {
+func (s *Service) Install(ctx context.Context, botID, depID, version string, sink LogSink) (OperationResult, error) {
 	ctx, cancelOperation := context.WithCancel(ctx)
 	defer cancelOperation()
 	stopShutdown := s.cancelOnShutdown(cancelOperation)
 	defer stopShutdown()
-	op, err := s.begin(ctx, botID, targetID, depID, version, true)
+	op, err := s.begin(ctx, botID, depID, version, true)
 	if err != nil {
 		return OperationResult{}, err
 	}
@@ -805,12 +809,12 @@ func (s *Service) Install(ctx context.Context, botID, targetID, depID, version s
 
 // Update runs the update script, falling back to the install script when the
 // manifest has none. version follows the Install rules.
-func (s *Service) Update(ctx context.Context, botID, targetID, depID, version string, sink LogSink) (OperationResult, error) {
+func (s *Service) Update(ctx context.Context, botID, depID, version string, sink LogSink) (OperationResult, error) {
 	ctx, cancelOperation := context.WithCancel(ctx)
 	defer cancelOperation()
 	stopShutdown := s.cancelOnShutdown(cancelOperation)
 	defer stopShutdown()
-	op, err := s.begin(ctx, botID, targetID, depID, version, true)
+	op, err := s.begin(ctx, botID, depID, version, true)
 	if err != nil {
 		return OperationResult{}, err
 	}
@@ -821,12 +825,12 @@ func (s *Service) Update(ctx context.Context, botID, targetID, depID, version st
 // Reinstall runs the explicit reinstall script, or repeats install. Keeping
 // the existing tree until install commits its staged replacement preserves both
 // the working copy on failure and the previous version used by rollback.
-func (s *Service) Reinstall(ctx context.Context, botID, targetID, depID, version string, sink LogSink) (OperationResult, error) {
+func (s *Service) Reinstall(ctx context.Context, botID, depID, version string, sink LogSink) (OperationResult, error) {
 	ctx, cancelOperation := context.WithCancel(ctx)
 	defer cancelOperation()
 	stopShutdown := s.cancelOnShutdown(cancelOperation)
 	defer stopShutdown()
-	op, err := s.begin(ctx, botID, targetID, depID, version, true)
+	op, err := s.begin(ctx, botID, depID, version, true)
 	if err != nil {
 		return OperationResult{}, err
 	}
@@ -837,12 +841,12 @@ func (s *Service) Reinstall(ctx context.Context, botID, targetID, depID, version
 // Remove runs the remove script, deletes the shims, and drops the record.
 // Native workspaces also remove the image's copy so discovery cannot adopt
 // the same dependency again immediately after a successful removal.
-func (s *Service) Remove(ctx context.Context, botID, targetID, depID string, sink LogSink) (OperationResult, error) {
+func (s *Service) Remove(ctx context.Context, botID, depID string, sink LogSink) (OperationResult, error) {
 	ctx, cancelOperation := context.WithCancel(ctx)
 	defer cancelOperation()
 	stopShutdown := s.cancelOnShutdown(cancelOperation)
 	defer stopShutdown()
-	op, err := s.begin(ctx, botID, targetID, depID, "", false)
+	op, err := s.begin(ctx, botID, depID, "", false)
 	if err != nil {
 		return OperationResult{}, err
 	}
@@ -877,7 +881,7 @@ func (s *Service) Remove(ctx context.Context, botID, targetID, depID string, sin
 // Rollback switches `current` back to the previous version recorded in
 // state.json. It runs no catalog script and needs no network;
 // the only workspace command is the symlink switch through the prelude.
-func (s *Service) Rollback(ctx context.Context, botID, targetID, depID string) (OperationResult, error) {
+func (s *Service) Rollback(ctx context.Context, botID, depID string) (OperationResult, error) {
 	ctx, cancelOperation := context.WithCancel(ctx)
 	defer cancelOperation()
 	stopShutdown := s.cancelOnShutdown(cancelOperation)
@@ -886,7 +890,7 @@ func (s *Service) Rollback(ctx context.Context, botID, targetID, depID string) (
 	if err != nil {
 		return OperationResult{}, err
 	}
-	op, err := s.begin(ctx, botID, targetID, depID, "", false)
+	op, err := s.begin(ctx, botID, depID, "", false)
 	if err != nil {
 		return OperationResult{}, err
 	}
@@ -938,20 +942,20 @@ func (s *Service) Rollback(ctx context.Context, botID, targetID, depID string) (
 }
 
 // CheckUpdates is the manual refresh: it re-discovers the
-// target, then runs check_update for every present, unpinned dependency with
+// workspace, then runs check_update for every present, unpinned dependency with
 // a check_update script and writes the result to its record.
-func (s *Service) CheckUpdates(ctx context.Context, botID, targetID string) (ListResult, error) {
+func (s *Service) CheckUpdates(ctx context.Context, botID string) (ListResult, error) {
 	ctx, _, err := s.prepareCatalog(ctx, true, false)
 	if err != nil {
 		return ListResult{}, err
 	}
-	targetID = normalizeTargetID(targetID)
-	result, err := s.list(ctx, botID, targetID, true)
+
+	result, err := s.list(ctx, botID, true)
 	if err != nil || result.Workspace != WorkspaceRunning || result.DiscoveryError != "" {
 		// Without discovery facts there is nothing to check against.
 		return result, err
 	}
-	client, dataRoot, err := s.target(ctx, botID, targetID)
+	client, dataRoot, err := s.target(ctx, botID)
 	if err != nil {
 		return ListResult{}, err
 	}
@@ -960,7 +964,7 @@ func (s *Service) CheckUpdates(ctx context.Context, botID, targetID string) (Lis
 		if !upstreamCheckable(entry.Dependency) || !entry.Observed.Present || entry.Installation == nil {
 			continue
 		}
-		key := InstallationKey{BotID: botID, WorkspaceTargetID: targetID, DependencyID: entry.Dependency.ID}
+		key := InstallationKey{BotID: botID, DependencyID: entry.Dependency.ID}
 		if !s.locks.tryLock(key) {
 			continue
 		}
@@ -975,7 +979,7 @@ func (s *Service) CheckUpdates(ctx context.Context, botID, targetID string) (Lis
 	if !checked {
 		return result, nil
 	}
-	return s.list(ctx, botID, targetID, false)
+	return s.list(ctx, botID, false)
 }
 
 // ScriptPreview returns the exact stdin text the runner would feed to `sh -s`
@@ -1019,19 +1023,15 @@ func (s *Service) ReapStale(ctx context.Context) (int, error) {
 	}
 	recovered := 0
 	var errs []error
-	type targetKey struct{ bot, target string }
-	snapshots := make(map[targetKey]Snapshot)
+	snapshots := make(map[string]Snapshot)
 	for _, rec := range records {
-		key := InstallationKey{BotID: rec.BotID, WorkspaceTargetID: rec.WorkspaceTargetID, DependencyID: rec.DependencyID}
+		key := InstallationKey{BotID: rec.BotID, DependencyID: rec.DependencyID}
 		if !rec.Status.InProgress() || s.locks.locked(key) {
 			continue
 		}
-		state, err := s.workspace.State(ctx, rec.BotID, rec.WorkspaceTargetID)
+		state, err := s.workspace.State(ctx, rec.BotID)
 		if err != nil {
 			errs = append(errs, err)
-			continue
-		}
-		if state == WorkspaceRemoteOffline {
 			continue
 		}
 		if state == WorkspaceNotRunning || state == WorkspaceMissing {
@@ -1043,15 +1043,15 @@ func (s *Service) ReapStale(ctx context.Context) (int, error) {
 		if !known {
 			continue
 		}
-		target := targetKey{rec.BotID, rec.WorkspaceTargetID}
-		snap, ok := snapshots[target]
+		botID := rec.BotID
+		snap, ok := snapshots[botID]
 		if !ok {
-			snap, err = s.snapshot(ctx, rec.BotID, rec.WorkspaceTargetID, true)
+			snap, err = s.snapshot(ctx, rec.BotID, true)
 			if err != nil {
 				errs = append(errs, err)
 				continue
 			}
-			snapshots[target] = snap
+			snapshots[botID] = snap
 		}
 		entry, err := s.reconcile(ctx, key, dep, snap, &rec)
 		if err != nil {
@@ -1094,12 +1094,12 @@ type operation struct {
 // begin validates the dependency, takes the in-memory lock, makes sure the
 // workspace can run scripts, and resolves everything the action needs. The
 // caller must release the returned operation.
-func (s *Service) begin(ctx context.Context, botID, targetID, depID, version string, requirePlatform bool) (*operation, error) {
+func (s *Service) begin(ctx context.Context, botID, depID, version string, requirePlatform bool) (*operation, error) {
 	version = strings.TrimSpace(version)
 	if !ValidRequestedVersion(version) {
 		return nil, ErrInvalidVersion
 	}
-	targetID = normalizeTargetID(targetID)
+
 	cat, err := s.operationCatalog(ctx, depID)
 	if err != nil {
 		return nil, err
@@ -1108,7 +1108,7 @@ func (s *Service) begin(ctx context.Context, botID, targetID, depID, version str
 	if !ok {
 		return nil, ErrDependencyNotFound
 	}
-	key := InstallationKey{BotID: botID, WorkspaceTargetID: targetID, DependencyID: dep.ID}
+	key := InstallationKey{BotID: botID, DependencyID: dep.ID}
 	unlock, err := s.acquireOperation(ctx, key)
 	if err != nil {
 		return nil, err
@@ -1131,15 +1131,15 @@ func (s *Service) begin(ctx context.Context, botID, targetID, depID, version str
 }
 
 func (s *Service) prepare(ctx context.Context, op *operation, requirePlatform bool) error {
-	botID, targetID := op.key.BotID, op.key.WorkspaceTargetID
-	if err := s.ensureWorkspace(ctx, botID, targetID); err != nil {
+	botID := op.key.BotID
+	if err := s.ensureWorkspace(ctx, botID); err != nil {
 		return err
 	}
-	client, dataRoot, err := s.target(ctx, botID, targetID)
+	client, dataRoot, err := s.target(ctx, botID)
 	if err != nil {
 		return err
 	}
-	platform, err := s.platformFor(ctx, botID, targetID, client)
+	platform, err := s.platformFor(ctx, botID, client)
 	if err != nil {
 		return err
 	}
@@ -1157,8 +1157,8 @@ func (s *Service) prepare(ctx context.Context, op *operation, requirePlatform bo
 // ensureWorkspace makes the target runnable for a user-requested operation:
 // a stopped native container is started, anything else that is
 // not running is refused.
-func (s *Service) ensureWorkspace(ctx context.Context, botID, targetID string) error {
-	state, err := s.workspace.State(ctx, botID, targetID)
+func (s *Service) ensureWorkspace(ctx context.Context, botID string) error {
+	state, err := s.workspace.State(ctx, botID)
 	if err != nil {
 		return fmt.Errorf("workspacedeps: workspace state: %w", err)
 	}
@@ -1166,26 +1166,24 @@ func (s *Service) ensureWorkspace(ctx context.Context, botID, targetID string) e
 	case WorkspaceRunning:
 		return nil
 	case WorkspaceNotRunning:
-		if err := s.workspace.EnsureRunning(ctx, botID, targetID); err != nil {
+		if err := s.workspace.EnsureRunning(ctx, botID); err != nil {
 			return fmt.Errorf("%w: %w", ErrWorkspaceNotRunning, err)
 		}
 		return nil
 	case WorkspaceMissing:
 		return ErrWorkspaceMissing
-	case WorkspaceRemoteOffline:
-		return ErrRemoteOffline
 	default:
 		return fmt.Errorf("workspacedeps: unknown workspace state %q", state)
 	}
 }
 
-// target resolves the bridge client and data root of (bot, target).
-func (s *Service) target(ctx context.Context, botID, targetID string) (*bridge.Client, string, error) {
-	client, err := s.workspace.Client(ctx, botID, targetID)
+// target resolves the bridge client and data root of the bot workspace.
+func (s *Service) target(ctx context.Context, botID string) (*bridge.Client, string, error) {
+	client, err := s.workspace.Client(ctx, botID)
 	if err != nil {
 		return nil, "", fmt.Errorf("workspacedeps: workspace client: %w", err)
 	}
-	dataRoot, err := s.workspace.DataRoot(ctx, botID, targetID)
+	dataRoot, err := s.workspace.DataRoot(ctx, botID)
 	if err != nil {
 		return nil, "", fmt.Errorf("workspacedeps: workspace data root: %w", err)
 	}
@@ -1193,8 +1191,8 @@ func (s *Service) target(ctx context.Context, botID, targetID string) (*bridge.C
 }
 
 // platformFor reuses the cached probe when there is one.
-func (s *Service) platformFor(ctx context.Context, botID, targetID string, client *bridge.Client) (Platform, error) {
-	if snap, ok := s.cache.Get(botID, targetID); ok {
+func (s *Service) platformFor(ctx context.Context, botID string, client *bridge.Client) (Platform, error) {
+	if snap, ok := s.cache.Get(botID); ok {
 		return snap.Platform, nil
 	}
 	return s.probe(ctx, client)
@@ -1272,7 +1270,12 @@ func (s *Service) commit(ctx context.Context, op *operation, action catalog.Acti
 // left in progress.
 func (s *Service) record(ctx context.Context, op *operation, action catalog.Action, state State) (OperationResult, error) {
 	storeCtx := ctx
-	terminal, err := s.store.Get(storeCtx, op.key)
+	terminal, err := s.store.Get(
+
+		// runScript executes one catalog script for the operation. ErrLocked from the
+		// prelude means another Server instance holds the workspace lock and is
+		// reported as ErrBusy. A zero timeout uses the catalog timeout for action.
+		storeCtx, op.key)
 	if err != nil {
 		return OperationResult{}, s.fail(ctx, op, err)
 	}
@@ -1296,24 +1299,21 @@ func (s *Service) record(ctx context.Context, op *operation, action catalog.Acti
 	}, nil
 }
 
-// runScript executes one catalog script for the operation. ErrLocked from the
-// prelude means another Server instance holds the workspace lock and is
-// reported as ErrBusy. A zero timeout uses the catalog timeout for action.
 func (s *Service) runScript(ctx context.Context, op *operation, action catalog.Action, script, version, currentVersion string, timeout time.Duration, sink LogSink) (Result, error) {
 	if timeout <= 0 {
 		timeout = op.dep.Timeouts.Duration(action)
 	}
 	spec := RunSpec{
-		DepID:             op.dep.ID,
-		Action:            action,
-		Script:            actionScript(op.dep, action, script),
-		WorkspaceTargetID: op.key.WorkspaceTargetID,
-		Home:              op.home,
-		ShimDir:           op.shimDir,
-		Version:           version,
-		CurrentVersion:    currentVersion,
-		Platform:          op.platform,
-		Timeout:           timeout,
+		DepID:  op.dep.ID,
+		Action: action,
+		Script: actionScript(op.dep, action, script),
+
+		Home:           op.home,
+		ShimDir:        op.shimDir,
+		Version:        version,
+		CurrentVersion: currentVersion,
+		Platform:       op.platform,
+		Timeout:        timeout,
 	}
 	if s.scriptEnv != nil {
 		spec.ExtraEnv = s.scriptEnv(ctx)
@@ -1324,7 +1324,17 @@ func (s *Service) runScript(ctx context.Context, op *operation, action catalog.A
 		DefinitionRevision: op.dep.Revision, ManifestDigest: op.dep.ManifestDigest,
 		RequestedVersion: version, StartedAt: op.startedAt, Previous: op.previous,
 	}
-	result, err := s.run(ctx, op.client, spec, sink)
+	result, err := s.run(
+
+		// markInProgress moves the record into a transient status, creating it when
+		// the dependency was never recorded. It remembers what the record said
+		// before so a busy verdict from the prelude can put it back (restore).
+
+		// finalizeContext derives the context for the writes that record an
+		// operation's outcome: detached from the request's cancellation, so a closed
+		// dialog or a shutdown window cannot strand the record in progress, and
+		// bounded so a stuck store or bridge cannot hold the operation forever.
+		ctx, op.client, spec, sink)
 	op.receipt = result.Receipt
 	if errors.Is(err, ErrLocked) {
 		return result, fmt.Errorf("%w: %w", ErrBusy, err)
@@ -1332,11 +1342,14 @@ func (s *Service) runScript(ctx context.Context, op *operation, action catalog.A
 	return result, err
 }
 
-// markInProgress moves the record into a transient status, creating it when
-// the dependency was never recorded. It remembers what the record said
-// before so a busy verdict from the prelude can put it back (restore).
 func (s *Service) markInProgress(ctx context.Context, op *operation, status Status) error {
-	prior, err := s.store.Get(ctx, op.key)
+	prior, err := s.store.Get(
+
+		// fail records a failed operation and returns the cause. When the cause is
+		// that the request went away, last_error says so. A busy verdict means the
+		// instance holding the workspace lock owns the record's state: the row is put
+		// back to what it said before this operation touched it, never marked failed.
+		ctx, op.key)
 	if err != nil && !errors.Is(err, ErrInstallationNotFound) {
 		return err
 	}
@@ -1357,18 +1370,10 @@ func (s *Service) markInProgress(ctx context.Context, op *operation, status Stat
 	return nil
 }
 
-// finalizeContext derives the context for the writes that record an
-// operation's outcome: detached from the request's cancellation, so a closed
-// dialog or a shutdown window cannot strand the record in progress, and
-// bounded so a stuck store or bridge cannot hold the operation forever.
 func finalizeContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), finalizeTimeout)
 }
 
-// fail records a failed operation and returns the cause. When the cause is
-// that the request went away, last_error says so. A busy verdict means the
-// instance holding the workspace lock owns the record's state: the row is put
-// back to what it said before this operation touched it, never marked failed.
 func (s *Service) fail(ctx context.Context, op *operation, cause error) error {
 	if op.finalizing && op.receipt != nil && op.receipt.Completed && op.receipt.ExitCode == 0 && !errors.Is(cause, errInvalidResult) {
 		s.cache.Invalidate(op.key.BotID)
@@ -1390,7 +1395,18 @@ func (s *Service) fail(ctx context.Context, op *operation, cause error) error {
 	}
 	storeCtx, cancel := finalizeContext(ctx)
 	defer cancel()
-	terminal, err := s.store.Get(storeCtx, op.key)
+	terminal, err := s.store.Get(
+
+		// restore undoes markInProgress after the prelude reported the dependency's
+		// workspace lock as held by another Server instance. That
+		// instance owns the record, so the row goes back to what it said before this
+		// operation wrote to it, or away again when this operation created it.
+		// Leaving our own in-progress status behind would show an operation nobody
+		// runs and nobody could finish.
+		storeCtx,
+
+		// readState decodes the dependency's state.json; nil when there is none.
+		op.key)
 	if err == nil {
 		terminal.Status, terminal.LastError = StatusFailed, s.errorDetail(ctx, message)
 		_, err = s.store.FinishOperation(storeCtx, op.key, op.operationID, &terminal)
@@ -1406,12 +1422,6 @@ func (s *Service) fail(ctx context.Context, op *operation, cause error) error {
 	return cause
 }
 
-// restore undoes markInProgress after the prelude reported the dependency's
-// workspace lock as held by another Server instance. That
-// instance owns the record, so the row goes back to what it said before this
-// operation wrote to it, or away again when this operation created it.
-// Leaving our own in-progress status behind would show an operation nobody
-// runs and nobody could finish.
 func (s *Service) restore(ctx context.Context, op *operation) {
 	if !op.marked {
 		return
@@ -1429,7 +1439,6 @@ func (s *Service) restore(ctx context.Context, op *operation) {
 	op.marked = false
 }
 
-// readState decodes the dependency's state.json; nil when there is none.
 func (op *operation) readState(ctx context.Context) (*State, error) {
 	reader, err := op.client.ReadRaw(ctx, StatePath(op.home))
 	if err != nil {
@@ -1526,7 +1535,13 @@ func (s *Service) checkUpdate(ctx context.Context, client *bridge.Client, dataRo
 	if s.scriptEnv != nil {
 		spec.ExtraEnv = s.scriptEnv(ctx)
 	}
-	result, err := s.run(ctx, client, spec, nil)
+	result, err := s.run(
+
+		// recordCheck writes a check result to one record. Failures only touch
+		// last_error and last_checked_at; the status stays as it was.
+		// A busy verdict is not a check result at all — another operation holds the
+		// dependency — and leaves the record untouched.
+		ctx, client, spec, nil)
 	if err != nil {
 		if errors.Is(err, ErrLocked) {
 			return updateCheck{}, fmt.Errorf("%w: %w", ErrBusy, err)
@@ -1547,10 +1562,6 @@ func (s *Service) checkUpdate(ctx context.Context, client *bridge.Client, dataRo
 	return check, nil
 }
 
-// recordCheck writes a check result to one record. Failures only touch
-// last_error and last_checked_at; the status stays as it was.
-// A busy verdict is not a check result at all — another operation holds the
-// dependency — and leaves the record untouched.
 func (s *Service) recordCheck(ctx context.Context, key InstallationKey, check updateCheck, checkErr error) error {
 	if errors.Is(checkErr, ErrBusy) {
 		return nil
@@ -1634,8 +1645,7 @@ func (s *Service) catalogIDs(ctx context.Context) []string {
 	return ids
 }
 
-// operationLocks is the in-memory mutual exclusion per (bot, target,
-// dependency). Callers never wait: a held key means busy.
+// operationLocks is the in-memory mutual exclusion per (bot, dependency). Callers never wait: a held key means busy.
 type operationLocks struct {
 	mu   sync.Mutex
 	held map[InstallationKey]struct{}

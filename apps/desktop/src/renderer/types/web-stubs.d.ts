@@ -13,6 +13,11 @@ declare module '@memohai/web/router-guards/onboarding' {
   export function ensureOnboarding(): Promise<boolean>
 }
 
+declare module '@memohai/web/routes' {
+  import type { RouteRecordRaw } from 'vue-router'
+  export function createAppRoutes(platform: 'web' | 'desktop'): RouteRecordRaw[]
+}
+
 declare module '@memohai/web/router' {
   import type { Router } from 'vue-router'
   const router: Router

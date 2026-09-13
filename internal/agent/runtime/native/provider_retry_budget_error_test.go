@@ -66,6 +66,7 @@ func TestRunMidStreamRetrySuppressesRawErrorAfterStepBudgetCancellation(t *testi
 		cfg,
 		nil,
 		nil,
+		newToolExecutionMetadataRegistry(nil),
 		nil,
 		&sdk.StreamResult{},
 		&stepMessageCapture{},

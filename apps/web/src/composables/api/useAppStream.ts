@@ -33,7 +33,6 @@ export interface AppInstallTarget {
   appId: string
   revision: string
   /** Omitted → the Server uses the bot's current target. */
-  workspaceTargetId?: string
 }
 
 /** What an update touches: the release, the dependencies, or both. */
@@ -41,7 +40,6 @@ export interface AppUpdateSelection {
   release: boolean
   dependencies: string[]
   /** Omitted → the Server uses the bot's current target. */
-  workspaceTargetId?: string
 }
 
 export interface AppStreamOptions {
@@ -128,7 +126,6 @@ export async function* streamAppOperation(
           registry_id: install.registryId,
           app_id: install.appId,
           revision: install.revision,
-          workspace_target_id: install.workspaceTargetId || undefined,
         },
       })
       break
@@ -142,7 +139,6 @@ export async function* streamAppOperation(
         body: {
           registry_id: options.registryId,
           app_id: options.appId,
-          workspace_target_id: update.workspaceTargetId || undefined,
           release: update.release,
           dependencies: update.dependencies,
         },

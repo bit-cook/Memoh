@@ -35,29 +35,22 @@ export const BOT_APPS_QUERY_KEY = 'bot-apps'
 export const APP_CATEGORIES_QUERY_KEY = 'supermarket-categories'
 
 /**
- * Query key of one bot+target App list. `invalidateBotApps`
- * invalidates by the two-element prefix so every target of a bot refreshes.
+ * Query key of one bot App list. `invalidateBotApps`
+ * invalidates by the two-element prefix to refresh the bot.
  */
-export function botAppsQueryKey(botId: string, targetId: string): string[] {
-  return [BOT_APPS_QUERY_KEY, botId, targetId]
+export function botAppsQueryKey(botId: string): string[] {
+  return [BOT_APPS_QUERY_KEY, botId]
 }
 
-// The Server resolves an empty target to the bot's current one; an explicit
-// id is only sent when the caller picked one.
-function workspaceTargetQuery(targetId: string): { workspace_target_id: string } | undefined {
-  const trimmed = targetId.trim()
-  return trimmed ? { workspace_target_id: trimmed } : undefined
-}
-
-export function useBotAppsQuery(botId: Ref<string>, targetId: Ref<string>, forceRefresh?: Ref<boolean>) {
+export function useBotAppsQuery(botId: Ref<string>, forceRefresh?: Ref<boolean>) {
   return useQuery({
-    key: () => botAppsQueryKey(botId.value, targetId.value),
+    key: () => botAppsQueryKey(botId.value),
     query: async () => {
       const refresh = forceRefresh?.value ?? false
       if (forceRefresh) forceRefresh.value = false
       const { data } = await getBotsByBotIdApps({
         path: { bot_id: botId.value },
-        query: { ...workspaceTargetQuery(targetId.value), refresh: refresh || undefined },
+        query: { refresh: refresh || undefined },
         throwOnError: true,
       })
       return data
@@ -66,7 +59,7 @@ export function useBotAppsQuery(botId: Ref<string>, targetId: Ref<string>, force
   })
 }
 
-/** Refetches every target's App list of one bot. */
+/** Refetches the bot's App list. */
 export function invalidateBotApps(
   queryCache: ReturnType<typeof useQueryCache>,
   botId: string,
@@ -78,10 +71,9 @@ export function invalidateBotApps(
  * Compares every installed App with the registry and runs the dependency
  * update checks, returning the refreshed list.
  */
-export async function checkAppUpdates(botId: string, targetId: string): Promise<AppListResponse> {
+export async function checkAppUpdates(botId: string): Promise<AppListResponse> {
   const { data } = await postBotsByBotIdAppsCheckUpdates({
     path: { bot_id: botId },
-    query: workspaceTargetQuery(targetId),
     throwOnError: true,
   })
   return data

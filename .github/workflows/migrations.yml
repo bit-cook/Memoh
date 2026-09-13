@@ -40,9 +40,16 @@ concurrency:
 
 permissions:
   contents: read
+  statuses: read
+  pull-requests: read
 
 jobs:
+  format:
+    if: github.event_name == 'pull_request'
+    uses: ./.github/workflows/contribution-format.yml
   postgres:
+    needs: format
+    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: PostgreSQL migrations
     runs-on: ubuntu-latest
     services:
@@ -61,6 +68,8 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-go@v5
         with:

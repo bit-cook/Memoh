@@ -1643,6 +1643,7 @@ func (p *SpawnProvider) persistMessages(
 		if msg.Role == sdk.MessageRoleUser {
 			continue
 		}
+		msg, toolCallDiffs := historyfrag.ExtractToolCallDiffsFromSDK(msg)
 		content, err := historyfrag.MarshalStoredSDKMessage(msg)
 		if err != nil {
 			// A malformed SDK message is a deterministic codec defect: retrying
@@ -1663,6 +1664,12 @@ func (p *SpawnProvider) persistMessages(
 			metadata = map[string]any{
 				contextfrag.MetadataContextLifecycleKey: result.ContextLifecycle.Summary(),
 			}
+		}
+		if len(toolCallDiffs) > 0 {
+			if metadata == nil {
+				metadata = make(map[string]any, 1)
+			}
+			metadata[messagepkg.ToolCallDiffsMetadataKey] = toolCallDiffs
 		}
 		persisted, err := p.messageService.Persist(ctx, messagepkg.PersistInput{
 			BotID:     req.parentSession.BotID,

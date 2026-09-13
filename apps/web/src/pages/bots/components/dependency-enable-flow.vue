@@ -106,7 +106,7 @@ async function preflight() {
   checking.value = true
   let step
   try {
-    const response = await preflightDependencies(props.botId, '', [declared.dependencyId])
+    const response = await preflightDependencies(props.botId, [declared.dependencyId])
     if (!settle || currentGeneration !== generation) return
     step = resolveEnableFlowStep(declared, response)
   } catch (error) {
@@ -123,9 +123,6 @@ async function preflight() {
       workspaceState.value = step.state
       workspaceOpen.value = true
       return
-    case 'remote_offline':
-      toast.error(t('bots.agent.dependencyRemoteOffline'))
-      return finish(false)
     case 'platform_unsupported':
       item.value = step.item
       toast.error(t('bots.dependencies.preflight.platformUnsupported', { name: name.value }))
@@ -190,7 +187,6 @@ async function onConfirmed() {
     if (!data.revision) throw new Error('missing revision')
     const result = store.start({
       botId: props.botId,
-      targetId: '',
       registryId: DEPENDENCY_REGISTRY,
       appId: depId,
       name: appDisplayName(data, locale.value),
