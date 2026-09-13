@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 
-export const noHumanQA = '⚠️ **No human QA** — this PR has not been verified by a human yet. Remove this line once a human confirms the happy path.';
 export const headings = {
   author: 'Author', type: 'Type', summary: 'Summary', validation: 'Validation',
   screenshots: 'Screenshots / Recordings', qa: 'Human QA', bug: 'Bug Description', steps: 'Steps to Reproduce',
@@ -64,12 +63,9 @@ export function validate(body, isPR) {
   if (isPR) {
     ['summary', 'validation', 'screenshots', 'qa'].forEach(required);
     const qa = choice('qa', ['Not yet verified by a human', 'Confirmed by a human']);
-    const disclosed = parts.get(headings.qa)?.plain.some(line => line.trim() === noHumanQA);
-    if (qa === 'Not yet verified by a human' && !disclosed) errors.push('请在 Human QA 中保留 No human QA 声明，直到真人确认验收。');
     if (qa === 'Confirmed by a human') {
-      const evidence = content('qa').replace(/^\s*-\s+\[[ xX]\].*$/gm, '').replace(noHumanQA, '').trim();
+      const evidence = (parts.get(headings.qa)?.plain.join('\n') ?? '').replace(/^\s*-\s+\[[ xX]\].*$/gm, '').trim();
       if (!evidence || /^(?:TBD|TODO|待填写|N\/?A)$/i.test(evidence)) errors.push('Identify the reviewer and confirmation record in "Human QA".');
-      if ((body ?? '').includes(noHumanQA)) errors.push('Remove the No human QA disclosure once a human has confirmed QA.');
     }
   } else {
     const fields = { bug: ['bug', 'steps', 'expected', 'version'], feat: ['feature', 'motivation'], help: ['help', 'goal', 'attempts', 'environment'] };

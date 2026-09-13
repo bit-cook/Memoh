@@ -30,8 +30,6 @@ If screenshots are unavailable or the change has no visible interface, explain w
 
 ## Human QA
 
-<!-- Select exactly one option. If a human has confirmed QA, identify the reviewer and confirmation record, and remove the disclosure below. Otherwise keep it in this section; additional notes may follow. -->
+<!-- 只选一项。确认真人 QA 时，补充验收人和确认记录；否则选择尚未验证。 -->
 - [ ] Not yet verified by a human
 - [ ] Confirmed by a human
-
-⚠️ **No human QA** — this PR has not been verified by a human yet. Remove this line once a human confirms the happy path.

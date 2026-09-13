@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import test from 'node:test';
-import { bodyFingerprint, classify, excluded, headings, noHumanQA, sizeLabel, validate } from './contribution-policy.mjs';
+import { bodyFingerprint, classify, excluded, headings, sizeLabel, validate } from './contribution-policy.mjs';
 import { readLabels, sync } from './sync-labels.mjs';
 
 export function validPR() {
@@ -42,9 +42,9 @@ test('fenced reproduction text is allowed and duplicate headings are rejected', 
   assert.deepEqual(validate(issue('bug').replace('Specific reproducible details', '```sh\nmemoh start\n```'), false).errors, []);
   assert.ok(validate(validPR() + '\n## Type\n- [x] test', true).errors.some(error => error.includes('Duplicate')));
 });
-test('human QA requires disclosure or explicit confirmation record', () => {
-  assert.ok(validate(validPR().replace(noHumanQA, ''), true).errors.length);
-  let human = validPR().replace('- [x] Not yet verified by a human', '- [ ] Not yet verified by a human').replace('- [ ] Confirmed by a human', '- [x] Confirmed by a human').replace(noHumanQA, '');
+test('human QA checkboxes disclose status; confirmed QA requires a record', () => {
+  assert.deepEqual(validate(validPR(), true).errors, []);
+  let human = validPR().replace('- [x] Not yet verified by a human', '- [ ] Not yet verified by a human').replace('- [ ] Confirmed by a human', '- [x] Confirmed by a human');
   assert.ok(validate(human, true).errors.length);
   human += '\n@maintainer confirmed the happy path in the PR review.';
   assert.deepEqual(validate(human, true).errors, []);
@@ -158,14 +158,16 @@ test('subheadings remain part of their template section, including repeated subs
   }
   assert.ok(validate(validPR()+'\n## Validation\n重复字段',true).errors.some(e=>e.includes('Duplicate')));
 });
-test('QA disclosure can precede follow-up notes but must be visible in Human QA', () => {
+test('QA choices are visible, unique and allow follow-up notes without a warning line', () => {
   assert.deepEqual(validate(validPR()+'\n\n补充：仍等待真人验收。',true).errors,[]);
-  assert.deepEqual(validate(validPR()+'\n\n## 后续工作\n#123',true).errors,[]);
-  for(const hidden of [`<!-- ${noHumanQA} -->`,`\`\`\`\n${noHumanQA}\n\`\`\``, '']) {
-    assert.ok(validate(validPR().replace(noHumanQA,hidden),true).errors.length);
+  const choice='- [x] Not yet verified by a human';
+  for(const replacement of [`<!-- ${choice} -->`,`\`\`\`\n${choice}\n\`\`\``, '', `${choice}\n- [x] Confirmed by a human`]) {
+    assert.ok(validate(validPR().replace(choice,replacement),true).errors.length);
   }
-  const moved=validPR().replace(noHumanQA,'').replace('## Summary',`## Summary\n${noHumanQA}`);
-  assert.ok(validate(moved,true).errors.length);
+  const human=validPR().replace(choice,'- [ ] Not yet verified by a human').replace('- [ ] Confirmed by a human','- [x] Confirmed by a human');
+  for(const evidence of ['<!-- @reviewer confirmed -->','\`\`\`\n@reviewer confirmed\n\`\`\`']) {
+    assert.ok(validate(human+'\n'+evidence,true).errors.length);
+  }
 });
 test('bare completion placeholders are reported without a minimum word count', () => {
   for(const value of ['ok','OK','done','passed','已完成','通过']) {

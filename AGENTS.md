@@ -118,14 +118,11 @@ Memoh is a commercial project split across two repositories: this OSS repo and a
 
 ### Pull Request QA Status
 
-Most PR descriptions in this repository are written by AI agents, and an agent must never silently stand in for human verification. Every PR body must disclose its QA state:
+PR 正文的 `Human QA` 勾选项是唯一的 QA 状态声明，不再附加旧版警告行：
 
-- **Opening a PR** — if no human has verified the change yet (nobody has walked the happy path), include this exact line in the Human QA section (additional notes may follow):
-
-  > ⚠️ **No human QA** — this PR has not been verified by a human yet. Remove this line once a human confirms the happy path.
-
-- **After human confirmation** — when a human explicitly confirms QA (in chat, review, or a PR comment), remove the line from the description (e.g. via `gh pr edit`). Green CI, passing tests, typechecks, and the agent's own runs or screenshots never count as human QA; only an explicit human confirmation clears the line.
-- **Updating the description later** — keep the line until a human confirms. If commits land after confirmation, judge whether they could break the verified happy path (typos, rebases, and comment/docs touch-ups cannot); if they could, restore the line until a human verifies the new head. The goal is disclosing the current QA state, not re-QA of every commit.
+- **尚未真人验证**：只勾选 `Not yet verified by a human`。
+- **真人明确确认后**：改为只勾选 `Confirmed by a human`，并注明验收人及确认记录。CI、自动测试和 Agent 截图均不算真人 QA。
+- **确认后继续修改**：若新提交可能影响已验收路径，恢复为尚未真人验证，直到当前 head 获得确认；拼写、注释等不影响行为的改动无需重复验收。
 
 ## Key Development Rules
 
