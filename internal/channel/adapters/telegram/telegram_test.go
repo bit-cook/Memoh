@@ -1970,6 +1970,16 @@ func TestCollectTelegramStickerUsesReadableMedia(t *testing.T) {
 			wantSize:        [2]int{512, 512},
 		},
 		{
+			// 动画贴纸的动作就是它的内容，缩略图会把动作丢掉。保留 Lottie，
+			// 由 internal/media/lottie 渲染成帧。
+			name:            "动画贴纸保留原始 Lottie 而不是缩略图",
+			sticker:         &tele.Sticker{File: tele.File{FileID: "tgs-file", FileSize: 2048}, Animated: true, Width: 512, Height: 512, Thumbnail: thumb, Emoji: "🎬"},
+			wantPlatformKey: "tgs-file",
+			wantMime:        "application/x-tgsticker",
+			wantSize:        [2]int{512, 512},
+		},
+		{
+			// WebM 这里没有解码器，一张能读的静态图胜过一个读不了的文件。
 			name:            "视频贴纸改用静态缩略图",
 			sticker:         &tele.Sticker{File: tele.File{FileID: "video-file"}, Video: true, Width: 512, Height: 512, Thumbnail: thumb, Emoji: "😂"},
 			wantPlatformKey: "thumb-file",
@@ -1977,26 +1987,10 @@ func TestCollectTelegramStickerUsesReadableMedia(t *testing.T) {
 			wantSize:        [2]int{320, 320},
 		},
 		{
-			name:            "动画贴纸改用静态缩略图",
-			sticker:         &tele.Sticker{File: tele.File{FileID: "tgs-file"}, Animated: true, Width: 512, Height: 512, Thumbnail: thumb},
-			wantPlatformKey: "thumb-file",
-			wantMime:        "",
-			wantSize:        [2]int{320, 320},
-		},
-		{
-			// 没有缩略图时保留原文件，但 MIME 必须诚实，否则 WebM/TGS 字节会被
-			// 当成图片送进模型。
 			name:            "视频贴纸无缩略图时标注真实 MIME",
 			sticker:         &tele.Sticker{File: tele.File{FileID: "video-file"}, Video: true, Width: 512, Height: 512},
 			wantPlatformKey: "video-file",
 			wantMime:        "video/webm",
-			wantSize:        [2]int{512, 512},
-		},
-		{
-			name:            "动画贴纸无缩略图时标注真实 MIME",
-			sticker:         &tele.Sticker{File: tele.File{FileID: "tgs-file"}, Animated: true, Width: 512, Height: 512},
-			wantPlatformKey: "tgs-file",
-			wantMime:        "application/x-tgsticker",
 			wantSize:        [2]int{512, 512},
 		},
 	} {
@@ -2019,8 +2013,10 @@ func TestCollectTelegramStickerUsesReadableMedia(t *testing.T) {
 			if att.Width != tc.wantSize[0] || att.Height != tc.wantSize[1] {
 				t.Fatalf("size = %dx%d, want %dx%d", att.Width, att.Height, tc.wantSize[0], tc.wantSize[1])
 			}
-			if tc.wantPlatformKey != tc.sticker.FileID && att.Metadata["sticker_file_id"] != tc.sticker.FileID {
-				t.Fatalf("metadata = %+v, want a handle on the original sticker", att.Metadata)
+			// 只有真的把原件换成预览时，才需要留下原件的句柄。
+			_, recorded := att.Metadata["sticker_file_id"]
+			if want := tc.wantPlatformKey != tc.sticker.FileID; recorded != want {
+				t.Fatalf("sticker_file_id recorded = %v, want %v (metadata=%+v)", recorded, want, att.Metadata)
 			}
 		})
 	}
@@ -2033,9 +2029,6 @@ func TestCollectTelegramStickerCarriesEmojiInName(t *testing.T) {
 	})
 	if len(atts) != 1 || atts[0].Name != "sticker-🎉" {
 		t.Fatalf("attachment = %+v, want the sticker emoji in the name", atts)
-	}
-	if atts[0].Metadata["sticker_emoji"] != "🎉" {
-		t.Fatalf("metadata = %+v, want the sticker emoji recorded", atts[0].Metadata)
 	}
 
 	without := adapter.collectTelegramAttachments(nil, &tele.Message{

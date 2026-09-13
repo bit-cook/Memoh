@@ -179,3 +179,16 @@ func TestAnimationFailureLeavesOtherImagesAlone(t *testing.T) {
 		t.Fatalf("InlineImageAttachments() = %#v, want only the intact photo", parts)
 	}
 }
+
+// The Telegram adapter now labels an animated sticker application/x-tgsticker
+// and stores the Lottie itself. That label is not one the raster allowlist
+// knows, so this is the regression guard that the two layers still agree: the
+// bytes decide, and the sticker reaches the model as frames.
+func TestAdapterLabelledAnimatedStickerRenders(t *testing.T) {
+	s := imageInputService(t, map[string][]byte{"sticker": movingStickerTGS(t)})
+	parts := s.InlineImageAttachments(context.Background(), "bot-1",
+		[]timeline.ImageAttachmentRef{{ContentHash: "sticker", Mime: "application/x-tgsticker"}})
+	if len(parts) != animationFrameCount {
+		t.Fatalf("InlineImageAttachments() = %d parts, want %d frames", len(parts), animationFrameCount)
+	}
+}
