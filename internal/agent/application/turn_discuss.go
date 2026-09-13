@@ -166,13 +166,30 @@ func (s *Service) pumpDiscuss(ctx context.Context, cmd turn.StartTurnCommand, h 
 		s.pumpDiscussAgent(ctx, cmd, h)
 		return
 	}
+	// Probe gate: an outside judge decides whether this wake-up should run at
+	// all. It precedes sync compaction deliberately — a wake-up that never
+	// reaches the model does not need its context compacted yet, so a silent
+	// group costs one cheap judgement instead of a summarizer plus a primary.
+	//
+	// Native runtime only. The external-runtime branch above keeps its
+	// DiscussAddressed gate: the gate's other half is the activation contract
+	// handed to the primary, and a hosted Claude Code/Codex agent does not take
+	// that contract from us, so gating them here would buy a judgement we
+	// cannot hold the agent to.
+	probe := s.runDiscussProbe(ctx, cmd, resolved)
+	if probe.Ran && !probe.Activated {
+		if h.emit(turn.DiscussEventSkipped, nil) {
+			h.contentLightTerminal = true
+		}
+		return
+	}
 	if s.maybeSyncCompactDiscuss(ctx, cmd, resolved, h.id) {
 		if h.emit(turn.DiscussEventRecompose, nil) {
 			h.contentLightTerminal = true
 		}
 		return
 	}
-	s.pumpDiscussNative(ctx, cmd, h, resolved)
+	s.pumpDiscussNative(ctx, cmd, h, resolved, probe)
 }
 
 // maybeSyncCompactDiscuss is the pre-turn synchronous compaction backstop
@@ -228,7 +245,7 @@ func (s *Service) maybeSyncCompactDiscuss(ctx context.Context, cmd turn.StartTur
 	return res.Status == compaction.StatusOK
 }
 
-func (s *Service) pumpDiscussNative(ctx context.Context, cmd turn.StartTurnCommand, h *discussHandle, resolved ResolveRunConfigResult) {
+func (s *Service) pumpDiscussNative(ctx context.Context, cmd turn.StartTurnCommand, h *discussHandle, resolved ResolveRunConfigResult, probe discussProbeResult) {
 	runConfig := resolved.RunConfig
 	runConfig.RunID = h.id
 	budgetTokens := resolved.ContextBudgetMaxTokens
@@ -262,7 +279,7 @@ func (s *Service) pumpDiscussNative(ctx context.Context, cmd turn.StartTurnComma
 			slog.Int("budget_tokens", admission.BudgetTokens),
 			slog.Int("dropped_messages", admission.DroppedMessages))
 	}
-	runConfig.Messages = discussMessagesToSDK(admitted)
+	runConfig.Messages = appendDiscussActivation(discussMessagesToSDK(admitted), probe)
 	runConfig.SessionType = sessionpkg.TypeDiscuss
 	runConfig.Query = ""
 	runConfig.ContextCurrentUserMessageIndex = nil

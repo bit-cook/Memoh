@@ -110,6 +110,8 @@ type Queries interface {
 	CreateChannelIdentity(ctx context.Context, arg dbsqlc.CreateChannelIdentityParams) (dbsqlc.ChannelIdentity, error)
 	CreateChatRoute(ctx context.Context, arg dbsqlc.CreateChatRouteParams) (dbsqlc.CreateChatRouteRow, error)
 	CreateCompactionLog(ctx context.Context, arg dbsqlc.CreateCompactionLogParams) (dbsqlc.BotHistoryMessageCompact, error)
+	CreateDiscussProbeDecision(ctx context.Context, arg dbsqlc.CreateDiscussProbeDecisionParams) (dbsqlc.BotDiscussProbeDecision, error)
+	ListDiscussProbeDecisions(ctx context.Context, arg dbsqlc.ListDiscussProbeDecisionsParams) ([]dbsqlc.BotDiscussProbeDecision, error)
 	CreateContextLifecycle(ctx context.Context, arg dbsqlc.CreateContextLifecycleParams) (dbsqlc.CreateContextLifecycleRow, error)
 	CreateEmailOutbox(ctx context.Context, arg dbsqlc.CreateEmailOutboxParams) (dbsqlc.EmailOutbox, error)
 	CreateEmailProvider(ctx context.Context, arg dbsqlc.CreateEmailProviderParams) (dbsqlc.EmailProvider, error)
