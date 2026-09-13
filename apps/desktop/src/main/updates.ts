@@ -33,7 +33,6 @@ interface SavedUpdates {
 }
 let saved: SavedUpdates = { autoUpdate: true, pending: null, attemptedVersion: null }
 let updateOptions: DesktopUpdatesOptions
-let installTimeout: ReturnType<typeof setTimeout> | undefined
 let updateState = createInitialDesktopUpdateState(app.getVersion(), Boolean(UPDATE_FEED_BASE_URL))
 let updaterConfigured = false
 let updaterListenersRegistered = false
@@ -142,7 +141,6 @@ function persist(next: SavedUpdates): void {
 }
 
 function failInstall(error: unknown): void {
-  if (installTimeout) clearTimeout(installTimeout)
   updateOptions.installFailed()
   setUpdateState({ type: 'error', error })
 }
@@ -155,7 +153,10 @@ async function installUpdate(options: DesktopUpdatesOptions, restart = true): Pr
     await options.prepareToInstall()
     options.markQuitting()
     autoUpdater.autoRunAppAfterInstall = restart
-    installTimeout = setTimeout(() => failInstall(new Error('The installer did not finish. Please retry from About.')), 30_000)
+    // MacUpdater may still be preparing the ZIP in Squirrel. Its eventual quit
+    // callback cannot be cancelled through the public API, so elapsed time alone
+    // must not restore the session while that callback remains armed. Stay locked
+    // until installation exits the process or the updater reports a real error.
     autoUpdater.quitAndInstall(!restart, restart)
   } catch (error) {
     failInstall(error)

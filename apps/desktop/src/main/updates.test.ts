@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { EventEmitter } from 'node:events'
+import { createRequire } from 'node:module'
+
+const { MacUpdater } = createRequire(import.meta.url)('electron-updater/out/MacUpdater.js') as typeof import('electron-updater')
 
 const f = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -9,7 +13,7 @@ const f = vi.hoisted(() => ({
     on: vi.fn(), setFeedURL: vi.fn(), isUpdaterActive: () => true,
     checkForUpdates: vi.fn(), quitAndInstall: vi.fn(),
     currentVersion: { compare: vi.fn() },
-    autoDownload: false, autoInstallOnAppQuit: true,
+    autoDownload: false, autoInstallOnAppQuit: true, autoRunAppAfterInstall: true,
   },
 }))
 vi.mock('electron', () => ({
@@ -27,7 +31,7 @@ vi.mock('electron-updater/out/providers/GenericProvider.js', () => ({ GenericPro
 
 beforeEach(() => {
   vi.resetModules()
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   vi.useFakeTimers()
   vi.stubEnv('MEMOH_DESKTOP_UPDATE_BASE_URL', 'https://updates.example.test/')
   f.persisted = ''
@@ -106,6 +110,45 @@ it('applies a ready update on real quit without requesting relaunch', async () =
   f.events.get('update-downloaded')!({ version: '2.0.0' })
   expect(await api.installDesktopUpdateOnQuit()).toBe(true)
   expect(f.updater.quitAndInstall).toHaveBeenCalledWith(true, false)
+})
+it.each([true, false])('keeps a slow native installation locked until completion (restart=%s)', async (restart) => {
+  const native = Object.assign(new EventEmitter(), { checkForUpdates: vi.fn(), quitAndInstall: vi.fn() })
+  const quit = vi.fn()
+  // Exercise the installed dependency's callbacks without constructing Electron
+  // or starting its local ZIP server. Only the native boundary is simulated.
+  const mac = Object.create(MacUpdater.prototype) as InstanceType<typeof MacUpdater>
+  Object.assign(mac, { nativeUpdater: native, app: { quit }, autoInstallOnAppQuit: false })
+  f.updater.quitAndInstall.mockImplementation(() => {
+    mac.autoRunAppAfterInstall = f.updater.autoRunAppAfterInstall
+    mac.quitAndInstall()
+  })
+  const api = await start()
+  f.events.get('update-downloaded')!({ version: '2.0.0' })
+  if (restart) await f.handlers.get('desktop:updates:install')!({})
+  else expect(await api.installDesktopUpdateOnQuit()).toBe(true)
+
+  await vi.advanceTimersByTimeAsync(31_000)
+  expect(state().status).toBe('installing')
+  expect(f.options.installFailed).not.toHaveBeenCalled()
+  await f.handlers.get('desktop:updates:install')!({})
+  expect(f.updater.quitAndInstall).toHaveBeenCalledOnce()
+  expect(native.checkForUpdates).toHaveBeenCalledOnce()
+  expect(native.quitAndInstall).not.toHaveBeenCalled()
+  expect(quit).not.toHaveBeenCalled()
+
+  native.emit('update-downloaded')
+  expect(native.quitAndInstall).toHaveBeenCalledTimes(restart ? 1 : 0)
+  expect(quit).toHaveBeenCalledTimes(restart ? 0 : 1)
+})
+it.each(['throw', 'event'])('restores the session on an actual installer failure (%s)', async (failure) => {
+  await start()
+  f.events.get('update-downloaded')!({ version: '2.0.0' })
+  const error = new Error('native installation failed')
+  if (failure === 'throw') f.updater.quitAndInstall.mockImplementation(() => { throw error })
+  await f.handlers.get('desktop:updates:install')!({})
+  if (failure === 'event') f.events.get('error')!(error)
+  expect(state().status).toBe('error')
+  expect(f.options.installFailed).toHaveBeenCalledOnce()
 })
 it('recovers a prepared update before requesting startup restart', async () => {
   f.persisted = JSON.stringify({ autoUpdate: true, pending: { version: '2.0.0' }, attemptedVersion: null })
