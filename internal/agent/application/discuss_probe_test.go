@@ -2,12 +2,14 @@ package application
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 
 	sdk "github.com/felinics/twilight/sdk"
 
 	"github.com/felinics/memoh/internal/accounts"
+	contextfrag "github.com/felinics/memoh/internal/agent/context/fragment"
 	"github.com/felinics/memoh/internal/agent/runtime/native"
 	"github.com/felinics/memoh/internal/agent/turn"
 	"github.com/felinics/memoh/internal/db"
@@ -182,6 +184,41 @@ func TestExtractDiscussProbeDecision(t *testing.T) {
 			wantOutcome: discussProbeOutcomeMalformed,
 		},
 		{
+			// The tool schema marks reason required; a verdict without one is a
+			// judge that did not answer the question asked.
+			name: "reason omitted",
+			toolCalls: []sdk.ToolCall{{
+				ToolName: "decide",
+				Input:    map[string]any{"should_act": "send"},
+			}},
+			wantOutcome: discussProbeOutcomeMalformed,
+		},
+		{
+			name: "reason explicitly null",
+			toolCalls: []sdk.ToolCall{{
+				ToolName: "decide",
+				Input:    map[string]any{"should_act": "send", "reason": nil},
+			}},
+			wantOutcome: discussProbeOutcomeMalformed,
+		},
+		{
+			name: "reason is not a string",
+			toolCalls: []sdk.ToolCall{{
+				ToolName: "decide",
+				Input:    map[string]any{"should_act": "send", "reason": 42},
+			}},
+			wantOutcome: discussProbeOutcomeMalformed,
+		},
+		{
+			name: "should_act explicitly null",
+			toolCalls: []sdk.ToolCall{{
+				ToolName: "decide",
+				Input:    map[string]any{"should_act": nil, "reason": "why"},
+			}},
+			wantReason:  "why",
+			wantOutcome: discussProbeOutcomeMalformed,
+		},
+		{
 			name: "tool name casing is tolerated",
 			toolCalls: []sdk.ToolCall{{
 				ToolName: "Decide",
@@ -220,6 +257,10 @@ func TestDiscussProbeFailsClosed(t *testing.T) {
 		map[string]any{"should_act": "yes"},
 		map[string]any{"should_act": true},
 		map[string]any{"should_act": []string{"send"}},
+		map[string]any{"should_act": "send"},
+		map[string]any{"should_act": "send", "reason": nil},
+		map[string]any{"should_act": "send", "reason": 42},
+		map[string]any{"should_act": nil, "reason": "why"},
 	}
 	for _, input := range inputs {
 		act, _, outcome := extractDiscussProbeDecision([]sdk.ToolCall{{ToolName: "decide", Input: input}})
@@ -265,40 +306,59 @@ func TestGenerateDiscussActivationPrompt(t *testing.T) {
 
 func TestAppendDiscussActivation(t *testing.T) {
 	base := []sdk.Message{sdk.UserMessage("hello"), sdk.UserMessage("anyone around?")}
+	baseFrags := []contextfrag.ContextFrag{{}, {}}
 
-	t.Run("disabled gate leaves the turn untouched", func(t *testing.T) {
-		got := appendDiscussActivation(base, discussProbeResult{})
-		if len(got) != len(base) {
-			t.Fatalf("appended %d message(s) for a gate that never ran", len(got)-len(base))
+	t.Run("disabled gate leaves both representations untouched", func(t *testing.T) {
+		messages, frags := appendDiscussActivation(base, baseFrags, discussProbeResult{}, contextfrag.Scope{})
+		if len(messages) != len(base) || len(frags) != len(baseFrags) {
+			t.Fatalf("appended for a gate that never ran: %d message(s), %d frag(s)",
+				len(messages)-len(base), len(frags)-len(baseFrags))
 		}
 	})
 
 	t.Run("declined gate appends nothing", func(t *testing.T) {
-		got := appendDiscussActivation(base, discussProbeResult{Ran: true, Outcome: discussProbeOutcomeNoAction})
-		if len(got) != len(base) {
-			t.Fatalf("appended %d message(s) for a declined wake-up", len(got)-len(base))
+		probe := discussProbeResult{Ran: true, Outcome: discussProbeOutcomeNoAction}
+		messages, frags := appendDiscussActivation(base, baseFrags, probe, contextfrag.Scope{})
+		if len(messages) != len(base) || len(frags) != len(baseFrags) {
+			t.Fatalf("appended for a declined wake-up: %d message(s), %d frag(s)",
+				len(messages)-len(base), len(frags)-len(baseFrags))
 		}
 	})
 
-	t.Run("activation appends exactly one trailing user message", func(t *testing.T) {
-		got := appendDiscussActivation(base, discussProbeResult{
+	t.Run("activation lands in both representations", func(t *testing.T) {
+		probe := discussProbeResult{
 			Ran: true, Activated: true, Outcome: discussProbeOutcomeAct, Reason: "they asked a question",
-		})
-		if len(got) != len(base)+1 {
-			t.Fatalf("len = %d, want %d", len(got), len(base)+1)
 		}
-		last := got[len(got)-1]
+		messages, frags := appendDiscussActivation(base, baseFrags, probe, contextfrag.Scope{})
+		if len(messages) != len(base)+1 {
+			t.Fatalf("messages = %d, want %d", len(messages), len(base)+1)
+		}
+		// The fragment is the representation the provider compiler actually
+		// renders; a message-only append is invisible to the model.
+		if len(frags) != len(baseFrags)+1 {
+			t.Fatalf("frags = %d, want %d", len(frags), len(baseFrags)+1)
+		}
+
+		last := messages[len(messages)-1]
 		if last.Role != sdk.MessageRoleUser {
 			t.Fatalf("activation landed with role %q, want user", last.Role)
 		}
-		// The contract has to be the final thing the model reads; anything after
-		// it reintroduces the distance the tail placement exists to remove.
 		text := messageText(t, last)
 		if !strings.Contains(text, "at least one message MUST have been sent") {
 			t.Fatalf("trailing message is not the activation contract: %q", text)
 		}
 		if !strings.Contains(text, "they asked a question") {
 			t.Fatalf("activation dropped the evaluator reason: %q", text)
+		}
+
+		frag := frags[len(frags)-1]
+		if frag.Trust != contextfrag.TrustSystem {
+			t.Fatalf("activation frag trust = %v, want TrustSystem; the runtime is speaking, not a participant", frag.Trust)
+		}
+		// Trimming the contract under budget pressure would pay for the judge
+		// and then discard the instruction its verdict authorized.
+		if frag.Budget.Overflow != contextfrag.OverflowKeep {
+			t.Fatalf("activation frag overflow = %v, want OverflowKeep", frag.Budget.Overflow)
 		}
 	})
 }
@@ -312,4 +372,40 @@ func messageText(t *testing.T, message sdk.Message) string {
 		}
 	}
 	return b.String()
+}
+
+// A bot-level override records that this chat is gated. If the owner lookup
+// then fails, the turn must not proceed as though no gate existed — that would
+// let a database blip bypass the check the operator configured.
+func TestDiscussProbeConfiguredGateFailsClosedOnResolveError(t *testing.T) {
+	svc := &Service{logger: slog.New(slog.DiscardHandler)}
+	cmd := turn.StartTurnCommand{BotID: "bot-1", ThreadID: "sess-1", ConversationType: "group"}
+
+	// queries is nil, so resolveBotOwnerUserID fails.
+	got := svc.runDiscussProbe(context.Background(), cmd,
+		ResolveRunConfigResult{DiscussProbeModelID: "configured-model"})
+
+	if !got.Ran {
+		t.Fatal("a configured gate reported Ran=false on a resolve error; the caller reads that as \"no gate\" and runs the turn ungated")
+	}
+	if got.Activated {
+		t.Fatal("gate activated despite failing to resolve its own configuration")
+	}
+	if got.Outcome != discussProbeOutcomeError {
+		t.Fatalf("outcome = %q, want %q", got.Outcome, discussProbeOutcomeError)
+	}
+}
+
+// Without an override there is nothing to bypass: a failed fallback lookup
+// leaves the chat ungated rather than muting a bot that never had a gate.
+// Bots with no owner hit this path permanently, not transiently.
+func TestDiscussProbeUnconfiguredStaysDisabledOnResolveError(t *testing.T) {
+	svc := &Service{logger: slog.New(slog.DiscardHandler)}
+	cmd := turn.StartTurnCommand{BotID: "bot-1", ThreadID: "sess-1", ConversationType: "group"}
+
+	got := svc.runDiscussProbe(context.Background(), cmd, ResolveRunConfigResult{})
+
+	if got.Ran {
+		t.Fatalf("unconfigured gate reported Ran=%v; it must leave the turn untouched", got.Ran)
+	}
 }

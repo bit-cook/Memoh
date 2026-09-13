@@ -32,6 +32,8 @@ type turnRuntimeHooks struct {
 	resolveRunConfig func(context.Context, string, string, string, string, string, string, string) (ResolveRunConfigResult, error)
 	inlineImages     func(context.Context, string, []timeline.ImageAttachmentRef) []sdk.ImagePart
 	storeRound       func(context.Context, string, string, string, string, string, []sdk.Message, string, *contextfrag.LifecycleHolder) error
+	// discussProbe lets tests supply a verdict without a live judge model.
+	discussProbe func(context.Context, turn.StartTurnCommand, ResolveRunConfigResult) discussProbeResult
 }
 
 // startDiscussTurn orchestrates one discuss turn: resolve the run config,
@@ -176,7 +178,7 @@ func (s *Service) pumpDiscuss(ctx context.Context, cmd turn.StartTurnCommand, h 
 	// handed to the primary, and a hosted Claude Code/Codex agent does not take
 	// that contract from us, so gating them here would buy a judgement we
 	// cannot hold the agent to.
-	probe := s.runDiscussProbe(ctx, cmd, resolved)
+	probe := s.discussProbeVerdict(ctx, cmd, resolved)
 	if probe.Ran && !probe.Activated {
 		if h.emit(turn.DiscussEventSkipped, nil) {
 			h.contentLightTerminal = true
@@ -279,7 +281,7 @@ func (s *Service) pumpDiscussNative(ctx context.Context, cmd turn.StartTurnComma
 			slog.Int("budget_tokens", admission.BudgetTokens),
 			slog.Int("dropped_messages", admission.DroppedMessages))
 	}
-	runConfig.Messages = appendDiscussActivation(discussMessagesToSDK(admitted), probe)
+	runConfig.Messages = discussMessagesToSDK(admitted)
 	runConfig.SessionType = sessionpkg.TypeDiscuss
 	runConfig.Query = ""
 	runConfig.ContextCurrentUserMessageIndex = nil
@@ -303,7 +305,15 @@ func (s *Service) pumpDiscussNative(ctx context.Context, cmd turn.StartTurnComma
 		imageParts = s.inlineDiscussImages(ctx, cmd.BotID, refs)
 		injectImagePartsIntoLastUserMessage(runConfig.Messages, imageParts)
 	}
-	runConfig.ContextSourceFrags = s.collectDiscussSourceFrags(ctx, runConfig, admitted, imageParts)
+	// Images are placed first, then the activation is appended to both
+	// representations: it must reach the provider compiler as a fragment, and it
+	// must not be the message that inline vision input lands on.
+	runConfig.Messages, runConfig.ContextSourceFrags = appendDiscussActivation(
+		runConfig.Messages,
+		s.collectDiscussSourceFrags(ctx, runConfig, admitted, imageParts),
+		probe,
+		runConfig.ContextScope,
+	)
 	runConfig = runConfig.RefreshContextFrag()
 	terminal := s.contextLifecycleTerminal(ctx, runConfig)
 	var lifecycleCause error

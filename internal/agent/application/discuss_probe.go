@@ -10,6 +10,7 @@ import (
 	sdk "github.com/felinics/twilight/sdk"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	contextfrag "github.com/felinics/memoh/internal/agent/context/fragment"
 	"github.com/felinics/memoh/internal/agent/runtime/native"
 	"github.com/felinics/memoh/internal/agent/turn"
 	"github.com/felinics/memoh/internal/db"
@@ -58,6 +59,15 @@ type discussProbeResult struct {
 	Activated bool
 	Reason    string
 	Outcome   string
+}
+
+// discussProbeVerdict runs the gate through the test seam when one is
+// installed, mirroring the other turn hooks.
+func (s *Service) discussProbeVerdict(ctx context.Context, cmd turn.StartTurnCommand, resolved ResolveRunConfigResult) discussProbeResult {
+	if s.turnHooks != nil && s.turnHooks.discussProbe != nil {
+		return s.turnHooks.discussProbe(ctx, cmd, resolved)
+	}
+	return s.runDiscussProbe(ctx, cmd, resolved)
 }
 
 // resolveDiscussProbeModel picks the model that judges discuss wake-ups:
@@ -124,20 +134,32 @@ func extractDiscussProbeDecision(toolCalls []sdk.ToolCall) (shouldAct, reason, o
 		if err != nil {
 			return "", "", discussProbeOutcomeMalformed
 		}
+		// Pointers so a missing key and an explicit null are both distinguishable
+		// from the empty string, and a wrong type fails the unmarshal. The tool
+		// schema marks both fields required; accepting a half-filled decision
+		// would mean trusting a judge that did not answer the question asked.
 		var decoded struct {
-			ShouldAct string `json:"should_act"`
-			Reason    string `json:"reason"`
+			ShouldAct *string `json:"should_act"`
+			Reason    *string `json:"reason"`
 		}
 		if err := json.Unmarshal(raw, &decoded); err != nil {
 			return "", "", discussProbeOutcomeMalformed
 		}
-		switch strings.TrimSpace(decoded.ShouldAct) {
+		if decoded.ShouldAct == nil || decoded.Reason == nil {
+			reason := ""
+			if decoded.Reason != nil {
+				reason = strings.TrimSpace(*decoded.Reason)
+			}
+			return "", reason, discussProbeOutcomeMalformed
+		}
+		reason := strings.TrimSpace(*decoded.Reason)
+		switch strings.TrimSpace(*decoded.ShouldAct) {
 		case discussProbeActSend:
-			return discussProbeActSend, strings.TrimSpace(decoded.Reason), discussProbeOutcomeAct
+			return discussProbeActSend, reason, discussProbeOutcomeAct
 		case discussProbeActNoAction:
-			return discussProbeActNoAction, strings.TrimSpace(decoded.Reason), discussProbeOutcomeNoAction
+			return discussProbeActNoAction, reason, discussProbeOutcomeNoAction
 		default:
-			return "", strings.TrimSpace(decoded.Reason), discussProbeOutcomeMalformed
+			return "", reason, discussProbeOutcomeMalformed
 		}
 	}
 	return "", "", discussProbeOutcomeMissing
@@ -165,9 +187,28 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 		return discussProbeResult{}
 	}
 
+	// A bot-level override is a recorded operator decision that this chat is
+	// gated. From here on, "we could not read the configuration" must never
+	// resolve to "there is no gate" — that would let a transient database error
+	// hand the turn a free pass through the very check the operator asked for.
+	gateConfigured := strings.TrimSpace(resolved.DiscussProbeModelID) != ""
+	requestedAtMs := time.Now().UnixMilli()
+
 	probeModelID, ownerUserID, err := s.resolveDiscussProbeModel(ctx, cmd.BotID, resolved.DiscussProbeModelID)
 	if err != nil {
-		s.logger.Warn("discuss probe: failed to resolve probe model",
+		if gateConfigured {
+			s.logger.Warn("discuss probe: configured gate failed to resolve, failing closed",
+				slog.String("bot_id", cmd.BotID),
+				slog.Any("error", err))
+			result := discussProbeResult{Ran: true, Outcome: discussProbeOutcomeError}
+			s.persistDiscussProbeDecision(ctx, cmd, requestedAtMs, result, resolved.DiscussProbeModelID, sdk.Usage{})
+			return result
+		}
+		// No override: the only thing that failed is the lookup that would have
+		// told us whether a fallback exists. Failing closed here would mute every
+		// bot without a gate — including the permanent case of a bot with no
+		// owner — so an unconfigured chat stays unconfigured.
+		s.logger.Warn("discuss probe: fallback model lookup failed, gate stays disabled",
 			slog.String("bot_id", cmd.BotID),
 			slog.Any("error", err))
 		return discussProbeResult{}
@@ -178,7 +219,6 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 		return discussProbeResult{}
 	}
 
-	requestedAtMs := time.Now().UnixMilli()
 	result := discussProbeResult{Ran: true, Outcome: discussProbeOutcomeError}
 
 	probeModel, provider, err := s.fetchChatModel(ctx, probeModelID)
@@ -284,14 +324,62 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 // stated once, thousands of tokens back, is exactly what a model drops. Sitting
 // adjacent to the generation point, it cannot be crowded out.
 //
+// It must be added to BOTH representations. The provider context compiler
+// (contextview.ProviderRunConfigApplier) rebuilds Messages from
+// ContextSourceFrags whenever fragments are present, so a contract that lives
+// only in the message slice is silently discarded before the request is built —
+// the gate would open and the primary would still run under the "you may stay
+// silent" contract.
+//
+// Callers must inject inline images before calling this. The activation is
+// itself a trailing user message, and both image injectors scan backwards for
+// the last user message, so appending first would staple fresh vision input
+// onto the instruction instead of the chat message that carried it.
+//
 // A gate that did not run, or ran and declined, appends nothing — the caller
 // never reaches here on a decline, and a disabled gate must leave the turn
 // byte-identical to what it was before this feature existed.
-func appendDiscussActivation(messages []sdk.Message, probe discussProbeResult) []sdk.Message {
+func appendDiscussActivation(
+	messages []sdk.Message,
+	frags []contextfrag.ContextFrag,
+	probe discussProbeResult,
+	scope contextfrag.Scope,
+) ([]sdk.Message, []contextfrag.ContextFrag) {
 	if !probe.Ran || !probe.Activated {
-		return messages
+		return messages, frags
 	}
-	return append(messages, sdk.UserMessage(native.GenerateDiscussActivationPrompt(probe.Reason)))
+	message := sdk.UserMessage(native.GenerateDiscussActivationPrompt(probe.Reason))
+	return append(messages, message), append(frags, discussActivationFrag(message, len(frags), scope))
+}
+
+// discussActivationFrag is the fragment form of the activation contract.
+//
+// OverflowKeep is not an optimization: the contract is the entire reason the
+// primary was woken, so trimming it under budget pressure would produce the
+// worst outcome — paying for the judge and then running the turn without the
+// instruction the judge's verdict authorized.
+//
+// TrustSystem, because this is the runtime speaking, not a participant. Nothing
+// in the conversation may impersonate it.
+func discussActivationFrag(message sdk.Message, index int, scope contextfrag.Scope) contextfrag.ContextFrag {
+	return contextfrag.MessageFrag(contextfrag.MessageFragInput{
+		ID:      "discuss.probe.activation",
+		Message: message,
+		Kind:    contextfrag.KindRuntimeContext,
+		Slot:    contextfrag.SlotHistory,
+		// Sorted after every composed message so the contract stays last.
+		Index:    index,
+		Priority: contextfrag.PriorityForMessage(message),
+		// The reason changes every wake-up; caching it would be a cache miss
+		// dressed as a hit.
+		CacheClass: contextfrag.CacheNever,
+		Trust:      contextfrag.TrustSystem,
+		Scope:      scope,
+		Source:     "discuss_probe",
+		SourceID:   "activation",
+		Collector:  "discuss_probe",
+		Budget:     contextfrag.BudgetPolicy{Overflow: contextfrag.OverflowKeep},
+	})
 }
 
 // persistDiscussProbeDecision records the verdict. Persistence failures are
