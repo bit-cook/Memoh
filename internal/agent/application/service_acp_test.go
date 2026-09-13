@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -329,7 +330,7 @@ func TestStreamChatWSRoutesACPRuntimeSessionToACPPool(t *testing.T) {
 			ReasoningEffort: "high",
 			Attachments: []ChatAttachment{{
 				Type:   "image",
-				Base64: "data:image/png;base64,aW1hZ2U=",
+				Base64: dataURL("image/png", rasterPNG(t)),
 				Mime:   "image/png",
 				Name:   "screenshot.png",
 			}},
@@ -363,7 +364,9 @@ func TestStreamChatWSRoutesACPRuntimeSessionToACPPool(t *testing.T) {
 	if pool.input.ContextToolExchangePolicy == nil || pool.input.ContextToolExchangePolicy.MinMessages != 10 {
 		t.Fatalf("ContextToolExchangePolicy = %#v, want default MinMessages=10", pool.input.ContextToolExchangePolicy)
 	}
-	if len(pool.input.Images) != 1 || pool.input.Images[0].Data != "aW1hZ2U=" || pool.input.Images[0].MimeType != "image/png" {
+	if len(pool.input.Images) != 1 ||
+		pool.input.Images[0].Data != base64.StdEncoding.EncodeToString(rasterPNG(t)) ||
+		pool.input.Images[0].MimeType != "image/png" {
 		t.Fatalf("ACP prompt images = %#v, want inline PNG", pool.input.Images)
 	}
 	if len(pool.input.AttachmentReferences) != 1 || pool.input.AttachmentReferences[0] != "https://example.com/previous.log" {
@@ -1847,7 +1850,7 @@ func TestStreamACPAgentWSImageCapabilityErrorUsesStructuredFeedback(t *testing.T
 				Type:   "image",
 				Name:   "screen.png",
 				Mime:   "image/png",
-				Base64: "data:image/png;base64,aW1hZ2U=",
+				Base64: dataURL("image/png", rasterPNG(t)),
 			}},
 		},
 		make(chan WSStreamEvent, 8),

@@ -42,7 +42,7 @@ func TestPrepareGatewayAttachments_InlineAssetToBase64(t *testing.T) {
 				if contentHash != "asset-1" {
 					t.Fatalf("unexpected content hash: %s", contentHash)
 				}
-				return io.NopCloser(strings.NewReader("image-binary")), "image/png", nil
+				return io.NopCloser(bytes.NewReader(rasterPNG(t))), "image/png", nil
 			},
 		},
 	}
@@ -81,7 +81,7 @@ func TestPrepareRuntimeImagesInlineStoredAsset(t *testing.T) {
 				if botID != "bot-1" || contentHash != "asset-1" {
 					t.Fatalf("unexpected asset lookup: bot=%q hash=%q", botID, contentHash)
 				}
-				return io.NopCloser(strings.NewReader("image-binary")), "image/png", nil
+				return io.NopCloser(bytes.NewReader(rasterPNG(t))), "image/png", nil
 			},
 		},
 	}
@@ -100,7 +100,7 @@ func TestPrepareRuntimeImagesInlineStoredAsset(t *testing.T) {
 	if len(images) != 1 {
 		t.Fatalf("prepareRuntimeAttachments().Images = %#v, want one image", images)
 	}
-	if !bytes.Equal(images[0].Data, []byte("image-binary")) || images[0].MimeType != "image/png" {
+	if !bytes.Equal(images[0].Data, rasterPNG(t)) || images[0].MimeType != "image/png" {
 		t.Fatalf("prepared image = %#v, want inline PNG", images[0])
 	}
 }
@@ -490,7 +490,7 @@ func TestEncodeReaderAsDataURL_DetectsImageMime(t *testing.T) {
 }
 
 func TestEncodeReaderAsDataURL_RejectsOversizedPayload(t *testing.T) {
-	_, _, err := encodeReaderAsDataURL(strings.NewReader("12345"), 4, "image", "image/png")
+	_, _, err := encodeReaderAsDataURL(strings.NewReader("12345"), 4, "file", "text/plain")
 	if err == nil {
 		t.Fatal("expected error for oversized payload")
 	}

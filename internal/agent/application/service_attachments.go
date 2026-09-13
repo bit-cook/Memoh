@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net/http"
 	"strings"
 	"unicode/utf8"
 
@@ -263,43 +262,60 @@ func inlineTextAttachmentPart(ga gatewayAttachment) (sdk.TextPart, bool) {
 
 // inlineInjectAttachments converts image attachments from an injected message
 // into sdk.ImagePart values for direct vision input. Non-image attachments and
-// images that cannot be inlined are silently skipped.
+// media the model cannot parse are skipped; the message text still carries the
+// attachment, so the agent keeps a usable reference to the original.
 func (s *Service) inlineInjectAttachments(ctx context.Context, botID string, atts []ChatAttachment) []sdk.ImagePart {
 	var parts []sdk.ImagePart
+	seen := make(map[string]bool, len(atts))
 	for _, att := range atts {
 		if strings.ToLower(strings.TrimSpace(att.Type)) != "image" {
 			continue
 		}
 		contentHash := strings.TrimSpace(att.ContentHash)
-		if contentHash == "" {
+		if contentHash == "" || seen[contentHash] {
 			continue
 		}
-		dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, "image", strings.TrimSpace(att.Mime))
+		seen[contentHash] = true
+		part, err := s.inlineStoredImagePart(ctx, botID, contentHash, att.Mime)
 		if err != nil {
-			if s != nil && s.logger != nil {
-				s.logger.Warn(
-					"inline inject image attachment failed",
-					slog.Any("error", err),
-					slog.String("bot_id", botID),
-					slog.String("content_hash", contentHash),
-				)
-			}
+			s.logImageInputRejected(err, botID, contentHash)
 			continue
 		}
-		parts = append(parts, sdk.ImagePart{
-			Image:     dataURL,
-			MediaType: mime,
-		})
+		parts = append(parts, part)
 	}
 	return parts
+}
+
+// inlineStoredImagePart is the single place a stored asset becomes direct
+// vision input. Ordinary chat, discussion context and injected messages all
+// route through it, so one attachment cannot be accepted by one entry point
+// and rejected by another.
+func (s *Service) inlineStoredImagePart(ctx context.Context, botID, contentHash, declaredMime string) (sdk.ImagePart, error) {
+	dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, "image", strings.TrimSpace(declaredMime))
+	if err != nil {
+		return sdk.ImagePart{}, err
+	}
+	return sdk.ImagePart{Image: dataURL, MediaType: mime}, nil
 }
 
 func (s *Service) inlineImageAttachmentAssetIfNeeded(ctx context.Context, botID string, item gatewayAttachment) gatewayAttachment {
 	if item.Type != "image" {
 		return item
 	}
-	if strings.TrimSpace(item.Payload) != "" &&
-		(item.Transport == gatewayTransportInlineDataURL || item.Transport == gatewayTransportPublicURL) {
+	if strings.TrimSpace(item.Payload) != "" && item.Transport == gatewayTransportInlineDataURL {
+		// Bytes are already here, so check them rather than trusting the label
+		// the uploader attached to them.
+		mime, err := inlineImageDataURLMime(item.Payload)
+		if err != nil {
+			s.logImageInputRejected(err, botID, item.ContentHash)
+			return demoteNonImageAttachment(item)
+		}
+		item.Mime = mime
+		return item
+	}
+	if strings.TrimSpace(item.Payload) != "" && item.Transport == gatewayTransportPublicURL {
+		// Remote bytes cannot be sniffed here; the raster allowlist on the
+		// declared MIME is all the capability router has to go on.
 		return item
 	}
 	contentHash := strings.TrimSpace(item.ContentHash)
@@ -308,22 +324,39 @@ func (s *Service) inlineImageAttachmentAssetIfNeeded(ctx context.Context, botID 
 	}
 	dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, item.Type, item.Mime)
 	if err != nil {
-		if s != nil && s.logger != nil {
-			s.logger.Warn(
-				"inline gateway image attachment failed",
-				slog.Any("error", err),
-				slog.String("bot_id", botID),
-				slog.String("content_hash", contentHash),
-			)
+		s.logImageInputRejected(err, botID, contentHash)
+		if errors.Is(err, errUnsupportedImageBytes) {
+			return demoteNonImageAttachment(item)
 		}
 		return item
 	}
 	item.Transport = gatewayTransportInlineDataURL
 	item.Payload = dataURL
-	if strings.TrimSpace(item.Mime) == "" {
-		item.Mime = mime
-	}
+	item.Mime = mime
 	return item
+}
+
+// demoteNonImageAttachment keeps media the model cannot parse out of the vision
+// lane. The capability router turns it into a file reference, so the agent can
+// still reach the original through workspace tools.
+func demoteNonImageAttachment(item gatewayAttachment) gatewayAttachment {
+	item.Mime = "application/octet-stream"
+	return item
+}
+
+// logImageInputRejected records why an attachment was withheld from vision
+// input. content_hash is the handle support needs to find the stored original;
+// the bytes themselves and any credentialed source URL stay out of the log.
+func (s *Service) logImageInputRejected(err error, botID, contentHash string) {
+	if s == nil || s.logger == nil {
+		return
+	}
+	s.logger.Warn(
+		"attachment withheld from vision input; original still reachable as a file",
+		slog.Any("error", err),
+		slog.String("bot_id", strings.TrimSpace(botID)),
+		slog.String("content_hash", strings.TrimSpace(contentHash)),
+	)
 }
 
 // inlineFileAttachmentAssetIfNeeded mirrors inlineImageAttachmentAssetIfNeeded
@@ -404,12 +437,12 @@ func encodeReaderAsDataURL(reader io.Reader, maxBytes int64, attachmentType, fal
 	head = head[:n]
 
 	mime := strings.TrimSpace(fallbackMime)
-	if strings.EqualFold(strings.TrimSpace(attachmentType), "image") &&
-		(strings.TrimSpace(mime) == "" || strings.EqualFold(strings.TrimSpace(mime), "application/octet-stream")) {
-		detected := strings.TrimSpace(http.DetectContentType(head))
-		if strings.HasPrefix(strings.ToLower(detected), "image/") {
-			mime = detected
+	if strings.EqualFold(strings.TrimSpace(attachmentType), "image") {
+		detected, err := modelImageMimeFromBytes(head)
+		if err != nil {
+			return "", "", err
 		}
+		mime = detected
 	}
 	if mime == "" {
 		mime = "application/octet-stream"

@@ -1,6 +1,10 @@
 package application
 
 import (
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"net/http"
 	"strings"
 
 	attachmentpkg "github.com/felinics/memoh/internal/attachment"
@@ -152,6 +156,49 @@ func isNativeImageMime(mime string) bool {
 	default:
 		return false
 	}
+}
+
+// errUnsupportedImageBytes marks media whose bytes are not a raster image the
+// provider adapters can parse, however the attachment happened to be labelled.
+var errUnsupportedImageBytes = errors.New("attachment bytes are not a raster image the model can parse")
+
+// modelImageMimeFromBytes resolves the MIME a vision request should declare for
+// head, the leading bytes of an image attachment.
+//
+// A declared MIME is a label, not evidence. Telegram video and animated
+// stickers are WebM and gzipped Lottie, platforms mislabel image subtypes, and
+// the media store keeps whatever the channel reported. Handing those bytes to
+// an image-only provider fails image parsing, and an attachment that stays in
+// pending discussion context fails the same way on every later turn. So the
+// bytes decide, and anything outside the common raster set is refused here
+// instead of at the provider.
+func modelImageMimeFromBytes(head []byte) (string, error) {
+	detected := attachmentpkg.NormalizeMime(http.DetectContentType(head))
+	if !isNativeImageMime(detected) {
+		return "", fmt.Errorf("%w: detected %s", errUnsupportedImageBytes, detected)
+	}
+	return detected, nil
+}
+
+// inlineImageDataURLMime applies the same byte check to an attachment that
+// already carries inline base64, decoding only the sniff prefix.
+func inlineImageDataURLMime(payload string) (string, error) {
+	body, _ := splitInlineDataURL(payload)
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return "", fmt.Errorf("%w: empty payload", errUnsupportedImageBytes)
+	}
+	// base64 decodes in 4-character groups; keep the prefix aligned so the
+	// sniff window stays valid for payloads far larger than it.
+	const sniffChars = 512 / 3 * 4
+	if len(body) > sniffChars {
+		body = body[:sniffChars]
+	}
+	head, err := base64.StdEncoding.DecodeString(body)
+	if err != nil {
+		return "", fmt.Errorf("%w: payload is not valid base64", errUnsupportedImageBytes)
+	}
+	return modelImageMimeFromBytes(head)
 }
 
 func isNativeImageAttachment(att gatewayAttachment) bool {

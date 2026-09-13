@@ -384,23 +384,28 @@ func (s *Service) prepareRuntimeAttachments(ctx context.Context, req ChatRequest
 			result.References = append(result.References, reference)
 		}
 
-		if attachmentType == "image" && item.Transport == gatewayTransportInlineDataURL && strings.TrimSpace(item.Payload) != "" {
+		// isNativeImageAttachment is the same gate the capability router uses, so
+		// media withheld from the vision lane cannot re-enter it through an
+		// External Agent prompt.
+		inlineBytes := item.Transport == gatewayTransportInlineDataURL && strings.TrimSpace(item.Payload) != ""
+		switch {
+		case attachmentType == "image" && inlineBytes && isNativeImageAttachment(item):
 			image, imageErr := runtimePromptImageFromDataURL(item.Payload, item.Mime)
 			if imageErr != nil {
-				return runtimePreparedAttachments{}, agentfeedback.New(
-					agentfeedback.CodeAttachmentInvalid,
-					"invalid_image_data",
-					http.StatusBadRequest,
-					"chat.externalAgent.attachmentInvalid",
-					"The attachment is invalid. Please attach it again.",
-					map[string]string{"name": name},
-				)
+				return runtimePreparedAttachments{}, invalidAttachmentFeedback(name)
 			}
 			result.Images = append(result.Images, image)
 			if reference == "" {
 				result.CanFallbackImagesToFiles = false
 			}
-		} else if reference == "" {
+		case reference != "":
+			// Either a non-image modality or media the vision lane refused. The
+			// agent reaches the original through its own file tools.
+		case attachmentType == "image" && inlineBytes:
+			// Bytes were supplied, inspected and rejected, and nothing else
+			// points at the original — the user has to attach it again.
+			return runtimePreparedAttachments{}, invalidAttachmentFeedback(name)
+		default:
 			return runtimePreparedAttachments{}, agentfeedback.New(
 				agentfeedback.CodeAttachmentUnavailable,
 				"attachment_not_reachable",
@@ -414,6 +419,17 @@ func (s *Service) prepareRuntimeAttachments(ctx context.Context, req ChatRequest
 		result.Context = append(result.Context, contextAttachment)
 	}
 	return result, nil
+}
+
+func invalidAttachmentFeedback(name string) error {
+	return agentfeedback.New(
+		agentfeedback.CodeAttachmentInvalid,
+		"invalid_image_data",
+		http.StatusBadRequest,
+		"chat.externalAgent.attachmentInvalid",
+		"The attachment is invalid. Please attach it again.",
+		map[string]string{"name": name},
+	)
 }
 
 func runtimePromptImageFromDataURL(payload, fallbackMime string) (external.Image, error) {

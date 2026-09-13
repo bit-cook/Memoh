@@ -369,27 +369,22 @@ func (s *Service) InlineImageAttachments(ctx context.Context, botID string, refs
 		return nil
 	}
 	var parts []sdk.ImagePart
+	seen := make(map[string]bool, len(refs))
 	for _, ref := range refs {
 		contentHash := strings.TrimSpace(ref.ContentHash)
-		if contentHash == "" {
+		if contentHash == "" || seen[contentHash] {
 			continue
 		}
-		dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, "image", strings.TrimSpace(ref.Mime))
+		seen[contentHash] = true
+		part, err := s.inlineStoredImagePart(ctx, botID, contentHash, ref.Mime)
 		if err != nil {
-			if s.logger != nil {
-				s.logger.Warn(
-					"inline discuss image attachment failed",
-					slog.Any("error", err),
-					slog.String("bot_id", botID),
-					slog.String("content_hash", contentHash),
-				)
-			}
+			// One unusable attachment must not cost the turn its other images:
+			// the reference stays in the rendered context and every later turn
+			// skips the same bytes again instead of failing the model call.
+			s.logImageInputRejected(err, botID, contentHash)
 			continue
 		}
-		parts = append(parts, sdk.ImagePart{
-			Image:     dataURL,
-			MediaType: mime,
-		})
+		parts = append(parts, part)
 	}
 	return parts
 }
