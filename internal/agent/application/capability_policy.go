@@ -31,6 +31,11 @@ type gatewayAttachment struct {
 
 	// FallbackPath is an internal helper only used by server-side routing.
 	FallbackPath string `json:"-"`
+	// Frames holds every rendered frame of an animated attachment, Payload
+	// being the first of them. It stays server-side: the attachment is still
+	// one attachment for routing, fallbacks, attachment paths and the size
+	// budget, and only fans out where images are handed to the model.
+	Frames []string `json:"-"`
 }
 
 // capabilityRouteResult holds the outcome of splitting attachments by model capability.

@@ -390,11 +390,17 @@ func (s *Service) prepareRuntimeAttachments(ctx context.Context, req ChatRequest
 		inlineBytes := item.Transport == gatewayTransportInlineDataURL && strings.TrimSpace(item.Payload) != ""
 		switch {
 		case attachmentType == "image" && inlineBytes && isNativeImageAttachment(item):
-			image, imageErr := runtimePromptImageFromDataURL(item.Payload, item.Mime)
-			if imageErr != nil {
-				return runtimePreparedAttachments{}, invalidAttachmentFeedback(name)
+			payloads := item.Frames
+			if len(payloads) == 0 {
+				payloads = []string{item.Payload}
 			}
-			result.Images = append(result.Images, image)
+			for _, payload := range payloads {
+				image, imageErr := runtimePromptImageFromDataURL(payload, item.Mime)
+				if imageErr != nil {
+					return runtimePreparedAttachments{}, invalidAttachmentFeedback(name)
+				}
+				result.Images = append(result.Images, image)
+			}
 			if reference == "" {
 				result.CanFallbackImagesToFiles = false
 			}

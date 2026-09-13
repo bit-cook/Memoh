@@ -376,7 +376,7 @@ func (s *Service) InlineImageAttachments(ctx context.Context, botID string, refs
 			continue
 		}
 		seen[contentHash] = true
-		part, err := s.inlineStoredImagePart(ctx, botID, contentHash, ref.Mime)
+		framed, err := s.inlineStoredImageParts(ctx, botID, contentHash, ref.Mime)
 		if err != nil {
 			// One unusable attachment must not cost the turn its other images:
 			// the reference stays in the rendered context and every later turn
@@ -384,7 +384,7 @@ func (s *Service) InlineImageAttachments(ctx context.Context, botID string, refs
 			s.logImageInputRejected(err, botID, contentHash)
 			continue
 		}
-		parts = append(parts, part)
+		parts = append(parts, framed...)
 	}
 	return parts
 }
@@ -1843,10 +1843,18 @@ func extractNativeImageParts(attachments []any) []sdk.ImagePart {
 		if payload == "" {
 			continue
 		}
-		parts = append(parts, sdk.ImagePart{
-			Image:     payload,
-			MediaType: strings.TrimSpace(ga.Mime),
-		})
+		// An animated attachment carries every rendered frame; anything else
+		// is its single payload.
+		images := ga.Frames
+		if len(images) == 0 {
+			images = []string{payload}
+		}
+		for _, image := range images {
+			parts = append(parts, sdk.ImagePart{
+				Image:     image,
+				MediaType: strings.TrimSpace(ga.Mime),
+			})
+		}
 	}
 	return parts
 }

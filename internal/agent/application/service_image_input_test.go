@@ -84,25 +84,32 @@ func imageInputService(t *testing.T, assets map[string][]byte) *Service {
 // The reported failure: an unusable attachment sitting in pending discussion
 // context made every later turn fail image parsing. It must be skipped without
 // taking the other images of the turn down with it.
-func TestInlineImageAttachmentsSkipsUnparsableStickerBytes(t *testing.T) {
-	good := rasterPNG(t)
+func TestInlineImageAttachmentsRendersAnimationsAndSkipsUnparsableBytes(t *testing.T) {
 	s := imageInputService(t, map[string][]byte{
 		"video-sticker":    webmSticker(),
-		"animated-sticker": tgsSticker(t),
-		"photo":            good,
+		"animated-sticker": movingStickerTGS(t),
+		"photo":            rasterPNG(t),
 	})
 
 	parts := s.InlineImageAttachments(context.Background(), "bot-1", []timeline.ImageAttachmentRef{
+		// WebM has no renderer here, so it stays out of the vision lane.
 		{ContentHash: "video-sticker", Mime: "video/webm"},
+		// TGS is rendered into frames, whatever the stored label claims.
 		{ContentHash: "animated-sticker", Mime: "application/x-gzip"},
 		{ContentHash: "photo", Mime: "image/png"},
 	})
 
-	if len(parts) != 1 {
-		t.Fatalf("InlineImageAttachments() = %d parts, want only the parsable image", len(parts))
+	if len(parts) != animationFrameCount+1 {
+		t.Fatalf("InlineImageAttachments() = %d parts, want %d sticker frames plus the photo",
+			len(parts), animationFrameCount)
 	}
-	if parts[0].MediaType != "image/png" || !strings.HasPrefix(parts[0].Image, "data:image/png;base64,") {
-		t.Fatalf("surviving part = %#v, want the PNG", parts[0])
+	for i, part := range parts {
+		if part.MediaType != "image/png" || !strings.HasPrefix(part.Image, "data:image/png;base64,") {
+			t.Fatalf("part %d = %#v, want a PNG data URL", i, part)
+		}
+	}
+	if parts[len(parts)-1].Image != dataURL("image/png", rasterPNG(t)) {
+		t.Fatal("the ordinary photo was not passed through untouched")
 	}
 }
 
@@ -141,17 +148,18 @@ func TestInlineImageAttachmentsLoadsEachAssetOnce(t *testing.T) {
 	}
 }
 
-func TestInlineInjectAttachmentsSkipsUnparsableStickerBytes(t *testing.T) {
+func TestInlineInjectAttachmentsRendersAnimations(t *testing.T) {
 	s := imageInputService(t, map[string][]byte{
-		"animated-sticker": tgsSticker(t),
-		"photo":            rasterPNG(t),
+		"animated-sticker": movingStickerTGS(t),
+		"video-sticker":    webmSticker(),
 	})
 	parts := s.inlineInjectAttachments(context.Background(), "bot-1", []ChatAttachment{
 		{Type: "image", ContentHash: "animated-sticker", Mime: "image/webp"},
-		{Type: "image", ContentHash: "photo", Mime: "image/png"},
+		{Type: "image", ContentHash: "video-sticker", Mime: "image/png"},
 	})
-	if len(parts) != 1 || parts[0].MediaType != "image/png" {
-		t.Fatalf("inlineInjectAttachments() = %#v, want only the parsable image", parts)
+	if len(parts) != animationFrameCount {
+		t.Fatalf("inlineInjectAttachments() = %d parts, want %d frames from the animation and nothing from the WebM",
+			len(parts), animationFrameCount)
 	}
 }
 
@@ -311,4 +319,21 @@ func TestEncodeReaderAsDataURLRejectsOversizedImage(t *testing.T) {
 
 func dataURL(mime string, data []byte) string {
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
+}
+
+func decodeDataURLImage(t *testing.T, dataURL string) image.Image {
+	t.Helper()
+	_, body, found := strings.Cut(dataURL, ",")
+	if !found {
+		t.Fatalf("not a data URL: %.40q", dataURL)
+	}
+	raw, err := base64.StdEncoding.DecodeString(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, _, err := image.Decode(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return decoded
 }

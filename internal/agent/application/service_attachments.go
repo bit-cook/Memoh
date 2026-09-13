@@ -276,26 +276,14 @@ func (s *Service) inlineInjectAttachments(ctx context.Context, botID string, att
 			continue
 		}
 		seen[contentHash] = true
-		part, err := s.inlineStoredImagePart(ctx, botID, contentHash, att.Mime)
+		framed, err := s.inlineStoredImageParts(ctx, botID, contentHash, att.Mime)
 		if err != nil {
 			s.logImageInputRejected(err, botID, contentHash)
 			continue
 		}
-		parts = append(parts, part)
+		parts = append(parts, framed...)
 	}
 	return parts
-}
-
-// inlineStoredImagePart is the single place a stored asset becomes direct
-// vision input. Ordinary chat, discussion context and injected messages all
-// route through it, so one attachment cannot be accepted by one entry point
-// and rejected by another.
-func (s *Service) inlineStoredImagePart(ctx context.Context, botID, contentHash, declaredMime string) (sdk.ImagePart, error) {
-	dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, "image", strings.TrimSpace(declaredMime))
-	if err != nil {
-		return sdk.ImagePart{}, err
-	}
-	return sdk.ImagePart{Image: dataURL, MediaType: mime}, nil
 }
 
 func (s *Service) inlineImageAttachmentAssetIfNeeded(ctx context.Context, botID string, item gatewayAttachment) gatewayAttachment {
@@ -322,7 +310,7 @@ func (s *Service) inlineImageAttachmentAssetIfNeeded(ctx context.Context, botID 
 	if contentHash == "" {
 		return item
 	}
-	dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, item.Type, item.Mime)
+	dataURLs, mime, err := s.inlineStoredImageDataURLs(ctx, botID, contentHash, item.Mime)
 	if err != nil {
 		s.logImageInputRejected(err, botID, contentHash)
 		if errors.Is(err, errUnsupportedImageBytes) {
@@ -331,9 +319,25 @@ func (s *Service) inlineImageAttachmentAssetIfNeeded(ctx context.Context, botID 
 		return item
 	}
 	item.Transport = gatewayTransportInlineDataURL
-	item.Payload = dataURL
+	item.Payload = dataURLs[0]
 	item.Mime = mime
+	if len(dataURLs) > 1 {
+		item.Frames = dataURLs
+		// Size drives the per-request media budget, so it has to account for
+		// every frame the model will actually receive.
+		item.Size = totalInlineDataURLBytes(dataURLs)
+	}
 	return item
+}
+
+// totalInlineDataURLBytes estimates the decoded size of a set of data URLs.
+func totalInlineDataURLBytes(dataURLs []string) int64 {
+	var total int64
+	for _, dataURL := range dataURLs {
+		body, _ := splitInlineDataURL(dataURL)
+		total += int64(len(body)) * 3 / 4
+	}
+	return total
 }
 
 // demoteNonImageAttachment keeps media the model cannot parse out of the vision
