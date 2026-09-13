@@ -1952,3 +1952,26 @@ func TestBuildTelegramPaginationCallbackKeepsEditInPlace(t *testing.T) {
 		t.Fatalf("reply = %+v, want AttachmentsKnown=true — the tapped card is the bot's own message", msg.Message.Reply)
 	}
 }
+
+func TestCollectTelegramStickersPreservesFormat(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		animated, video bool
+		mime            string
+	}{
+		{"static", false, false, "image/webp"},
+		{"video", false, true, "video/webm"},
+		{"animated", true, false, "application/x-tgsticker"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			adapter := &TelegramAdapter{}
+			atts := adapter.collectTelegramAttachments(nil, &tele.Message{Sticker: &tele.Sticker{File: tele.File{FileID: "sticker-fixture"}, Animated: tc.animated, Video: tc.video, Width: 512, Height: 256}})
+			if len(atts) != 1 || atts[0].Type != channel.AttachmentSticker || atts[0].Mime != tc.mime {
+				t.Fatalf("unexpected sticker: %+v", atts)
+			}
+			if atts[0].PlatformKey != "sticker-fixture" || atts[0].Width != 512 || atts[0].Height != 256 {
+				t.Fatal("original sticker reference lost")
+			}
+		})
+	}
+}

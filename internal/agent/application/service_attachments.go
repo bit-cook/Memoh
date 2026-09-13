@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	sdk "github.com/felinics/twilight/sdk"
@@ -64,6 +65,8 @@ func (s *Service) routeAndMergeAttachments(ctx context.Context, model models.Get
 }
 
 func (s *Service) prepareGatewayAttachments(ctx context.Context, req ChatRequest) []gatewayAttachment {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	attachments := requestAttachmentsForGateway(req)
 	if len(attachments) == 0 {
 		return nil
@@ -88,7 +91,7 @@ func (s *Service) prepareGatewayAttachments(ctx context.Context, req ChatRequest
 				// Only treat a public HTTP URL as direct vision input when the
 				// attachment has not been persisted yet. If ContentHash is set,
 				// the file is already in the media store and will be inlined
-				// by inlineImageAttachmentAssetIfNeeded below — prefer that path
+				// by prepareVisionAttachments below — prefer that path
 				// so we never expose ephemeral or credentialed platform URLs
 				// directly to the model.
 				payload = rawURL
@@ -126,9 +129,12 @@ func (s *Service) prepareGatewayAttachments(ctx context.Context, req ChatRequest
 			}
 		}
 		item = normalizeGatewayAttachmentPayload(item)
-		item = s.inlineImageAttachmentAssetIfNeeded(ctx, strings.TrimSpace(req.BotID), item)
-		item = s.inlineFileAttachmentAssetIfNeeded(ctx, strings.TrimSpace(req.BotID), item)
-		prepared = append(prepared, item)
+		if item.Type == "image" || item.Type == "sticker" {
+			prepared = append(prepared, s.prepareVisionAttachments(ctx, strings.TrimSpace(req.BotID), item)...)
+		} else {
+			item = s.inlineFileAttachmentAssetIfNeeded(ctx, strings.TrimSpace(req.BotID), item)
+			prepared = append(prepared, item)
+		}
 	}
 	return prepared
 }
@@ -265,69 +271,28 @@ func inlineTextAttachmentPart(ga gatewayAttachment) (sdk.TextPart, bool) {
 // into sdk.ImagePart values for direct vision input. Non-image attachments and
 // images that cannot be inlined are silently skipped.
 func (s *Service) inlineInjectAttachments(ctx context.Context, botID string, atts []ChatAttachment) []sdk.ImagePart {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	var parts []sdk.ImagePart
 	for _, att := range atts {
-		if strings.ToLower(strings.TrimSpace(att.Type)) != "image" {
+		kind := strings.ToLower(strings.TrimSpace(att.Type))
+		if kind != "image" && kind != "sticker" {
 			continue
 		}
-		contentHash := strings.TrimSpace(att.ContentHash)
-		if contentHash == "" {
+		if strings.TrimSpace(att.ContentHash) == "" {
 			continue
 		}
-		dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, "image", strings.TrimSpace(att.Mime))
+		frames, err := s.prepareStoredVision(ctx, botID, strings.TrimSpace(att.ContentHash), kind == "sticker")
 		if err != nil {
-			if s != nil && s.logger != nil {
-				s.logger.Warn(
-					"inline inject image attachment failed",
-					slog.Any("error", err),
-					slog.String("bot_id", botID),
-					slog.String("content_hash", contentHash),
-				)
-			}
+			s.logVisionFailure(err)
 			continue
 		}
-		parts = append(parts, sdk.ImagePart{
-			Image:     dataURL,
-			MediaType: mime,
-		})
+		parts = append(parts, visionImageParts(frames)...)
 	}
 	return parts
 }
 
-func (s *Service) inlineImageAttachmentAssetIfNeeded(ctx context.Context, botID string, item gatewayAttachment) gatewayAttachment {
-	if item.Type != "image" {
-		return item
-	}
-	if strings.TrimSpace(item.Payload) != "" &&
-		(item.Transport == gatewayTransportInlineDataURL || item.Transport == gatewayTransportPublicURL) {
-		return item
-	}
-	contentHash := strings.TrimSpace(item.ContentHash)
-	if contentHash == "" {
-		return item
-	}
-	dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, item.Type, item.Mime)
-	if err != nil {
-		if s != nil && s.logger != nil {
-			s.logger.Warn(
-				"inline gateway image attachment failed",
-				slog.Any("error", err),
-				slog.String("bot_id", botID),
-				slog.String("content_hash", contentHash),
-			)
-		}
-		return item
-	}
-	item.Transport = gatewayTransportInlineDataURL
-	item.Payload = dataURL
-	if strings.TrimSpace(item.Mime) == "" {
-		item.Mime = mime
-	}
-	return item
-}
-
-// inlineFileAttachmentAssetIfNeeded mirrors inlineImageAttachmentAssetIfNeeded
-// for the file lane: native-document (PDF) and inline-text candidates get
+// inlineFileAttachmentAssetIfNeeded handles the file lane: native-document (PDF) and inline-text candidates get
 // their payload materialized from the media store so the capability router can
 // route them natively. Other file types are left to the workspace fallback.
 func (s *Service) inlineFileAttachmentAssetIfNeeded(ctx context.Context, botID string, item gatewayAttachment) gatewayAttachment {

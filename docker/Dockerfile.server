@@ -53,8 +53,19 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -ldflags "-s -w -X github.com/felinics/memoh/internal/version.CommitHash=${COMMIT_HASH}" \
     -o /out/bridge ./cmd/bridge
 
+# Native renderer is a separate process; the Go server remains CGO-free.
+FROM alpine:latest AS sticker-renderer-builder
+RUN apk add --no-cache g++ rlottie-dev libpng-dev
+COPY docker/sticker-renderer/main.cpp /src/main.cpp
+RUN g++ -std=c++17 -O2 -o /memoh-sticker-render /src/main.cpp -lrlottie -lpng
+
+# Shared with the decoder integration test image.
+FROM alpine:latest AS sticker-runtime
+RUN apk add --no-cache ffmpeg rlottie libpng libstdc++
+COPY --from=sticker-renderer-builder /memoh-sticker-render /usr/local/bin/memoh-sticker-render
+
 # ---- Stage 4: Final runtime (containerd + server + CNI) ----
-FROM alpine:latest
+FROM sticker-runtime
 
 WORKDIR /app
 

@@ -245,12 +245,13 @@ type MessagePart struct {
 type AttachmentType string
 
 const (
-	AttachmentImage AttachmentType = "image"
-	AttachmentAudio AttachmentType = "audio"
-	AttachmentVideo AttachmentType = "video"
-	AttachmentVoice AttachmentType = "voice"
-	AttachmentFile  AttachmentType = "file"
-	AttachmentGIF   AttachmentType = "gif"
+	AttachmentImage   AttachmentType = "image"
+	AttachmentSticker AttachmentType = "sticker"
+	AttachmentAudio   AttachmentType = "audio"
+	AttachmentVideo   AttachmentType = "video"
+	AttachmentVoice   AttachmentType = "voice"
+	AttachmentFile    AttachmentType = "file"
+	AttachmentGIF     AttachmentType = "gif"
 )
 
 // Attachment represents a binary file attached to a message.

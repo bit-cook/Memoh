@@ -26,7 +26,8 @@ type gatewayAttachment struct {
 	Metadata    map[string]any `json:"metadata,omitempty"`
 
 	// FallbackPath is an internal helper only used by server-side routing.
-	FallbackPath string `json:"-"`
+	FallbackPath       string `json:"-"`
+	invalidInlineImage bool
 }
 
 // capabilityRouteResult holds the outcome of splitting attachments by model capability.

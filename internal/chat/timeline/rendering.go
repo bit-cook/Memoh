@@ -19,6 +19,7 @@ type RenderedContentPiece struct {
 type ImageAttachmentRef struct {
 	ContentHash string `json:"content_hash"`
 	Mime        string `json:"mime,omitempty"`
+	Sticker     bool   `json:"sticker,omitempty"`
 }
 
 // RenderedSegment is a single segment of rendered context, one per IC node.
@@ -165,10 +166,11 @@ func renderMessage(msg *ICMessage, params RenderParams) RenderedSegment {
 
 	var imageRefs []ImageAttachmentRef
 	for _, att := range msg.Attachments {
-		if strings.EqualFold(att.Type, "image") && att.ContentHash != "" {
+		if (strings.EqualFold(att.Type, "image") || strings.EqualFold(att.Type, "sticker")) && att.ContentHash != "" {
 			imageRefs = append(imageRefs, ImageAttachmentRef{
 				ContentHash: att.ContentHash,
 				Mime:        att.MimeType,
+				Sticker:     strings.EqualFold(att.Type, "sticker"),
 			})
 		}
 	}

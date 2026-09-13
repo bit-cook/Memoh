@@ -8,6 +8,8 @@ on:
       - "go.mod"
       - "go.sum"
       - ".golangci.yml"
+      - "docker/Dockerfile.server"
+      - "docker/sticker-renderer/**"
       - "db/postgres/queries/**/*.sql"
       - "db/postgres/migrations/**/*.sql"
       - "db/pgvector/queries/**/*.sql"
@@ -21,6 +23,8 @@ on:
       - "go.mod"
       - "go.sum"
       - ".golangci.yml"
+      - "docker/Dockerfile.server"
+      - "docker/sticker-renderer/**"
       - "db/postgres/queries/**/*.sql"
       - "db/postgres/migrations/**/*.sql"
       - "db/pgvector/queries/**/*.sql"
@@ -76,6 +80,32 @@ jobs:
           name: go-coverage
           path: coverage.txt
           if-no-files-found: error
+
+  sticker-decoders:
+    name: Sticker decoders
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build decoder runtime and test binaries
+        run: |
+          docker build --target sticker-runtime -f docker/Dockerfile.server -t memoh-sticker-tests .
+          CGO_ENABLED=0 go test -c -o /tmp/vision.test ./internal/media/vision
+          CGO_ENABLED=0 go test -c -o /tmp/application.test ./internal/agent/application
+      - name: Exercise real media decoders without network access
+        run: |
+          docker run --rm --network none --memory 768m --cpus 2 --pids-limit 128 \
+            -e MEMOH_TEST_MEDIA_DECODERS=1 -v /tmp/vision.test:/vision.test:ro \
+            memoh-sticker-tests /vision.test -test.v
+          docker run --rm --network none --memory 768m --cpus 2 --pids-limit 128 \
+            -e MEMOH_TEST_MEDIA_DECODERS=1 -v /tmp/application.test:/application.test:ro \
+            memoh-sticker-tests /application.test -test.v -test.run TestAnimatedStickerEntryPoints
 
   pgvector-bootstrap:
     name: Pgvector bootstrap

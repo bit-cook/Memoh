@@ -55,6 +55,7 @@ require (
 	github.com/yuin/goldmark v1.7.13
 	go.uber.org/fx v1.24.0
 	golang.org/x/crypto v0.48.0
+	golang.org/x/image v0.36.0
 	golang.org/x/oauth2 v0.36.0
 	golang.org/x/sys v0.42.0
 	golang.org/x/time v0.15.0

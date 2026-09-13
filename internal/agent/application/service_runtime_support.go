@@ -384,6 +384,14 @@ func (s *Service) prepareRuntimeAttachments(ctx context.Context, req ChatRequest
 			result.References = append(result.References, reference)
 		}
 
+		if item.invalidInlineImage && reference == "" {
+			return runtimePreparedAttachments{}, agentfeedback.New(
+				agentfeedback.CodeAttachmentInvalid, "invalid_image_data", http.StatusBadRequest,
+				"chat.externalAgent.attachmentInvalid", "The attachment is invalid. Please attach it again.",
+				map[string]string{"name": name},
+			)
+		}
+
 		if attachmentType == "image" && item.Transport == gatewayTransportInlineDataURL && strings.TrimSpace(item.Payload) != "" {
 			image, imageErr := runtimePromptImageFromDataURL(item.Payload, item.Mime)
 			if imageErr != nil {

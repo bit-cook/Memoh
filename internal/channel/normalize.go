@@ -10,6 +10,8 @@ import (
 // InferAttachmentType infers a canonical attachment type from type/mime/name.
 func InferAttachmentType(currentType AttachmentType, mime, name string) AttachmentType {
 	switch strings.ToLower(strings.TrimSpace(string(currentType))) {
+	case string(AttachmentSticker):
+		return AttachmentSticker
 	case string(AttachmentImage):
 		return AttachmentImage
 	case string(AttachmentGIF):

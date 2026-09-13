@@ -42,6 +42,7 @@ import (
 	"github.com/felinics/memoh/internal/db/postgres/sqlc"
 	dbstore "github.com/felinics/memoh/internal/db/store"
 	"github.com/felinics/memoh/internal/hooks"
+	"github.com/felinics/memoh/internal/media/vision"
 	memprovider "github.com/felinics/memoh/internal/memory/adapters"
 	"github.com/felinics/memoh/internal/models"
 	"github.com/felinics/memoh/internal/oauthctx"
@@ -118,6 +119,8 @@ type Service struct {
 	eventPublisher          messageevent.Publisher
 	skillLoader             SkillLoader
 	assetLoader             gatewayAssetLoader
+	visionOnce              sync.Once
+	visionProcessor         *vision.Processor
 	platformIdentities      PlatformIdentitySource
 	botPermissions          botPermissionChecker
 	workspaceTargets        workspaceTargetResolver
@@ -365,31 +368,25 @@ func (s *Service) Pipeline() *timeline.Pipeline {
 // using the configured asset loader. Intended for the discuss driver to inline
 // images from new RC segments before calling the LLM.
 func (s *Service) InlineImageAttachments(ctx context.Context, botID string, refs []timeline.ImageAttachmentRef) []sdk.ImagePart {
-	if s == nil || s.assetLoader == nil || len(refs) == 0 {
+	if s == nil || s.assetLoader == nil {
 		return nil
 	}
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	var parts []sdk.ImagePart
+	seen := map[string]bool{}
 	for _, ref := range refs {
-		contentHash := strings.TrimSpace(ref.ContentHash)
-		if contentHash == "" {
+		hash := strings.TrimSpace(ref.ContentHash)
+		if hash == "" || seen[hash] {
 			continue
 		}
-		dataURL, mime, err := s.inlineAssetAsDataURL(ctx, botID, contentHash, "image", strings.TrimSpace(ref.Mime))
+		seen[hash] = true
+		frames, err := s.prepareStoredVision(ctx, botID, hash, ref.Sticker)
 		if err != nil {
-			if s.logger != nil {
-				s.logger.Warn(
-					"inline discuss image attachment failed",
-					slog.Any("error", err),
-					slog.String("bot_id", botID),
-					slog.String("content_hash", contentHash),
-				)
-			}
+			s.logVisionFailure(err)
 			continue
 		}
-		parts = append(parts, sdk.ImagePart{
-			Image:     dataURL,
-			MediaType: mime,
-		})
+		parts = append(parts, visionImageParts(frames)...)
 	}
 	return parts
 }

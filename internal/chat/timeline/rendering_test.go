@@ -116,3 +116,19 @@ func TestRenderDeletedMessagePopulatesSlotIdentityAndEditTime(t *testing.T) {
 		t.Fatalf("deleted segment lost slot metadata: %+v", seg)
 	}
 }
+
+func TestRenderMessageStickerAndLegacyImageKeepMediaReferences(t *testing.T) {
+	msg := &ICMessage{MessageID: "1", Attachments: []Attachment{
+		{Type: "sticker", ContentHash: "video-sticker", MimeType: "video/webm", FilePath: "/data/sticker.webm"},
+		{Type: "image", ContentHash: "legacy-tgs", MimeType: "application/x-gzip", FilePath: "/data/old.tgs"},
+	}}
+	segment := renderMessage(msg, RenderParams{})
+	if len(segment.ImageRefs) != 2 {
+		t.Fatalf("missing preparation references: %+v", segment.ImageRefs)
+	}
+	// The media boundary converts bytes; the pure timeline retains original file
+	// references so unavailable decoders do not erase the attachment from context.
+	if len(segment.Content) == 0 || !strings.Contains(segment.Content[0].Text, "/data/sticker.webm") || !strings.Contains(segment.Content[0].Text, "/data/old.tgs") {
+		t.Fatalf("missing original references: %+v", segment.Content)
+	}
+}

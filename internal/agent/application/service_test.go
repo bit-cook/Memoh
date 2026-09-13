@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/jpeg"
 	"io"
 	"log/slog"
 	"strings"
@@ -42,7 +44,7 @@ func TestPrepareGatewayAttachments_InlineAssetToBase64(t *testing.T) {
 				if contentHash != "asset-1" {
 					t.Fatalf("unexpected content hash: %s", contentHash)
 				}
-				return io.NopCloser(strings.NewReader("image-binary")), "image/png", nil
+				return io.NopCloser(bytes.NewReader(validVisionPNG(t))), "image/png", nil
 			},
 		},
 	}
@@ -81,7 +83,7 @@ func TestPrepareRuntimeImagesInlineStoredAsset(t *testing.T) {
 				if botID != "bot-1" || contentHash != "asset-1" {
 					t.Fatalf("unexpected asset lookup: bot=%q hash=%q", botID, contentHash)
 				}
-				return io.NopCloser(strings.NewReader("image-binary")), "image/png", nil
+				return io.NopCloser(bytes.NewReader(validVisionPNG(t))), "image/png", nil
 			},
 		},
 	}
@@ -100,7 +102,7 @@ func TestPrepareRuntimeImagesInlineStoredAsset(t *testing.T) {
 	if len(images) != 1 {
 		t.Fatalf("prepareRuntimeAttachments().Images = %#v, want one image", images)
 	}
-	if !bytes.Equal(images[0].Data, []byte("image-binary")) || images[0].MimeType != "image/png" {
+	if !bytes.Equal(images[0].Data, validVisionPNG(t)) || images[0].MimeType != "image/png" {
 		t.Fatalf("prepared image = %#v, want inline PNG", images[0])
 	}
 }
@@ -111,7 +113,7 @@ func TestPrepareGatewayAttachments_DataURLFromURLFieldIsNativeInline(t *testing.
 		Attachments: []ChatAttachment{
 			{
 				Type: "image",
-				URL:  "data:image/png;base64,AAAA",
+				URL:  "data:image/png;base64," + base64.StdEncoding.EncodeToString(validVisionPNG(t)),
 			},
 		},
 	}
@@ -123,7 +125,7 @@ func TestPrepareGatewayAttachments_DataURLFromURLFieldIsNativeInline(t *testing.
 	if prepared[0].Transport != gatewayTransportInlineDataURL {
 		t.Fatalf("expected inline transport, got %q", prepared[0].Transport)
 	}
-	if prepared[0].Payload != "data:image/png;base64,AAAA" {
+	if prepared[0].Payload != "data:image/png;base64,"+base64.StdEncoding.EncodeToString(validVisionPNG(t)) {
 		t.Fatalf("unexpected payload: %q", prepared[0].Payload)
 	}
 	if prepared[0].FallbackPath != "" {
@@ -404,10 +406,11 @@ func TestPrepareACPAttachments_RejectsInvalidOrUnreachableData(t *testing.T) {
 }
 
 func TestPrepareGatewayAttachments_DetectsImageMimeWhenOctetStream(t *testing.T) {
-	jpegBytes := []byte{
-		0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
-		0x49, 0x46, 0x00, 0x01, 0xFF, 0xD9,
+	var encoded bytes.Buffer
+	if err := jpeg.Encode(&encoded, image.NewRGBA(image.Rect(0, 0, 2, 2)), nil); err != nil {
+		t.Fatal(err)
 	}
+	jpegBytes := encoded.Bytes()
 	resolver := &Service{
 		logger: slog.Default(),
 		assetLoader: &fakeGatewayAssetLoader{

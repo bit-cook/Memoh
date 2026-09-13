@@ -2174,7 +2174,13 @@ func (a *TelegramAdapter) collectTelegramAttachments(bot *tele.Bot, msg *tele.Me
 		attachments = append(attachments, att)
 	}
 	if msg.Sticker != nil {
-		att := a.buildTelegramAttachment(bot, channel.AttachmentImage, msg.Sticker.FileID, "", "", msg.Sticker.FileSize)
+		mime := "image/webp"
+		if msg.Sticker.Video {
+			mime = "video/webm"
+		} else if msg.Sticker.Animated {
+			mime = "application/x-tgsticker"
+		}
+		att := a.buildTelegramAttachment(bot, channel.AttachmentSticker, msg.Sticker.FileID, "", mime, msg.Sticker.FileSize)
 		att.Width = msg.Sticker.Width
 		att.Height = msg.Sticker.Height
 		attachments = append(attachments, att)
