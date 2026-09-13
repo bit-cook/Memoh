@@ -38,6 +38,9 @@ const (
 	maxCacheBytes = 16 * 1024 * 1024
 )
 
+// ErrTGSUnavailable reports a missing runtime renderer or unsupported platform.
+var ErrTGSUnavailable = errors.New("TGS renderer unavailable")
+
 // Frame always contains a decoded/validated raster image, never a video or TGS.
 type Frame struct {
 	Data []byte
@@ -375,18 +378,5 @@ func renderTGS(ctx context.Context, data []byte) ([]Frame, error) {
 			return nil, errors.New("external assets are not supported in animated stickers")
 		}
 	}
-	dir, input, err := tempInput(raw)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = os.RemoveAll(dir) }()
-	output, err := run(ctx, "memoh-sticker-render", input, dir)
-	if err != nil {
-		return nil, err
-	}
-	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
-	if err != nil || count <= 0 || count > MaxFrames {
-		return nil, errors.New("sticker renderer returned invalid frame count")
-	}
-	return readFrames(dir, count)
+	return renderLottie(ctx, raw)
 }

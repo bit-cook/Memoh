@@ -9,7 +9,6 @@ on:
       - "go.sum"
       - ".golangci.yml"
       - "docker/Dockerfile.server"
-      - "docker/sticker-renderer/**"
       - "db/postgres/queries/**/*.sql"
       - "db/postgres/migrations/**/*.sql"
       - "db/pgvector/queries/**/*.sql"
@@ -24,7 +23,6 @@ on:
       - "go.sum"
       - ".golangci.yml"
       - "docker/Dockerfile.server"
-      - "docker/sticker-renderer/**"
       - "db/postgres/queries/**/*.sql"
       - "db/postgres/migrations/**/*.sql"
       - "db/pgvector/queries/**/*.sql"
@@ -96,8 +94,8 @@ jobs:
       - name: Build decoder runtime and test binaries
         run: |
           docker build --target sticker-runtime -f docker/Dockerfile.server -t memoh-sticker-tests .
-          CGO_ENABLED=0 go test -c -o /tmp/vision.test ./internal/media/vision
-          CGO_ENABLED=0 go test -c -o /tmp/application.test ./internal/agent/application
+          CGO_ENABLED=0 go test -c -ldflags "-I /lib/ld-musl-x86_64.so.1" -o /tmp/vision.test ./internal/media/vision
+          CGO_ENABLED=0 go test -c -ldflags "-I /lib/ld-musl-x86_64.so.1" -o /tmp/application.test ./internal/agent/application
       - name: Exercise real media decoders without network access
         run: |
           docker run --rm --network none --memory 768m --cpus 2 --pids-limit 128 \

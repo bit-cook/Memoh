@@ -33,8 +33,9 @@ only when an attachment is entering the image/sticker input path.
   `ffprobe` reads the frame count, falling back to counting decoded frames.
   `ffmpeg` extracts and scales PNG frames. VP8/VP9 use libvpx so transparent
   WebM pixels survive decoding and can be composited on white.
-- TGS is decompressed and validated as Lottie JSON, then rendered by the separate
-  `memoh-sticker-render` process using rlottie. It uses the same sampling, size
+- TGS is decompressed and validated as Lottie JSON, then rendered in the Server
+  process through rlottie's prebuilt C API, called from Go with `purego`
+  (without CGO). It uses the same sampling, size
   and white-background rules. Bitmap asset references are rejected.
 - Identical derived frames are deduplicated. A process-local cache keys successful
   results by bot scope, source SHA-256 and sticker treatment; it holds at most
@@ -58,41 +59,59 @@ Input is limited to 20 MiB; decoded raster dimensions to 16 megapixels; TGS JSON
 to 2 MiB and canvas dimensions to 4096 on each axis. Animations are limited to
 7200 frames and, when video duration metadata is available, 60 seconds; TGS
 always enforces the duration limit. A processor permits two concurrent decoding
-operations, with a 15-second deadline including admission to that limit. Each
-application attachment batch has a 30-second preparation deadline.
+operations. Preparation uses a 15-second context deadline including admission;
+each application attachment batch has a 30-second context deadline. FFmpeg
+subprocesses are terminated on cancellation. TGS checks cancellation before and
+after parsing/rendering calls and between frames; an executing synchronous
+rlottie call cannot be interrupted by Go context cancellation.
 
-Subprocesses have bounded diagnostic output and private temporary directories
-removed on return. FFmpeg input protocols/formats are restricted to local media
-containers, individual allocations to 64 MiB, and decoder threads to one. The
-TGS helper additionally limits address space to 256 MiB, CPU time to 10 seconds
-and each output file to 2 MiB. These are resource bounds, not an OS sandbox for
-native codecs; production container limits remain appropriate.
+Video extraction uses bounded subprocess output, private temporary directories
+removed on return, restricted input protocols/formats and a 64 MiB individual
+allocation limit. TGS stays in memory and does not launch a helper process.
+There are no process-wide resource-limit changes to the Server. A native
+renderer crash would affect the Server process, so its container resource limits
+remain the execution boundary.
 
-`docker/Dockerfile.server` includes ffmpeg/ffprobe with libvpx and builds the TGS
-helper against rlottie and libpng. The Go server remains CGO-free. Source-based
-Linux deployments also need these programs on the **server's** PATH. For Alpine,
-the helper can be built with:
+`docker/Dockerfile.server` installs ffmpeg/ffprobe with libvpx and the prebuilt
+rlottie runtime library. Go loads rlottie once for the process lifetime, disables
+its model cache, and creates/destroys an animation for each uncached conversion.
+The application retains its bot-scoped frame cache. Pixel compositing and PNG
+encoding use Go's image libraries. There is no repository-owned C/C++ source,
+helper binary or C/C++ compilation stage for this pipeline. rlottie itself
+remains a native runtime dependency.
+
+The native binding supports Linux amd64 and arm64. Source-based deployments need
+ffmpeg/ffprobe on the Server's PATH and `librlottie.so.0` on the dynamic loader
+path. Missing libraries or unsupported platforms return an unavailable-renderer
+error and use the existing attachment fallback.
+
+The binaries still build with `CGO_ENABLED=0`, but importing `purego` makes the
+Linux binaries dynamically linked to the system loader. Docker explicitly uses
+Alpine's musl loader for Server and Channel. On glibc-based Linux, the default Go
+loader is appropriate. For a source build on Alpine:
 
 ```sh
-apk add --no-cache g++ rlottie-dev libpng-dev ffmpeg
-c++ -std=c++17 -O2 -o /usr/local/bin/memoh-sticker-render \
-  docker/sticker-renderer/main.cpp -lrlottie -lpng
+apk add --no-cache rlottie ffmpeg
+case "$(uname -m)" in
+  x86_64) loader=x86_64 ;;
+  aarch64) loader=aarch64 ;;
+  *) exit 1 ;;
+esac
+CGO_ENABLED=0 go build -ldflags "-I /lib/ld-musl-${loader}.so.1" -o memoh-server ./cmd/agent
+CGO_ENABLED=0 go build -ldflags "-I /lib/ld-musl-${loader}.so.1" -o memoh-channel ./cmd/channel
 ```
-
-If a decoder is missing or rejects an input, the file fallback still applies;
-animation vision is unavailable for that input. The native helper is built for
-the target platform by Docker, separately from the cross-compiled Go binaries.
 
 ## Verification
 
 Run the regular Go tests for channel ingress, timeline rendering, attachment
 routing and media preparation. Go CI also builds the actual `sticker-runtime`
-stage and runs synthetic WebM/TGS integration tests with network disabled:
+stage and runs synthetic WebM/TGS integration tests with network disabled. The
+commands below target an amd64 Alpine container:
 
 ```sh
 docker build --target sticker-runtime -f docker/Dockerfile.server -t memoh-sticker-tests .
-CGO_ENABLED=0 go test -c -o /tmp/vision.test ./internal/media/vision
-CGO_ENABLED=0 go test -c -o /tmp/application.test ./internal/agent/application
+CGO_ENABLED=0 go test -c -ldflags "-I /lib/ld-musl-x86_64.so.1" -o /tmp/vision.test ./internal/media/vision
+CGO_ENABLED=0 go test -c -ldflags "-I /lib/ld-musl-x86_64.so.1" -o /tmp/application.test ./internal/agent/application
 docker run --rm --network none --memory 768m --cpus 2 --pids-limit 128 \
   -e MEMOH_TEST_MEDIA_DECODERS=1 -v /tmp/vision.test:/vision.test:ro \
   memoh-sticker-tests /vision.test -test.v

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -159,9 +160,12 @@ func TestVideoStickerIntegration(t *testing.T) {
 }
 
 func TestTGSIntegration(t *testing.T) {
-	requireDecoder(t, "memoh-sticker-render")
 	data := gzipJSON(t, `{"v":"5.5.2","w":512,"h":256,"ip":0,"op":60,"fr":30,"layers":[]}`)
 	frames, err := NewProcessor().Prepare(context.Background(), "bot", data, false)
+	if errors.Is(err, ErrTGSUnavailable) && os.Getenv("MEMOH_TEST_MEDIA_DECODERS") != "1" {
+		t.Skip(err)
+	}
+
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,4 +225,39 @@ func TestConcurrentPreparationKeepsOneCacheEntry(t *testing.T) {
 	if len(p.cache) != 1 || p.cacheBytes != len(p.cache[0].frames[0].Data) {
 		t.Fatal("concurrent inserts duplicated cache entries or byte accounting")
 	}
+}
+
+func TestTGSNativeCacheIsolation(t *testing.T) {
+	var inputs [][]byte
+	for _, color := range []string{"#ff0000", "#0000ff"} {
+		inputs = append(inputs, gzipJSON(t, fmt.Sprintf(`{"v":"5.5.2","w":16,"h":16,"ip":0,"op":30,"fr":30,"layers":[{"ty":1,"ind":1,"ip":0,"op":30,"st":0,"sw":16,"sh":16,"sc":%q,"ks":{"o":{"a":0,"k":100},"r":{"a":0,"k":0},"p":{"a":0,"k":[0,0,0]},"a":{"a":0,"k":[0,0,0]},"s":{"a":0,"k":[100,100,100]}}}]}`, color)))
+	}
+	if _, err := NewProcessor().Prepare(context.Background(), "probe", inputs[0], true); err != nil {
+		if errors.Is(err, ErrTGSUnavailable) && os.Getenv("MEMOH_TEST_MEDIA_DECODERS") != "1" {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for i := range 8 {
+		wg.Go(func() {
+			// Fresh processors bypass the application cache, exercising rlottie's
+			// process-wide state with two different animations concurrently.
+			frames, err := NewProcessor().Prepare(context.Background(), fmt.Sprintf("bot-%d", i), inputs[i%2], true)
+			if err != nil || len(frames) == 0 {
+				t.Errorf("render %d: %v", i, err)
+				return
+			}
+			img, _, err := image.Decode(bytes.NewReader(frames[0].Data))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			r, g, b, a := img.At(4, 4).RGBA()
+			if a != 65535 || g != 0 || (i%2 == 0 && (r != 65535 || b != 0)) || (i%2 == 1 && (b != 65535 || r != 0)) {
+				t.Errorf("render %d reused another animation: %d %d %d %d", i, r, g, b, a)
+			}
+		})
+	}
+	wg.Wait()
 }

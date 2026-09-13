@@ -27,16 +27,17 @@ ARG TARGETARCH
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     set -eux; \
+    case "${TARGETARCH:-amd64}" in amd64) loader=x86_64 ;; arm64) loader=aarch64 ;; *) exit 1 ;; esac; \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath \
-    -ldflags "-s -w \
+    -ldflags "-s -w -I /lib/ld-musl-${loader}.so.1 \
       -X github.com/felinics/memoh/internal/version.Version=${VERSION} \
       -X github.com/felinics/memoh/internal/version.CommitHash=${COMMIT_HASH} \
       -X github.com/felinics/memoh/internal/version.BuildTime=${BUILD_TIME}" \
     -o memoh-server ./cmd/agent && \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath \
-    -ldflags "-s -w \
+    -ldflags "-s -w -I /lib/ld-musl-${loader}.so.1 \
       -X github.com/felinics/memoh/internal/version.Version=${VERSION} \
       -X github.com/felinics/memoh/internal/version.CommitHash=${COMMIT_HASH} \
       -X github.com/felinics/memoh/internal/version.BuildTime=${BUILD_TIME}" \
@@ -53,16 +54,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -ldflags "-s -w -X github.com/felinics/memoh/internal/version.CommitHash=${COMMIT_HASH}" \
     -o /out/bridge ./cmd/bridge
 
-# Native renderer is a separate process; the Go server remains CGO-free.
-FROM alpine:latest AS sticker-renderer-builder
-RUN apk add --no-cache g++ rlottie-dev libpng-dev
-COPY docker/sticker-renderer/main.cpp /src/main.cpp
-RUN g++ -std=c++17 -O2 -o /memoh-sticker-render /src/main.cpp -lrlottie -lpng
-
 # Shared with the decoder integration test image.
 FROM alpine:latest AS sticker-runtime
-RUN apk add --no-cache ffmpeg rlottie libpng libstdc++
-COPY --from=sticker-renderer-builder /memoh-sticker-render /usr/local/bin/memoh-sticker-render
+RUN apk add --no-cache ffmpeg rlottie
 
 # ---- Stage 4: Final runtime (containerd + server + CNI) ----
 FROM sticker-runtime

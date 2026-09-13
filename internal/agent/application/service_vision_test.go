@@ -5,14 +5,15 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/base64"
+	"errors"
 	"image"
 	"image/png"
 	"io"
 	"os"
-	"os/exec"
 	"testing"
 
 	"github.com/felinics/memoh/internal/chat/timeline"
+	"github.com/felinics/memoh/internal/media/vision"
 	"github.com/felinics/memoh/internal/models"
 )
 
@@ -84,12 +85,6 @@ func TestMalformedImageFallsBackWithoutResendingOriginalURL(t *testing.T) {
 
 // Exercise all callers with real gzip/Lottie bytes, including legacy image labels.
 func TestAnimatedStickerEntryPoints(t *testing.T) {
-	if _, err := exec.LookPath("memoh-sticker-render"); err != nil {
-		if os.Getenv("MEMOH_TEST_MEDIA_DECODERS") == "1" {
-			t.Fatal(err)
-		}
-		t.Skip("requires memoh-sticker-render")
-	}
 	var compressed bytes.Buffer
 	w := gzip.NewWriter(&compressed)
 	// A red square travels across a transparent canvas over one second.
@@ -98,6 +93,12 @@ func TestAnimatedStickerEntryPoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := vision.NewProcessor().Prepare(context.Background(), "probe", compressed.Bytes(), true); err != nil {
+		if errors.Is(err, vision.ErrTGSUnavailable) && os.Getenv("MEMOH_TEST_MEDIA_DECODERS") != "1" {
+			t.Skip(err)
+		}
 		t.Fatal(err)
 	}
 	s := &Service{assetLoader: &fakeGatewayAssetLoader{openFn: func(context.Context, string, string) (io.ReadCloser, string, error) {
