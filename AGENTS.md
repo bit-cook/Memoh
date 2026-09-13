@@ -39,6 +39,7 @@ Infrastructure dependencies:
 - **Code Generation**: sqlc (SQL → Go)
 - **API Docs**: Swagger/OpenAPI (swaggo)
 - **MCP**: modelcontextprotocol/go-sdk
+- **WebAssembly**: wazero (CGO-free; runs the ThorVG build that renders animated stickers)
 - **Containers / Workspaces**: Docker / containerd v2 / Apple Virtualization adapters
 
 ### Frontend (TypeScript)

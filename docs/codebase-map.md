@@ -103,7 +103,7 @@ Memoh/
 │   ├── i18n/                   #   Command and message internationalization
 │   ├── logger/                 #   Structured logging (slog)
 │   ├── mcp/                    #   MCP protocol manager (connections, OAuth, tool gateway)
-│   ├── media/                  #   Content-addressed media asset service
+│   ├── media/                  #   Content-addressed media asset service; `lottie/` renders animated stickers
 │   ├── memory/                 #   Long-term memory system (multi-provider: Qdrant, BM25, LLM extraction)
 │   ├── messaging/              #   Outbound message executor
 │   ├── models/                 #   LLM model management (CRUD, variants, client types, probe)
@@ -202,4 +202,5 @@ The codebase has grown beyond the original agent/channel/container core. When wo
 - **Apps (`internal/apps/`, `internal/supermarket/`)** — Supermarket App discovery and installation state. Installed Apps expand into immutable Registry Skills in the selected workspace target.
 - **User input / `ask_user` (`internal/agent/decision/input/`)** — lets the in-process agent ask the user a question mid-conversation and wait for an answer.
 - **Bot backup / import / export (`internal/botbackup/`)** — archive-based bot portability with preview and merge/replace/skip strategies.
+- **Animated sticker rendering (`internal/media/lottie/`)** — Telegram animated stickers are gzipped Lottie, not images. The package rasterises them with ThorVG's published WebAssembly build running on wazero, so the server stays CGO-free and needs no native library. Three properties are normative, not incidental: the module's memory is capped and a render is aborted when its context expires (sticker data is attacker-supplied); every host import traps except the heap-growth hook, so an unverified code path fails the render instead of getting a fabricated answer; and each render gets a fresh module instance, so stickers never share linear memory. `thorvg.wasm` is vendored — the upgrade procedure, including remapping ThorVG's minified export names, is in the package's `doc.go`.
 - **Workspace resource limits (`internal/workspace/resource_limits.go`)** — per-bot CPU/memory/storage quotas and runtime metrics.
