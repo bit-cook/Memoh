@@ -109,19 +109,23 @@ test('label sync is idempotent and does not remove unrelated labels', async () =
   assert.deepEqual(calls, []);
 });
 
-test('every ordinary PR CI has a format dependency before executable jobs', () => {
+test('ordinary PR CI has no format job or dependency', () => {
   const dir=new URL('../workflows/',import.meta.url);
+  let checked=0;
   for(const file of readdirSync(dir).filter(name=>name.endsWith('.yml'))) {
     const workflow=JSON.parse(execFileSync('ruby',['-ryaml','-rjson','-e','puts YAML.load_file(ARGV[0]).to_json',new URL(file,dir).pathname],{encoding:'utf8'}));
     const events=workflow.on??workflow.true;
     if(!events || !Object.hasOwn(events,'pull_request')) continue;
-    assert.ok(workflow.jobs.format?.uses?.endsWith('/contribution-format.yml'),file);
+    checked++;
+    assert.equal(workflow.jobs.format,undefined,file);
     for(const [name,job] of Object.entries(workflow.jobs)) {
-      if(name==='format') continue;
       const needs=Array.isArray(job.needs)?job.needs:[job.needs];
-      assert.ok(needs.includes('format'),`${file}: ${name} lacks format dependency`);
+      assert.ok(!needs.includes('format'),`${file}: ${name} waits for format`);
+      assert.ok(!job.if?.includes('needs.format'),file);
     }
+    assert.ok(Object.values(workflow.permissions).every(value=>value==='read'),file);
   }
+  assert.equal(checked,9);
 });
 
 test('both the read-only gate and privileged controller check out default-branch rules', () => {
@@ -143,4 +147,29 @@ test('English template structure accepts free-form responses in any language', (
   assert.deepEqual(validate(multilingual, true).errors, []);
   const report = issue('help').replaceAll('Specific reproducible details', '这是用户填写的具体求助内容。');
   assert.deepEqual(validate(report, false).errors, []);
+});
+
+test('subheadings remain part of their template section, including repeated subsection names', () => {
+  for(const heading of ['##','###','####']) {
+    const body=validPR()
+      .replace('Ran the controller regression tests.',`${heading} 自动测试\n测试通过。\n${heading} 自动测试\n补充验证。`)
+      .replace('Fix CI recovery after a description changes.',`${heading} 背景\n修复 CI。`);
+    assert.deepEqual(validate(body,true).errors,[]);
+  }
+  assert.ok(validate(validPR()+'\n## Validation\n重复字段',true).errors.some(e=>e.includes('Duplicate')));
+});
+test('QA disclosure can precede follow-up notes but must be visible in Human QA', () => {
+  assert.deepEqual(validate(validPR()+'\n\n补充：仍等待真人验收。',true).errors,[]);
+  assert.deepEqual(validate(validPR()+'\n\n## 后续工作\n#123',true).errors,[]);
+  for(const hidden of [`<!-- ${noHumanQA} -->`,`\`\`\`\n${noHumanQA}\n\`\`\``, '']) {
+    assert.ok(validate(validPR().replace(noHumanQA,hidden),true).errors.length);
+  }
+  const moved=validPR().replace(noHumanQA,'').replace('## Summary',`## Summary\n${noHumanQA}`);
+  assert.ok(validate(moved,true).errors.length);
+});
+test('bare completion placeholders are reported without a minimum word count', () => {
+  for(const value of ['ok','OK','done','passed','已完成','通过']) {
+    assert.ok(validate(validPR().replace('Ran the controller regression tests.',value),true).errors.length);
+  }
+  assert.deepEqual(validate(validPR().replace('Ran the controller regression tests.','单测 3 项通过。'),true).errors,[]);
 });

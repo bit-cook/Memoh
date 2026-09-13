@@ -53,20 +53,13 @@ on:
 
 permissions:
   contents: read
-  statuses: read
-  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  format:
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/contribution-format.yml
   lint:
-    needs: format
-    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -88,8 +81,6 @@ jobs:
         run: pnpm lint
 
   test:
-    needs: format
-    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Test
     runs-on: ubuntu-latest
     timeout-minutes: 20

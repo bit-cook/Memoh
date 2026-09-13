@@ -4,16 +4,11 @@ on:
     branches: [main, "v*.*"]
 permissions:
   contents: read
-  statuses: read
-  pull-requests: read
 concurrency:
   group: docker-pr-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  format:
-    uses: ./.github/workflows/contribution-format.yml
   build:
-    needs: format
     uses: ./.github/workflows/docker-build.yml
     with:
       publish: false

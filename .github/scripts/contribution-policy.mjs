@@ -7,10 +7,12 @@ export const headings = {
   expected: 'Expected and Actual Behavior', version: 'Version', feature: 'Feature Description', motivation: 'Use Case and Motivation',
   help: 'Problem', goal: 'Desired Outcome', attempts: 'What You Have Tried', environment: 'Version and Environment',
 };
+const sectionNames = new Set([...Object.values(headings), 'Related Issues', 'Environment', 'Model Used', 'Logs', 'Additional Context', 'Proposed Solution', 'Alternatives Considered']);
+
 export const typeLabels = ['bug', 'feat', 'test', 'help'];
 export const ciWorkflows = ['eslint.yml', 'go-ci.yml', 'rust-ci.yml', 'runtime-ci.yml', 'migrations.yml', 'install-ci.yml', 'electron-ci.yml', 'docker-pr.yml', 'contribution-policy-ci.yml'];
 
-// Fenced examples must not supply headings or checked choices for the outer form.
+// 代码示例不参与字段或勾选解析；未知标题保留在所属字段内。
 export function sections(body = '') {
   const result = new Map();
   let heading;
@@ -24,7 +26,7 @@ export function sections(body = '') {
     }
     if (delimiter) { fence = delimiter[1]; continue; }
     const match = line.match(/^#{2,3}\s+(.+?)\s*#*$/);
-    if (match) {
+    if (match && sectionNames.has(match[1].trim())) {
       heading = match[1].trim();
       if (result.has(heading)) throw new Error(`Duplicate section: ${heading}`);
       result.set(heading, { content: [], plain: [], choices: [] });
@@ -45,7 +47,7 @@ export function validate(body, isPR) {
   const content = key => parts.get(headings[key])?.content.join('\n').trim() ?? '';
   function required(key) {
     const value = content(key);
-    if (!value || /^(?:_?No response_?|N\/?A|TBD|TODO|Please fill in[.]?|无|待填写|请填写[。.]?|\.\.\.)$/i.test(value)) errors.push(`Please complete "${headings[key]}".`);
+    if (!value || /^(?:_?No response_?|N\/?A|TBD|TODO|OK|done|passed|已完成|通过|Please fill in[.]?|无|待填写|请填写[。.]?|\.\.\.)$/i.test(value)) errors.push(`Please complete "${headings[key]}".`);
   }
   function choice(key, allowed) {
     const field = parts.get(headings[key]);
@@ -62,7 +64,8 @@ export function validate(body, isPR) {
   if (isPR) {
     ['summary', 'validation', 'screenshots', 'qa'].forEach(required);
     const qa = choice('qa', ['Not yet verified by a human', 'Confirmed by a human']);
-    if (qa === 'Not yet verified by a human' && !(body ?? '').trimEnd().endsWith(noHumanQA)) errors.push('Keep the No human QA disclosure at the end of the description until a human confirms QA.');
+    const disclosed = parts.get(headings.qa)?.plain.some(line => line.trim() === noHumanQA);
+    if (qa === 'Not yet verified by a human' && !disclosed) errors.push('请在 Human QA 中保留 No human QA 声明，直到真人确认验收。');
     if (qa === 'Confirmed by a human') {
       const evidence = content('qa').replace(/^\s*-\s+\[[ xX]\].*$/gm, '').replace(noHumanQA, '').trim();
       if (!evidence || /^(?:TBD|TODO|待填写|N\/?A)$/i.test(evidence)) errors.push('Identify the reviewer and confirmation record in "Human QA".');

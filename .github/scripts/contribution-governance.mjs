@@ -2,7 +2,6 @@ import { bodyFingerprint, ciWorkflows, classify, typeLabels, validate } from './
 
 const marker = '<!-- memoh-contribution-format:v1 -->';
 const statusContext = 'PR Format';
-const activeRuns = new Set(['queued', 'in_progress', 'pending', 'waiting', 'requested']);
 const pathFor = name => `.github/workflows/${name}`;
 
 export function belongsToPR(run, pr) {
@@ -27,7 +26,7 @@ async function samePR(github, repo, pr) {
   return fresh.state === 'open' && bodyFingerprint(fresh) === bodyFingerprint(pr);
 }
 
-export async function reconcileRuns(github, repo, pr, valid, core) {
+export async function reconcileRuns(github, repo, pr, core) {
   const runs = await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
     ...repo, event: 'pull_request', head_sha: pr.head.sha, per_page: 100,
   });
@@ -38,31 +37,9 @@ export async function reconcileRuns(github, repo, pr, valid, core) {
   }
   for (const run of latest.values()) {
     if (!await samePR(github, repo, pr)) return;
-    if (!valid) {
-      if (activeRuns.has(run.status) && run.conclusion !== 'action_required') {
-        await github.rest.repos.createCommitStatus({ ...repo, sha: pr.head.sha, state: 'failure', context: `PR Format cancellation / ${run.id}`, description: `attempt:${run.run_attempt}` });
-        await github.rest.actions.cancelWorkflowRun({ ...repo, run_id: run.id });
-      }
-      continue;
-    }
     if (run.conclusion === 'action_required') {
       await github.rest.actions.approveWorkflowRun({ ...repo, run_id: run.id });
       core.info(`Approved PR #${pr.number} run ${run.id}`);
-    } else if (run.status === 'completed' && run.conclusion === 'cancelled') {
-      const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, { ...repo, ref: pr.head.sha, per_page: 100 });
-      const cancelled = statuses.find(status => status.context === `PR Format cancellation / ${run.id}`);
-      if (cancelled?.creator?.login === 'github-actions[bot]' && cancelled.description === `attempt:${run.run_attempt}`) {
-        await github.rest.actions.reRunWorkflow({ ...repo, run_id: run.id });
-      }
-    } else if (run.status === 'completed' && run.conclusion === 'failure') {
-      const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, { ...repo, run_id: run.id, filter: 'latest', per_page: 100 });
-      const gates = jobs.filter(job => job.name.endsWith('Contribution format'));
-      const formatFailed = gates.some(job => job.conclusion === 'failure');
-      // Do not retry a real lint/build failure, nor a manual cancellation.
-      if (formatFailed && jobs.every(job => gates.includes(job) || job.conclusion === 'skipped')) {
-        await github.rest.actions.reRunWorkflow({ ...repo, run_id: run.id });
-        core.info(`Re-ran format-blocked run ${run.id}`);
-      }
     }
   }
 }
@@ -72,8 +49,8 @@ async function publishComment(github, repo, issue, errors) {
   const previous = comments.find(comment => comment.user?.login === 'github-actions[bot]' && comment.body?.startsWith(marker));
   if (!errors.length && !previous) return;
   const body = errors.length
-    ? `${marker}\n@${issue.user.login} please update the description to follow the template:\n\n${errors.map(error => `- ${error}`).join('\n')}\n\nEditing the description triggers another check. Code CI runs only after the PR format passes.`
-    : `${marker}\nThe format check passed. Removed \`needs:format\`.`;
+    ? `${marker}\n@${issue.user.login} 请按模板补充以下信息：\n\n${errors.map(error => `- ${error}`).join('\n')}\n\n编辑描述后会重新检查；格式提示不会阻止或取消代码 CI。`
+    : `${marker}\n格式检查通过，已移除 \`needs:format\`.`;
   if (previous?.body === body) return;
   if (previous) await github.rest.issues.updateComment({ ...repo, comment_id: previous.id, body });
   else await github.rest.issues.createComment({ ...repo, issue_number: issue.number, body });
@@ -98,16 +75,26 @@ export async function inspectPR({ github, context, core }, number, { classifyCha
   if (!await samePR(github, repo, pr)) return;
   const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, { ...repo, ref: pr.head.sha, per_page: 100 });
   const last = statuses.find(status => status.context === statusContext);
-  const state = errors.length ? 'failure' : 'success';
-  const description = `${bodyFingerprint(pr)} ${errors.length ? 'Please correct the description format' : 'Description format passed'}`;
+  // 格式问题通过标签和评论提示，不阻断代码检查或工作流审批。
+  const state = 'success';
+  const description = `${bodyFingerprint(pr)} ${errors.length ? '格式有待补充（不阻断 CI）' : '格式检查通过'}`;
   if (last?.state !== state || last?.description !== description) {
     await github.rest.repos.createCommitStatus({ ...repo, sha: pr.head.sha, state, context: statusContext, description,
       target_url: `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}` });
   }
+  // 仅清理当前 head 上最新的机器人取消标记，不覆盖真实测试或其他账号的状态。
+  const seen = new Set();
+  for (const status of statuses) {
+    if (seen.has(status.context)) continue;
+    seen.add(status.context);
+    if (/^PR Format cancellation \/ \d+$/.test(status.context) && status.state === 'failure' && status.creator?.login === 'github-actions[bot]') {
+      await github.rest.repos.createCommitStatus({ ...repo, sha: pr.head.sha, state: 'success', context: status.context, description: '旧格式门禁取消标记已停用；不代表代码检查通过' });
+    }
+  }
   await syncLabels(github, repo, pr, wanted, name => typeLabels.includes(name) || name === 'needs:format'
     || (classification && (name.startsWith('size:') || name.startsWith('change:'))));
   await publishComment(github, repo, pr, errors);
-  await reconcileRuns(github, repo, pr, !errors.length, core);
+  await reconcileRuns(github, repo, pr, core);
   if (classifyChanges) {
     await core.summary.addHeading(`PR #${number}`).addRaw(`Format: ${errors.length ? errors.join('; ') : 'Passed'}\n\nOriginal additions/deletions: ${pr.additions}/${pr.deletions}\n\n`)
       .addRaw(classification ? `Filtered additions/deletions: ${classification.additions}/${classification.deletions}; Excluded ${classification.ignored} files; ${classification.size}; ${classification.changes.join(', ')}\n` : 'Classification failed; existing size/change labels were preserved.\n').write();
@@ -147,22 +134,7 @@ export async function run({ github, context, core }) {
   }
 }
 
-export async function gate({ github, context, core }) {
-  const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.payload.pull_request.number });
-  if (pr.head.sha !== context.payload.pull_request.head.sha || pr.state !== 'open') throw new Error('PR head is obsolete or PR is closed');
-  const result = validate(pr.body, true);
-  if (result.errors.length) throw new Error(result.errors.join('\n'));
-  // Wait for the independent trusted controller, never accept a manually edited label.
-  const fingerprint = bodyFingerprint(pr);
-  for (let attempt = 0; attempt < 12; attempt++) {
-    const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, { ...context.repo, ref: pr.head.sha, per_page: 100 });
-    const status = statuses.find(item => item.context === statusContext);
-    if (status?.state === 'success' && status.description?.startsWith(`${fingerprint} `) && status.creator?.login === 'github-actions[bot]') {
-      if (!await samePR(github, context.repo, pr)) throw new Error('PR changed while checking format');
-      core.info('Trusted PR format check passed');
-      return;
-    }
-    await new Promise(resolve => setTimeout(resolve, 5000));
-  }
-  throw new Error('Waiting for trusted PR Format status; controller will retry this format-blocked run.');
+// 旧 PR 分支仍会经复用工作流调用此入口；保留兼容，直接放行。
+export async function gate({ core }) {
+  core.info('格式检查已改为独立提示，代码 CI 无需等待描述检查。');
 }

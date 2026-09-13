@@ -30,7 +30,7 @@ If screenshots are unavailable or the change has no visible interface, explain w
 
 ## Human QA
 
-<!-- Select exactly one option. If a human has confirmed QA, identify the reviewer and confirmation record, and remove the disclosure at the end. -->
+<!-- Select exactly one option. If a human has confirmed QA, identify the reviewer and confirmation record, and remove the disclosure below. Otherwise keep it in this section; additional notes may follow. -->
 - [ ] Not yet verified by a human
 - [ ] Confirmed by a human
 

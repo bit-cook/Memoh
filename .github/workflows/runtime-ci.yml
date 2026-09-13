@@ -25,20 +25,13 @@ on:
 
 permissions:
   contents: read
-  statuses: read
-  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  format:
-    if: github.event_name == 'pull_request'
-    uses: ./.github/workflows/contribution-format.yml
   test:
-    needs: format
-    if: always() && !cancelled() && (github.event_name != 'pull_request' || needs.format.result == 'success')
     name: Test runtime (${{ matrix.platform }})
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 20

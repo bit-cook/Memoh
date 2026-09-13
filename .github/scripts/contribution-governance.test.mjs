@@ -25,40 +25,50 @@ test('approval binds the repository, PR, workflow path and current head', () => 
   assert.equal(belongsToPR({...ci,pull_requests:[],head_repository:{id:2},head_branch:'patch'},pr),true);
   assert.equal(belongsToPR({...ci,pull_requests:[],head_repository:{id:3},head_branch:'patch'},pr),false);
 });
-test('valid PR approves pending CI; obsolete events and invalid bodies cannot approve', async () => {
-  for (const [valid,fresh,count] of [[true,pr,1],[false,pr,0],[true,{...pr,body:'changed'},0]]) {
+test('approval depends on the current PR, not its description format', async () => {
+  for (const [fresh,count] of [[pr,1],[{...pr,body:'changed'},0]]) {
     const m=mock({runs:[{...ci,status:'completed',conclusion:'action_required'}],fresh});
-    await reconcileRuns(m.github,m.context.repo,pr,valid,m.core);
+    await reconcileRuns(m.github,m.context.repo,pr,m.core);
     assert.equal(m.calls.filter(c=>c.name==='approveWorkflowRun').length,count);
   }
 });
 test('only latest run is approved, never obsolete runs of the same workflow', async () => {
   const m=mock({runs:[{...ci,id:9,conclusion:'action_required'},{...ci,id:10,status:'in_progress'}]});
-  await reconcileRuns(m.github,m.context.repo,pr,true,m.core);
+  await reconcileRuns(m.github,m.context.repo,pr,m.core);
   assert.equal(m.calls.length,0);
 });
-test('rerun only format failures, never actual test failures', async () => {
-  for (const [jobs,count] of [
-    [[{name:'format / Contribution format',conclusion:'failure'},{name:'Test',conclusion:'skipped'}],1],
-    [[{name:'format / Contribution format',conclusion:'success'},{name:'Test',conclusion:'failure'}],0],
-    [[{name:'format / Contribution format',conclusion:'failure'},{name:'Test',conclusion:'failure'}],0],
+test('invalid descriptions never cancel or rerun CI, but still approve eligible runs', async () => {
+  for (const run of [
+    {...ci,status:'in_progress'},
+    {...ci,status:'completed',conclusion:'cancelled'},
+    {...ci,status:'completed',conclusion:'failure'},
+    {...ci,status:'completed',conclusion:'action_required'},
   ]) {
-    const m=mock({runs:[{...ci,status:'completed',conclusion:'failure'}],jobs});
-    await reconcileRuns(m.github,m.context.repo,pr,true,m.core);
-    assert.equal(m.calls.filter(c=>c.name==='reRunWorkflow').length,count);
+    const invalid = {...pr,body:body.replace('- [x] Agent','- [x] Agent\n- [x] Human')};
+    const m=mock({runs:[run],fresh:invalid});
+    await inspectPR(m,1);
+    assert.ok(!m.calls.some(c=>['cancelWorkflowRun','reRunWorkflow'].includes(c.name)));
+    assert.equal(m.calls.filter(c=>c.name==='approveWorkflowRun').length,run.conclusion==='action_required'?1:0);
+    assert.equal(m.calls.find(c=>c.name==='createCommitStatus').args.state,'success');
+    assert.ok(m.calls.some(c=>c.name==='addLabels' && c.args.labels.includes('needs:format')));
+    assert.ok(m.calls.find(c=>c.name==='createComment').args.body.includes('Author'));
   }
 });
-test('invalid PR cancels running CI with an attempt-bound recovery marker',async()=>{
-  const m=mock({runs:[{...ci,status:'in_progress'}]});
-  await reconcileRuns(m.github,m.context.repo,pr,false,m.core);
-  assert.deepEqual(m.calls.map(c=>c.name),['createCommitStatus','cancelWorkflowRun']);
-  assert.equal(m.calls[0].args.description,'attempt:1');
-});
-test('only controller cancellations from the same attempt are recoverable',async()=>{
-  for(const [statuses,count] of [[[],0],[[{context:'PR Format cancellation / 10',description:'attempt:1',creator:{login:'github-actions[bot]'}}],1],[[{context:'PR Format cancellation / 10',description:'attempt:0',creator:{login:'github-actions[bot]'}}],0]]) {
-    const m=mock({runs:[{...ci,status:'completed',conclusion:'cancelled'}],statuses});
-    await reconcileRuns(m.github,m.context.repo,pr,true,m.core);
-    assert.equal(m.calls.filter(c=>c.name==='reRunWorkflow').length,count);
+test('legacy cancellation cleanup only retires the latest bot-owned failed status',async()=>{
+  const context='PR Format cancellation / 10';
+  const failed={context,state:'failure',creator:{login:'github-actions[bot]'}};
+  for (const [statuses,count] of [
+    [[failed],1],
+    [[{...failed,state:'success'},failed],0],
+    [[{...failed,creator:{login:'person'}},failed],0],
+    [[{...failed,context:'Test'}],0],
+  ]) {
+    const m=mock({statuses});
+    await inspectPR(m,1);
+    const cleanup=m.calls.filter(c=>c.name==='createCommitStatus' && c.args.context===context);
+    assert.equal(cleanup.length,count);
+    if(count) assert.equal(cleanup[0].args.state,'success');
+    assert.ok(!m.calls.some(c=>c.name==='reRunWorkflow'));
   }
 });
 test('synchronization removes obsolete managed labels and preserves unrelated labels',async()=>{
@@ -81,7 +91,7 @@ test('fixed descriptions update the existing bot comment instead of posting anot
   assert.equal(m.calls.filter(c=>c.name==='createComment').length,0);
 });
 test('unchanged success is idempotent',async()=>{
-  const m=mock({fresh:{...pr,labels:[{name:'bug'},{name:'size:XS'},{name:'change:web'}]},statuses:[{context:'PR Format',state:'success',description:`${bodyFingerprint(pr)} Description format passed`}]});
+  const m=mock({fresh:{...pr,labels:[{name:'bug'},{name:'size:XS'},{name:'change:web'}]},statuses:[{context:'PR Format',state:'success',description:`${bodyFingerprint(pr)} 格式检查通过`}]});
   await inspectPR(m,1);
   assert.deepEqual(m.calls,[]);
 });
@@ -94,32 +104,8 @@ test('issues use current API body, not stale event body',async()=>{
   assert.ok(m.calls.find(c=>c.name==='addLabels').args.labels.includes('needs:format'));
 });
 
-test('read-only CI accepts a matching trusted controller status', async () => {
-  const m=mock({statuses:[{context:'PR Format',state:'success',description:`${bodyFingerprint(pr)} Description format passed`,creator:{login:'github-actions[bot]'}}]});
-  m.context.payload={pull_request:pr};
-  await gate(m);
-  assert.deepEqual(m.calls,[]);
-});
-test('CI gate rejects obsolete head or invalid body before executing code jobs', async () => {
-  for(const fresh of [{...pr,head:{...pr.head,sha:'new'}},{...pr,body:''}]) {
-    const m=mock({fresh});m.context.payload={pull_request:pr};
-    await assert.rejects(gate(m));
-    assert.deepEqual(m.calls,[]);
-  }
-});
-
-test('read-only gate rejects a description edited during validation', async () => {
-  const m=mock({statuses:[{context:'PR Format',state:'success',description:`${bodyFingerprint(pr)} Description format passed`,creator:{login:'github-actions[bot]'}}]});m.context.payload={pull_request:pr};
-  let reads=0;
-  m.github.rest.pulls.get=async()=>({data:++reads===1?pr:{...pr,body:''}});
-  await assert.rejects(gate(m),/PR changed/);
-});
-
-test('gate rejects missing, stale, failed, or untrusted controller statuses', async t => {
-  t.mock.method(globalThis, 'setTimeout', callback => { queueMicrotask(callback); return 0; });
-  const valid={context:'PR Format',state:'success',description:`${bodyFingerprint(pr)} Description format passed`,creator:{login:'github-actions[bot]'}};
-  for(const statuses of [[],[{...valid,description:'stale fingerprint'}],[{...valid,state:'failure'}],[{...valid,creator:{login:'contributor'}}]]) {
-    const m=mock({statuses});m.context.payload={pull_request:pr};
-    await assert.rejects(gate(m),/Waiting for trusted PR Format status/);
-  }
+test('legacy gate requires no API status, body validation, or controller wait', async () => {
+  let message;
+  await gate({core:{info(value){message=value;}}});
+  assert.ok(message.includes('无需等待'));
 });

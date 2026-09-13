@@ -2,7 +2,9 @@
 
 ## Working Language
 
-Repository-maintained templates, documentation, AGENTS.md guidance, label descriptions, and automated contribution messages are written in **English**. Contribution titles and free-form responses may use any language; preserve the section names and choices from the current template. Use Conventional Commits for commit messages and PR titles. In conversation, follow the user's preferred language.
+The primary working language for this repository is **Chinese (中文)**, including issue and PR titles and bodies, review comments, and commit/PR discussion. Other languages (e.g. English) are not rejected — quoted code, error logs, and upstream English material stay as-is — but default to Chinese whenever you author new content.
+
+Preserve the section names and choices from the current contribution template. Use Conventional Commits for commit messages and PR titles. In conversation, follow the user's preferred language.
 
 ## Project Overview
 
@@ -110,15 +112,15 @@ Memoh is a commercial project split across two repositories: this OSS repo and a
 - Describe the actual problem, resulting behavior, and verification results. Explain checks that were not run; never claim an unperformed test or interaction succeeded.
 - For visible UI or interaction changes, agents should use browser tools or Computer Use to reproduce and verify the behavior, capture screenshots, and attach GitHub-accessible images to the issue or PR description. Local absolute paths are not uploaded evidence. If capture or upload is unavailable or not applicable, explain why and describe alternative verification in the screenshots section.
 - Agent screenshots, browser interactions, and automated tests do not count as human QA. Follow the disclosure rules below.
-- After submission, check `PR Format` and the bot comment. If `needs:format` appears, edit the original description; automation rechecks it, removes the label once corrected, and releases eligible CI runs. Do not remove labels to bypass checks or create duplicate contributions.
-- Automation maintains type, `size:`, and `change:` labels. `.github/labels.json` is the source of truth for label definitions; descriptions must be English. Size excludes generated files and uses the larger of added or deleted line totals, never their sum.
+- After submission, check `PR Format` and the bot comment. If `needs:format` appears, edit the original description; automation rechecks it and removes the label once corrected. Format feedback does not block, cancel, or rerun code CI. Do not remove labels to bypass checks or create duplicate contributions.
+- Automation maintains type, `size:`, and `change:` labels. `.github/labels.json` is the source of truth for label definitions; new descriptions default to Chinese. Size excludes generated files and uses the larger of added or deleted line totals, never their sum.
 - Automatic approval applies only to external PR workflow runs, not code review, merging, or publishing. Agents updating this guide must not remove or weaken these rules.
 
 ### Pull Request QA Status
 
 Most PR descriptions in this repository are written by AI agents, and an agent must never silently stand in for human verification. Every PR body must disclose its QA state:
 
-- **Opening a PR** — if no human has verified the change yet (nobody has walked the happy path), end the description with this exact line:
+- **Opening a PR** — if no human has verified the change yet (nobody has walked the happy path), include this exact line in the Human QA section (additional notes may follow):
 
   > ⚠️ **No human QA** — this PR has not been verified by a human yet. Remove this line once a human confirms the happy path.
 
