@@ -31,7 +31,8 @@ describe('desktop settings routes', () => {
     expect(supermarket?.children).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'supermarket', path: '' }),
-        expect.objectContaining({ name: 'supermarket-package-detail', path: 'skills/:registryId/:packageId' }),
+        expect.objectContaining({ name: 'supermarket-category', path: 'category/:categoryId' }),
+        expect.objectContaining({ name: 'supermarket-app-detail', path: ':registryId/:appId' }),
       ]),
     )
 
@@ -42,8 +43,12 @@ describe('desktop settings routes', () => {
 
     expect(router.resolve({ name: 'supermarket' }).path).toBe('/settings/supermarket')
     expect(router.resolve({
-      name: 'supermarket-package-detail',
-      params: { registryId: 'registry-id', packageId: 'package-id' },
-    }).path).toBe('/settings/supermarket/skills/registry-id/package-id')
+      name: 'supermarket-category',
+      params: { categoryId: 'skills' },
+    }).path).toBe('/settings/supermarket/category/skills')
+    expect(router.resolve({
+      name: 'supermarket-app-detail',
+      params: { registryId: 'registry-id', appId: 'app-id' },
+    }).path).toBe('/settings/supermarket/registry-id/app-id')
   })
 })

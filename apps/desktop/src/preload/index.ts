@@ -7,7 +7,6 @@ import {
 } from '../shared/keyboard-commands'
 import type { ServerConnectResult, ServerConnectionResult } from '../shared/server-connection'
 import type { DesktopRuntimeConfig, DesktopRuntimeState } from '../shared/remote-runtime'
-import type { DesktopThemeSource } from '../shared/theme'
 import type { DesktopUpdateInfo, DesktopUpdateState } from '../shared/updates'
 
 // Renderer query-cache invalidation payload. Mirrors the subset of
@@ -34,8 +33,6 @@ const api = {
     }> =>
       ipcRenderer.invoke('desktop:server-status'),
     apiBaseUrl: (): Promise<string> => ipcRenderer.invoke('desktop:api-base-url'),
-    setThemeSource: (themeSource: DesktopThemeSource): Promise<void> =>
-      ipcRenderer.invoke('desktop:set-theme-source', themeSource),
     probeServer: (): Promise<ServerConnectionResult> => ipcRenderer.invoke('desktop:probe-server'),
     connectServer: (baseUrl: string): Promise<ServerConnectResult> =>
       ipcRenderer.invoke('desktop:connect-server', baseUrl),
@@ -51,7 +48,7 @@ const api = {
       getInfo: (): Promise<DesktopUpdateInfo> => ipcRenderer.invoke('desktop:updates:get-info'),
       getState: (): Promise<DesktopUpdateState> => ipcRenderer.invoke('desktop:updates:get-state'),
       check: (): Promise<DesktopUpdateState> => ipcRenderer.invoke('desktop:updates:check'),
-      download: (): Promise<DesktopUpdateState> => ipcRenderer.invoke('desktop:updates:download'),
+      setAutoUpdate: (enabled: boolean): Promise<DesktopUpdateState> => ipcRenderer.invoke('desktop:updates:set-auto-update', enabled),
       install: (): Promise<DesktopUpdateState> => ipcRenderer.invoke('desktop:updates:install'),
       onStateChanged: (cb: (state: DesktopUpdateState) => void): (() => void) => {
         const listener = (_event: IpcRendererEvent, state: DesktopUpdateState) => cb(state)

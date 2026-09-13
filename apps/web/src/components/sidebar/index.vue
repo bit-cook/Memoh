@@ -109,8 +109,8 @@
     </nav>
 
     <!-- Active view (mutually exclusive). A bottom fade dissolves the list into
-         the footer so Settings reads as floating just below it — instead of a
-         hard rule above Settings, which would be lopsided since the nav above
+         the footer so the account row reads as floating just below it — instead
+         of a hard rule above it, which would be lopsided since the nav above
          the list has no divider of its own. -->
     <div class="relative min-h-0 flex-1 overflow-hidden">
       <PanelSessions
@@ -132,24 +132,23 @@
       />
     </div>
 
-    <!-- Settings, pinned below the scrollable panel. Solid bg + z-index keep
-         list rows behind the footer on Web; the native-surface hook lets macOS
-         Desktop expose the same sidebar material as the surrounding rail. -->
+    <!-- Footer: account menu + update chip, pinned below the scrollable panel.
+         The user block is min-w-0/flex-1 so the chip's hover expansion eats its
+         slack instead of overlapping it. px-2.5/pb-2.5 keep the row's hover
+         chip equidistant from the window's left and bottom edges — a notch
+         wider than the panel's px-2 column above, deliberately. Solid bg +
+         z-index keep list rows behind the footer on Web; the native-surface
+         hook lets macOS Desktop expose the same sidebar material as the
+         surrounding rail. -->
     <div
-      class="relative z-1 shrink-0 bg-sidebar px-2 pt-1 pb-2"
+      class="relative z-1 flex shrink-0 items-center gap-2.5 bg-sidebar px-2.5 pt-1 pb-2.5"
       data-native-sidebar-surface
     >
-      <SidebarNavButton
-        :active="isSettingsActive"
-        :aria-label="t('sidebar.settings')"
-        @click="router.push('/settings')"
-      >
-        <Settings
-          :stroke-width="1.75"
-          class="size-[18px]"
-        />
-        {{ t('sidebar.settings') }}
-      </SidebarNavButton>
+      <!-- DropdownMenu has no DOM root; the flex sizing belongs on a real wrapper. -->
+      <div class="min-w-0 flex-1">
+        <UserMenu />
+      </div>
+      <UpdateChip />
     </div>
 
     <!-- Width resize handle -->
@@ -169,17 +168,16 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { Files, MessageCircle, Search, Calendar } from 'lucide-vue-next'
-import { SettingsIcon as Settings } from '@memohai/icon/ui'
 import { BadgeCount, Button } from '@felinic/ui'
 import { useChatStore } from '@/store/chat-list'
 import { useWorkspaceTabsStore, type SidebarView } from '@/store/workspace-tabs'
 import { hasBotPermission } from '@/utils/bot-permissions'
 import BotSwitcher from './bot-switcher.vue'
-import SidebarNavButton from './nav-button.vue'
+import UserMenu from './user-menu.vue'
+import UpdateChip from './update-chip.vue'
 import PanelSessions from './panel-sessions.vue'
 import PanelFiles from './panel-files.vue'
 import PanelSchedule from './panel-schedule.vue'
@@ -195,8 +193,6 @@ interface ActivityView {
   icon: Component
 }
 
-const router = useRouter()
-const route = useRoute()
 const { t } = useI18n()
 const store = useWorkspaceTabsStore()
 const { sidebarView, sidebarWidth, workbenchOpen, dirtyFileCount } = storeToRefs(store)
@@ -245,8 +241,6 @@ watch(availableViews, (views) => {
     sidebarView.value = 'sessions'
   }
 }, { immediate: true })
-
-const isSettingsActive = computed(() => route.path.startsWith('/settings'))
 
 const MIN_WIDTH = 220
 const MAX_WIDTH = 480

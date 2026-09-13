@@ -297,7 +297,7 @@
     "passwordPlaceholder": "パスワードを入力してください",
     "login": "サインイン",
     "register": "サインアップ",
-    "logout": "サインアウト",
+    "logout": "ログアウト",
     "logoutConfirm": "サインアウトしてもよろしいですか?",
     "loginFailed": "ログインに失敗しました",
     "invalidCredentials": "ユーザー名またはパスワードが正しくありません",
@@ -323,6 +323,11 @@
     }
   },
   "sidebar": {
+    "updateChip": {
+      "updating": "更新中",
+      "restart": "再起動",
+      "error": "更新エラー"
+    },
     "session": "セッション",
     "chat": "チャット",
     "bots": "Bot",
@@ -351,6 +356,7 @@
     "keyboard": "ショートカット",
     "supermarket": "マーケットプレイス",
     "about": "Memoh について",
+    "userMenu": "アカウントメニュー",
     "switchBot": "Botを切り替え",
     "manageBots": "Botを管理"
   },
@@ -620,6 +626,15 @@
     "empty": "メンバーがいません"
   },
   "about": {
+    "updatingVersion": "v{version} に更新中",
+    "readyToRestart": "再起動の準備ができました",
+    "applyingUpdate": "更新を適用中",
+    "autoUpdatePausedDescription": "自動確認とインストールは停止しています。",
+    "updateReadyPaused": "更新の準備ができました。自動インストールはオフです。再起動して適用できます。",
+    "preparingUpdate": "更新を準備中…",
+    "installingUpdate": "再起動中…",
+    "autoUpdateDescription": "バックグラウンドでダウンロードし、Memoh の終了時にインストールします。",
+    "autoUpdate": "自動更新",
     "tagline": "オープンソースのマルチエージェント プラットフォーム",
     "description": "複数の AI エージェントが、それぞれ専用のコンピューターと長期記憶を持ちます。",
     "updatesSection": "アップデート",
@@ -638,12 +653,10 @@
     "checkFailed": "チェックに失敗しました",
     "desktopUpdatesUnavailable": "自動アップデートを利用できません",
     "desktopUpdatesUnavailableDesc": "このビルドにはアップデート配信元が設定されていません。",
-    "desktopUpdateAvailableDesc": "このバージョンをダウンロードし、Memoh を再起動してインストールします。",
-    "downloadUpdate": "アップデートをダウンロード",
     "downloadingUpdate": "ダウンロード中… {progress}%",
-    "desktopUpdateDownloadedDesc": "アップデートの準備ができました。Memoh を再起動してインストールします。",
+    "desktopUpdateDownloadedDesc": "更新の準備ができました。今すぐ再起動するか、Memoh の終了時に自動でインストールします。",
     "restartToUpdate": "再起動して更新",
-    "retryUpdate": "再試行",
+    "retryUpdate": "更新を再試行",
     "desktopUpdateFailed": "Desktop のアップデートに失敗しました",
     "github": "GitHub",
     "docs": "ドキュメント",

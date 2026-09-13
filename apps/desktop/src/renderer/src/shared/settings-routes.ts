@@ -124,11 +124,19 @@ export const SETTINGS_ROUTE_SPECS: SettingsRouteSpec[] = [
         loader: () => import('@memohai/web/pages/supermarket/index.vue'),
       },
       {
-        name: 'supermarket-package-detail',
-        path: 'skills/:registryId/:packageId',
-        loader: () => import('@memohai/web/pages/supermarket/package-detail.vue'),
+        name: 'supermarket-category',
+        path: 'category/:categoryId',
+        loader: () => import('@memohai/web/pages/supermarket/category.vue'),
         meta: {
-          breadcrumb: (route) => String(route.params.packageId ?? ''),
+          breadcrumb: (route) => String(route.params.categoryId ?? ''),
+        },
+      },
+      {
+        name: 'supermarket-app-detail',
+        path: ':registryId/:appId',
+        loader: () => import('@memohai/web/pages/supermarket/app-detail.vue'),
+        meta: {
+          breadcrumb: (route) => String(route.params.appId ?? ''),
         },
       },
     ],

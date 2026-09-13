@@ -1,6 +1,6 @@
 import { h } from 'vue'
 import type { LucideIcon } from 'lucide-vue-next'
-import { createLucideIcon, Paperclip, SquareArrowOutUpRight, Plus, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelLeftClose, Terminal, Globe, Columns2, Rows2 } from 'lucide-vue-next'
+import { createLucideIcon, Paperclip, SquareArrowOutUpRight, Plus, ChevronDown, ChevronLeft, ChevronRight, PanelLeftOpen, PanelLeftClose, Terminal, Globe, Columns2, Rows2, ChartNoAxesColumn, Info, Users } from 'lucide-vue-next'
 
 // Keep the default visual weight consistent across authored and Lucide glyphs.
 function withUiStroke(icon: LucideIcon): LucideIcon {
@@ -24,6 +24,13 @@ export const ConnectorIcon = withUiStroke(createLucideIcon('Connector', [
 
 // Consumers choose semantics; glyph direction and geometry stay in this module.
 export const UploadIcon = withUiStroke(Paperclip)
+
+// Download into a rounded tray. The open silhouette spans 18 units so it
+// remains legible in a 12px slot, with the shared 1.75-unit stroke weight.
+export const UpdateIcon = withUiStroke(createLucideIcon('Update', [
+  ['path', { d: 'M3 15v1c0 3.6 1.4 5 5 5h8c3.6 0 5-1.4 5-5v-1' }],
+  ['path', { d: 'M12 3v12m-4.5-4.5L12 15l4.5-4.5' }],
+]))
 // Monitor and cloud silhouette, composed in the shared 24-unit icon frame.
 // Semantics: this marks the bot's NATIVE workspace ("Cloud Computer" in the
 // composer target selector — hosted by Memoh, as opposed to a user's remote
@@ -55,3 +62,19 @@ export const SidebarCloseIcon = withUiStroke(PanelLeftClose)
 
 // The window outline anchors the opening gesture at small control sizes.
 export const OpenInTabIcon = withUiStroke(SquareArrowOutUpRight)
+
+// Account-menu set (sidebar footer): plain lucide glyphs lifted to the shared
+// 1.75 stroke so the menu matches surfaces built from this module.
+export const UsageIcon = withUiStroke(ChartNoAxesColumn)
+export const InfoIcon = withUiStroke(Info)
+export const UsersIcon = withUiStroke(Users)
+// Lucide LogOut (ISC): coordinates scaled 0.875 about the frame center
+// (18u → 15.75u span — the door-plus-arrow silhouette filled the 24-unit
+// frame edge to edge and read a size up from its row siblings), then
+// mirrored horizontally (x → 24 − x) so the door opens left and the arrow
+// exits left. Geometry changes, stroke stays 1.75.
+export const LogoutIcon = withUiStroke(createLucideIcon('Logout', [
+  ['path', { d: 'M8.5 16.375l-4.375-4.375 4.375-4.375' }],
+  ['path', { d: 'M4.125 12H14.625' }],
+  ['path', { d: 'M14.625 19.875H18.125a1.75 1.75 0 0 0 1.75-1.75V5.875a1.75 1.75 0 0 0-1.75-1.75h-3.5' }],
+]))

@@ -5,7 +5,6 @@ import {
   BrowserWindow,
   ipcMain,
   nativeImage,
-  nativeTheme,
   safeStorage,
   Tray,
   screen,
@@ -27,7 +26,7 @@ import { maybeSelfInstallMacOS } from './self-install'
 import { DesktopRemoteRuntimeManager } from './remote-runtime'
 import { isTrustedRendererUrl } from './renderer-trust'
 import { normalizeExternalUrl, resolveNavigationGuardAction } from './external-links'
-import { registerDesktopUpdates } from './updates'
+import { registerDesktopUpdates, installDesktopUpdateOnQuit, recoverDesktopUpdate } from './updates'
 import {
   normalizeBaseUrl,
   normalizeServerInput,
@@ -37,7 +36,6 @@ import {
   type ServerConnectionResult,
 } from '../shared/server-connection'
 import type { DesktopRuntimeConfig } from '../shared/remote-runtime'
-import { normalizeDesktopThemeSource } from '../shared/theme'
 
 const DESKTOP_PRODUCT_NAME = 'Memoh'
 const DEFAULT_BASE_URL = is.dev ? 'http://localhost:18080' : 'http://localhost:8080'
@@ -245,7 +243,9 @@ app.on('before-quit', (event) => {
   isQuitting = true
   if (quitCleanupFinished) return
   event.preventDefault()
-  void finishQuitCleanup().then(() => app.quit())
+  void finishQuitCleanup().then(async () => {
+    if (!await installDesktopUpdateOnQuit()) app.quit()
+  })
 })
 
 function applyExternalLinkHandler(window: BrowserWindow): void {
@@ -680,10 +680,6 @@ app.whenReady().then(async () => {
     assertTrustedRenderer(event)
     return getDesktopApiBaseUrl()
   })
-  ipcMain.handle('desktop:set-theme-source', (event, themeSource: unknown) => {
-    assertTrustedRenderer(event)
-    nativeTheme.themeSource = normalizeDesktopThemeSource(themeSource)
-  })
   ipcMain.handle('desktop:probe-server', (event) => {
     assertTrustedRenderer(event)
     return probeConfiguredServer()
@@ -744,6 +740,13 @@ app.whenReady().then(async () => {
   })
   registerDesktopUpdates({
     assertTrustedRenderer,
+    installFailed: () => {
+      isQuitting = false
+      quitCleanupFinished = false
+      quitCleanupPromise = null
+      void remoteRuntimeManager?.restore().catch(error => console.warn('failed to restore desktop runtime after update failure', error))
+      revealChatWindow()
+    },
     markQuitting: () => {
       isQuitting = true
     },
@@ -753,7 +756,7 @@ app.whenReady().then(async () => {
     },
   })
 
-  chatWindow = createChatWindow()
+  if (!await recoverDesktopUpdate()) ensureWindow('chat')
 
   app.on('activate', () => {
     revealChatWindow()
