@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
-import { GenericProvider } from 'electron-updater/out/providers/GenericProvider'
+import { GenericProvider } from 'electron-updater/out/providers/GenericProvider.js'
 import { app, BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import electronUpdater from 'electron-updater'
 import type { ProgressInfo, UpdateInfo } from 'electron-updater'

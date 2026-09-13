@@ -23,7 +23,7 @@ vi.mock('node:fs', () => ({
   renameSync: vi.fn(),
 }))
 vi.mock('electron-updater', () => ({ default: { autoUpdater: f.updater } }))
-vi.mock('electron-updater/out/providers/GenericProvider', () => ({ GenericProvider: class {} }))
+vi.mock('electron-updater/out/providers/GenericProvider.js', () => ({ GenericProvider: class {} }))
 
 beforeEach(() => {
   vi.resetModules()
