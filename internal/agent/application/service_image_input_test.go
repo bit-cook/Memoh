@@ -199,6 +199,82 @@ func TestGatewayInlineDataURLWithNonRasterBytesIsWithheld(t *testing.T) {
 	}
 }
 
+// A wrong subtype is a provider error of its own, and the correction has to
+// reach the data URL: the payload and the MIME field travel to different
+// consumers from here on.
+func TestGatewayInlineDataURLRestampsMislabeledSubtype(t *testing.T) {
+	s := &Service{logger: slog.Default()}
+	data := rasterPNG(t)
+	item := gatewayAttachment{
+		Type:      "image",
+		Mime:      "image/jpeg",
+		Transport: gatewayTransportInlineDataURL,
+		Payload:   dataURL("image/jpeg", data),
+	}
+	got := s.inlineImageAttachmentAssetIfNeeded(context.Background(), "bot-1", item)
+	if got.Mime != "image/png" || got.Payload != dataURL("image/png", data) {
+		t.Fatalf("attachment = %#v, want both the MIME and the data URL corrected to image/png", got)
+	}
+	parts := extractNativeImageParts([]any{got})
+	if len(parts) != 1 || parts[0].MediaType != "image/png" ||
+		!strings.HasPrefix(parts[0].Image, "data:image/png;base64,") {
+		t.Fatalf("image part = %#v, want a consistent image/png", parts)
+	}
+	image, err := runtimePromptImageFromDataURL(got.Payload, got.Mime)
+	if err != nil || image.MimeType != "image/png" {
+		t.Fatalf("External Agent image = %#v (err=%v), want image/png", image, err)
+	}
+}
+
+// dripReader returns one byte per call: a legal Reader, and the shape a short
+// read takes when the media store is not a plain file.
+type dripReader struct{ data []byte }
+
+func (d *dripReader) Read(p []byte) (int, error) {
+	if len(d.data) == 0 {
+		return 0, io.EOF
+	}
+	if len(p) == 0 {
+		return 0, nil
+	}
+	p[0] = d.data[0]
+	d.data = d.data[1:]
+	return 1, nil
+}
+
+func TestStoredImageSurvivesShortReads(t *testing.T) {
+	data := rasterPNG(t)
+	s := &Service{
+		logger: slog.Default(),
+		assetLoader: &fakeGatewayAssetLoader{
+			openFn: func(context.Context, string, string) (io.ReadCloser, string, error) {
+				return io.NopCloser(&dripReader{data: bytes.Clone(data)}), "image/png", nil
+			},
+		},
+	}
+	parts := s.InlineImageAttachments(context.Background(), "bot-1", []timeline.ImageAttachmentRef{
+		{ContentHash: "photo", Mime: "image/png"},
+	})
+	if len(parts) != 1 || parts[0].MediaType != "image/png" {
+		t.Fatalf("InlineImageAttachments() = %#v, want the image through a drip-feeding reader", parts)
+	}
+	if parts[0].Image != dataURL("image/png", data) {
+		t.Fatal("drip-feeding reader truncated the encoded image")
+	}
+}
+
+// An image shorter than the sniff window still has to be recognised.
+func TestStoredImageShorterThanSniffWindow(t *testing.T) {
+	jpegBytes := []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0xFF, 0xD9}
+	s := imageInputService(t, map[string][]byte{"tiny": jpegBytes})
+	parts := s.InlineImageAttachments(context.Background(), "bot-1", []timeline.ImageAttachmentRef{
+		{ContentHash: "tiny", Mime: "image/jpeg"},
+	})
+	if len(parts) != 1 || parts[0].Image != dataURL("image/jpeg", jpegBytes) {
+		t.Fatalf("InlineImageAttachments() = %#v, want the whole short image", parts)
+	}
+}
+
 func TestGatewayInlineDataURLKeepsRealImage(t *testing.T) {
 	s := &Service{logger: slog.Default()}
 	item := gatewayAttachment{

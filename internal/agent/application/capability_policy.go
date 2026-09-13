@@ -180,25 +180,40 @@ func modelImageMimeFromBytes(head []byte) (string, error) {
 	return detected, nil
 }
 
-// inlineImageDataURLMime applies the same byte check to an attachment that
-// already carries inline base64, decoding only the sniff prefix.
-func inlineImageDataURLMime(payload string) (string, error) {
-	body, _ := splitInlineDataURL(payload)
+// normalizeInlineImageDataURL applies the same byte check to an attachment that
+// already carries inline base64, and returns the data URL re-stamped with the
+// MIME its bytes actually are.
+//
+// Payload and MIME have to be corrected together. A declared subtype that
+// disagrees with the bytes is its own source of provider errors, and the two
+// travel separately from here on — the data URL reaches the provider adapters
+// and the External Agent prompt, while the MIME field drives capability
+// routing. Fixing one and not the other just moves the disagreement.
+func normalizeInlineImageDataURL(payload string) (string, string, error) {
+	body, declared := splitInlineDataURL(payload)
 	body = strings.TrimSpace(body)
 	if body == "" {
-		return "", fmt.Errorf("%w: empty payload", errUnsupportedImageBytes)
+		return "", "", fmt.Errorf("%w: empty payload", errUnsupportedImageBytes)
 	}
+	head := body
 	// base64 decodes in 4-character groups; keep the prefix aligned so the
 	// sniff window stays valid for payloads far larger than it.
 	const sniffChars = 512 / 3 * 4
-	if len(body) > sniffChars {
-		body = body[:sniffChars]
+	if len(head) > sniffChars {
+		head = head[:sniffChars]
 	}
-	head, err := base64.StdEncoding.DecodeString(body)
+	decoded, err := base64.StdEncoding.DecodeString(head)
 	if err != nil {
-		return "", fmt.Errorf("%w: payload is not valid base64", errUnsupportedImageBytes)
+		return "", "", fmt.Errorf("%w: payload is not valid base64", errUnsupportedImageBytes)
 	}
-	return modelImageMimeFromBytes(head)
+	mime, err := modelImageMimeFromBytes(decoded)
+	if err != nil {
+		return "", "", err
+	}
+	if strings.EqualFold(attachmentpkg.NormalizeMime(declared), mime) {
+		return payload, mime, nil
+	}
+	return "data:" + mime + ";base64," + body, mime, nil
 }
 
 func isNativeImageAttachment(att gatewayAttachment) bool {

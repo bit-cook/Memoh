@@ -305,12 +305,12 @@ func (s *Service) inlineImageAttachmentAssetIfNeeded(ctx context.Context, botID 
 	if strings.TrimSpace(item.Payload) != "" && item.Transport == gatewayTransportInlineDataURL {
 		// Bytes are already here, so check them rather than trusting the label
 		// the uploader attached to them.
-		mime, err := inlineImageDataURLMime(item.Payload)
+		payload, mime, err := normalizeInlineImageDataURL(item.Payload)
 		if err != nil {
 			s.logImageInputRejected(err, botID, item.ContentHash)
 			return demoteNonImageAttachment(item)
 		}
-		item.Mime = mime
+		item.Payload, item.Mime = payload, mime
 		return item
 	}
 	if strings.TrimSpace(item.Payload) != "" && item.Transport == gatewayTransportPublicURL {
@@ -430,8 +430,11 @@ func encodeReaderAsDataURL(reader io.Reader, maxBytes int64, attachmentType, fal
 	}
 	limited := &io.LimitedReader{R: reader, N: maxBytes + 1}
 	head := make([]byte, 512)
-	n, err := limited.Read(head)
-	if err != nil && !errors.Is(err, io.EOF) {
+	// A Reader may return fewer bytes than asked for without being at the end
+	// of the stream, and a short prefix cannot be told apart from arbitrary
+	// binary. Fill the sniff window before deciding anything about the format.
+	n, err := io.ReadFull(limited, head)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return "", "", fmt.Errorf("read asset: %w", err)
 	}
 	head = head[:n]
