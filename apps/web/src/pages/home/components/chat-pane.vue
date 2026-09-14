@@ -640,11 +640,12 @@
 
                 <!-- The model selector truncates within the input controls row. -->
                 <div class="order-3 flex min-w-0 flex-1 basis-48 items-center justify-end gap-1 self-end">
-                  <Popover
+                  <DropdownMenu
                     v-if="(!activeUsesExternalAgentComposer || activeUsesACPRuntime || activeUsesDirectRuntime) && voiceInputState === 'idle'"
                     v-model:open="modelPopoverOpen"
+                    :modal="false"
                   >
-                    <PopoverTrigger as-child>
+                    <DropdownMenuTrigger as-child>
                       <Button
                         type="button"
                         variant="ghost"
@@ -671,72 +672,34 @@
                           />
                         </span>
                       </Button>
-                    </PopoverTrigger>
-                    <!-- `menu` makes this host transparent: the inner
-                         menuChromeClass div already owns the border/shadow/
-                         radius, so a chromed host would draw a doubled edge
-                         (same pattern as model-select.vue). -->
-                    <PopoverContent
-                      menu
-                      class="w-80 max-w-[calc(100vw-2rem)] overflow-hidden p-0"
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      class="w-72 max-w-[calc(100vw-2rem)]"
+                      position-strategy="absolute"
                       align="end"
                       side="top"
-                      :side-offset="4"
+                      :collision-padding="8"
                     >
-                      <!-- The chrome wrapper covers BOTH branches: with the
-                           host transparent (`menu`), a bare loading row would
-                           float on the chat UI with no surface at all. -->
-                      <div :class="menuChromeClass">
-                        <InlineLoadingRow
-                          v-if="composerModelsLoading"
-                          class="px-2 py-3"
-                        >
-                          {{ $t('common.loading') }}
-                        </InlineLoadingRow>
-                        <div
-                          v-else-if="directModelCatalogError"
-                          class="space-y-3 p-3"
-                        >
-                          <p class="text-body text-muted-foreground">
-                            {{ directModelCatalogError }}
-                          </p>
-                          <Button
-                            v-if="directRuntimeAuthRequired"
-                            variant="outline"
-                            size="sm"
-                            class="w-full"
-                            @click="openAgentSettings(false)"
-                          >
-                            {{ $t('bots.agent.openSettings') }}
-                          </Button>
-                          <Button
-                            v-else
-                            variant="outline"
-                            size="sm"
-                            class="w-full"
-                            @click="retryDirectModelCatalog"
-                          >
-                            {{ $t('common.retry') }}
-                          </Button>
-                        </div>
-                        <template v-else>
-                          <ModelOptions
-                            :model-value="composerModelId"
-                            :reasoning-effort="composerReasoningEffort"
-                            :reasoning-options="composerReasoningOptions"
-                            :models="composerModels"
-                            :providers="composerModelProviders"
-                            :none-label="activeUsesDirectRuntime && composerDefaultModelId && composerDefaultModelId !== 'default' ? composerDefaultModelLabel : undefined"
-                            model-type="chat"
-                            :open="modelPopoverOpen"
-                            :show-reasoning="!activeUsesDirectRuntime || !!composerReasoningOptions?.length"
-                            @update:model-value="onComposerModelValueSelected"
-                            @update:reasoning-effort="onComposerReasoningEffortSelected"
-                          />
-                        </template>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                      <ComposerModelMenu
+                        :model-value="composerModelId"
+                        :model-label="selectedModelLabel || $t('chat.modelDefault')"
+                        :default-model-id="composerDefaultModelId"
+                        :reasoning-effort="composerReasoningEffort"
+                        :reasoning-options="composerReasoningOptions"
+                        :models="composerModels"
+                        :providers="composerModelProviders"
+                        :none-label="activeUsesDirectRuntime && composerDefaultModelId && composerDefaultModelId !== 'default' ? composerDefaultModelLabel : undefined"
+                        :show-reasoning="!activeUsesDirectRuntime || !!composerReasoningOptions?.length"
+                        :loading="composerModelsLoading"
+                        :error="directModelCatalogError"
+                        :auth-required="directRuntimeAuthRequired"
+                        @update:model-value="onComposerModelValueSelected"
+                        @update:reasoning-effort="onComposerReasoningEffortSelected"
+                        @retry="retryDirectModelCatalog"
+                        @settings="openAgentSettings(false)"
+                      />
+                    </DropdownMenuContent>
+                  </DropdownMenu>
 
                   <!-- While voice owns the composer the trailing slot holds
                        the voice pair instead of mic/send: ✗ cancels (also
@@ -1254,7 +1217,7 @@ import {
   Lightbulb,
   Target,
 } from 'lucide-vue-next'
-import { Button, Command, CommandGroup, CommandItem, CommandKeyBridge, CommandList, CommandSeparator, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, InlineLoadingRow, PanePlaceholder, Popover, PopoverContent, PopoverTrigger, ScrollArea, Skeleton, Spinner, menuChromeClass, toast } from '@felinic/ui'
+import { Button, Command, CommandGroup, CommandItem, CommandKeyBridge, CommandList, CommandSeparator, Dialog, DialogContent, DialogHeader, DialogTitle, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, PanePlaceholder, ScrollArea, Skeleton, Spinner, toast } from '@felinic/ui'
 import { useChatStore, type ExternalAgentSessionInput, type ChatMessage, type ChatWorkspaceTargetSnapshot, type SendMessageResult } from '@/store/chat-list'
 import { useWorkdirsStore } from '@/store/workdirs'
 import type { BotWorkdir } from '@/composables/api/useWorkdirs'
@@ -1293,7 +1256,7 @@ import { provideBgTaskBeacons } from '../composables/useBgTaskBeacons'
 import MediaGalleryLightbox from './media-gallery-lightbox.vue'
 import SessionInfoRing from './session-info-ring.vue'
 import { useSessionInfo } from '../composables/useSessionInfo'
-import ModelOptions from '@/pages/bots/components/model-options.vue'
+import ComposerModelMenu from './composer-model-menu.vue'
 import { EFFORT_LABELS, REASONING_EFFORT_DISABLE, reconcileStoredEffort } from '@/pages/bots/components/reasoning-effort'
 import { useMediaGallery } from '../composables/useMediaGallery'
 import { ATTACHMENT_ANIM_MS, attachmentToFile, fileToAttachment, useComposerAttachments } from '../composables/useComposerAttachments'

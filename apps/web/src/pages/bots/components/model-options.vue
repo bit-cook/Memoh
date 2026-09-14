@@ -8,15 +8,19 @@
          those zones and the menu died mid-flight. The flyout now closes only
          on explicit actions — model pick, list scroll, typing, outside click
          / Esc (see commitModel / scroll listener / searchTerm watcher). -->
-    <div :class="menuSearchHeaderClass">
+    <div
+      v-if="showSearch"
+      :class="menuSearchHeaderClass"
+    >
       <input
+        ref="searchInput"
         v-model="searchTerm"
         role="combobox"
         :aria-controls="listboxId"
         :aria-expanded="open"
         :aria-activedescendant="activeIndex >= 0 ? `${listboxId}-${activeIndex}` : undefined"
         :placeholder="$t('bots.settings.searchModel')"
-        aria-label="Search models"
+        :aria-label="$t('bots.settings.searchModel')"
         :class="menuSearchInputClass"
         @keydown="onKeydown"
       >
@@ -25,7 +29,14 @@
     <MenuScrollArea
       ref="scrollElArea"
       layout="virtual"
-      :viewport-attrs="{ id: listboxId, role: 'listbox' }"
+      :viewport-attrs="{
+        id: listboxId,
+        role: 'listbox',
+        tabindex: showSearch ? -1 : 0,
+        'aria-label': $t('chat.modelOverride'),
+        'aria-activedescendant': !showSearch && activeIndex >= 0 ? `${listboxId}-${activeIndex}` : undefined,
+        onKeydown: showSearch ? undefined : onKeydown,
+      }"
     >
       <div
         v-if="rows.length === 0"
@@ -62,6 +73,7 @@
               :id="`${listboxId}-${vRow.virtual.index}`"
               type="button"
               role="option"
+              :tabindex="showSearch ? undefined : -1"
               :aria-selected="modelValue === vRow.row.option.value"
               :aria-setsize="optionCount"
               :aria-posinset="vRow.row.posinset"
@@ -218,14 +230,7 @@ interface ItemRow {
   posinset: number
 }
 
-interface NoneRow {
-  type: 'none'
-  key: string
-  option: ModelOption
-  posinset: number
-}
-
-type Row = HeaderRow | ItemRow | NoneRow
+type Row = HeaderRow | ItemRow
 
 interface ReasoningOption {
   value: string
@@ -261,6 +266,8 @@ const modelValue = defineModel<string>({ default: '' })
 const reasoningEffort = defineModel<string>('reasoningEffort', { default: '' })
 
 const searchTerm = ref('')
+const searchInput = ref<HTMLInputElement | null>(null)
+defineExpose({ focusSearch: () => (searchInput.value ?? scrollEl.value)?.focus({ preventScroll: true }) })
 const scrollElArea = ref<InstanceType<typeof MenuScrollArea> | null>(null)
 const scrollEl = computed(() => scrollElArea.value?.viewportElement ?? null)
 const reasoningScrollElArea = ref<InstanceType<typeof MenuScrollArea> | null>(null)
@@ -289,6 +296,12 @@ const providerMap = computed(() => {
 const typeFilteredModels = computed(() =>
   props.models.filter((m) => m.type === props.modelType),
 )
+// Count the available catalog, not filtered search results: typing must never
+// remove the input from under the caret. Provider headings/defaults aren't models.
+const showSearch = computed(() => typeFilteredModels.value.length >= 20)
+watch(showSearch, (visible) => {
+  if (!visible) searchTerm.value = ''
+})
 
 const options = computed<ModelOption[]>(() =>
   typeFilteredModels.value.map((model) => {
@@ -325,6 +338,9 @@ const noneOption = computed<ModelOption | undefined>(() =>
       }
     : undefined,
 )
+
+// Use the available catalog so searching down to one provider keeps its heading.
+const showGroupLabels = computed(() => new Set(options.value.map(option => option.groupKey)).size > 1)
 
 const filteredOptions = computed(() => {
   const keyword = searchTerm.value.trim().toLowerCase()
@@ -369,14 +385,14 @@ const rows = computed<Row[]>(() => {
   if (noneOption.value) {
     posinset += 1
     result.push({
-      type: 'none',
+      type: 'item',
       key: 'none',
       option: noneOption.value,
       posinset,
     })
   }
   for (const group of filteredGroups.value) {
-    if (group.label) {
+    if (group.label && showGroupLabels.value) {
       result.push({ type: 'header', key: `header:${group.key}`, label: group.label })
     }
     for (const option of group.items) {
@@ -443,7 +459,7 @@ const { activeIndex, onKeydown, reset: resetActive } = useListboxKeyboard<Row>({
   rows,
   scrollToIndex: (index) => virtualizer.value.scrollToIndex(index),
   onSelect: (row) => {
-    if (row.type === 'item' || row.type === 'none') commitModel(row.option.value)
+    if (row.type === 'item') commitModel(row.option.value)
   },
 })
 
