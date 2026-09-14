@@ -1,20 +1,6 @@
 <template>
   <div class="flex h-full items-center">
-    <!-- Terminal group: direct "+" to spawn another session (no dropdown). -->
-    <Button
-      v-if="isTerminalGroup && canWorkspaceExec"
-      variant="ghost"
-      tone="muted"
-      size="icon-sm"
-      class="size-[1.6875rem] shrink-0 rounded-sm p-0"
-      :title="t('chat.tabBarToolkit.newTerminal')"
-      :aria-label="t('chat.tabBarToolkit.newTerminal')"
-      @click="store.openTerminalInPanel(props.params.group.id)"
-    >
-      <AddIcon />
-    </Button>
-    <!-- Editor groups: unified "+" menu for new panels and splits. -->
-    <DropdownMenu v-else-if="hasAnyAction">
+    <DropdownMenu v-if="hasAnyAction">
       <DropdownMenuTrigger as-child>
         <Button
           variant="ghost"
@@ -38,7 +24,7 @@
         </DropdownMenuItem>
         <DropdownMenuItem
           v-if="canWorkspaceExec"
-          @select="store.openTerminalInPanel(props.params.group.id)"
+          @select="store.openTerminal(props.params.group.id)"
         >
           <TerminalIcon />
           {{ t('chat.tabBarToolkit.newTerminal') }}
@@ -114,11 +100,6 @@ const currentBot = computed(() =>
 const currentPermissions = computed(() => currentBot.value?.current_user_permissions ?? [])
 const canWorkspaceExec = computed(() => hasBotPermission(currentPermissions.value, 'workspace_exec'))
 const canManage = computed(() => hasBotPermission(currentPermissions.value, 'manage'))
-
-const isTerminalGroup = computed(() => {
-  const panels = props.params.group.panels
-  return panels.length > 0 && panels.every(p => p.id.startsWith('terminal:'))
-})
 
 const activePanelId = ref<string | null>(props.params.group.activePanel?.id ?? null)
 const activePanelSub = props.params.api.onDidActivePanelChange(() => {

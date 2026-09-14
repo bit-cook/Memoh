@@ -833,6 +833,94 @@ describe('workspace layout store', () => {
     expect(dock.panels.filter(p => p.component === 'browser')).toHaveLength(0)
   })
 
+  it('opens terminals in the requested group without creating a bottom split', () => {
+    const store = useWorkspaceTabsStore()
+    const dock = createFakeDock()
+    store.registerApi(dock as never)
+    store.openDraftChat()
+    const left = dock.activePanel!.group!
+    store.splitGroup(left.id, 'right')
+    const right = dock.activePanel!.group!
+
+    store.openTerminal(left.id)
+    expect(dock.getPanel('terminal:1')?.group).toBe(left)
+    store.openTerminal(right.id)
+    expect(dock.getPanel('terminal:2')?.group).toBe(right)
+    store.openTerminal()
+    expect(dock.getPanel('terminal:3')?.group).toBe(right)
+    expect(dock.groups).toHaveLength(2)
+    expect(dock.getPanel('terminal:3')?.renderer).toBe('always')
+    expect(store.ephemeralPanels['terminal:3']).toBeUndefined()
+  })
+
+  it('opens ordinary tabs inside a terminal-only group and splits beside it', () => {
+    const store = useWorkspaceTabsStore()
+    const dock = createFakeDock()
+    store.registerApi(dock as never)
+    store.openTerminal()
+    const group = dock.activePanel!.group!
+
+    store.openDisplay(group.id)
+    expect(dock.activePanel?.group).toBe(group)
+    store.openFilePinned('/data/example.txt', group.id)
+    expect(dock.activePanel?.group).toBe(group)
+    store.openDraftChat({ groupId: group.id })
+    expect(dock.activePanel?.group).toBe(group)
+    expect(dock.groups).toHaveLength(1)
+    expect(dock.getPanel('terminal:1')).toBeTruthy()
+
+    store.openFileToSide('/data/other.txt', group.id)
+    expect(dock.activePanel?.group).toBe(dock.adjacentGroupInDirection(group, 'right'))
+  })
+
+  it.each(['center', 'left', 'right', 'top', 'bottom'])(
+    'allows ordinary panels and whole groups to drop on a terminal at %s', (position) => {
+      const store = useWorkspaceTabsStore()
+      const dock = createFakeDock()
+      store.registerApi(dock as never)
+      store.openTerminal()
+      for (const panelId of ['chat:1', 'file:/data/example.txt', null]) {
+        const event = {
+          position,
+          group: dock.activePanel!.group!,
+          getData: () => ({ panelId }),
+          preventDefault: vi.fn(),
+        }
+        dock.emitWillShowOverlay(event)
+        dock.emitWillDrop(event)
+        expect(event.preventDefault).not.toHaveBeenCalled()
+      }
+    },
+  )
+
+  it('restores legacy terminal layouts without bottom headers or custom tabs', () => {
+    const terminal = { id: 'terminal:4', contentComponent: 'terminal', title: 'python', tabComponent: 'terminalTab' }
+    const group = { id: 'legacy', views: [terminal.id], activeView: terminal.id }
+    const layout = {
+      grid: { root: { type: 'branch', data: [
+        { type: 'leaf', size: 240, data: { ...group, headerPosition: 'bottom', hideHeader: true, locked: 'no-drop-target' } },
+      ] } },
+      panels: { [terminal.id]: terminal },
+      activeGroup: group.id,
+    }
+    localStorage.setItem('workspace-layout', JSON.stringify({
+      'bot-1': { layout, terminalCounter: 4, ephemeralIds: [] },
+    }))
+    const store = useWorkspaceTabsStore()
+    const dock = createFakeDock()
+    const restore = vi.spyOn(dock, 'fromJSON')
+    store.registerApi(dock as never)
+
+    expect(restore).toHaveBeenCalledWith({
+      ...layout,
+      grid: { root: { type: 'branch', data: [{ type: 'leaf', size: 240, data: group }] } },
+      panels: { [terminal.id]: { id: terminal.id, contentComponent: 'terminal', title: 'python' } },
+    })
+    expect(dock.activePanel?.title).toBe('python')
+    store.openTerminal()
+    expect(dock.getPanel('terminal:5')?.group).toBe(dock.getPanel(terminal.id)?.group)
+  })
+
   it('keeps terminal ids monotonic per bot', () => {
     const store = useWorkspaceTabsStore()
     const dock = createFakeDock()

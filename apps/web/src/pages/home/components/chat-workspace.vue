@@ -7,7 +7,6 @@
     <DockviewVue
       class="h-full w-full"
       :components="panelComponents"
-      :tab-components="tabComponents"
       :watermark-component="watermarkComponent"
       :default-tab-component="defaultTabComponent"
       :prefix-header-actions-component="prefixHeaderActionsComponent"
@@ -52,8 +51,7 @@ import PanelBrowser from './dockview/panel-browser.vue'
 import PanelDisplay from './dockview/panel-display.vue'
 import PanelSchedule from './dockview/panel-schedule.vue'
 import WorkspaceWatermark from './dockview/workspace-watermark.vue'
-import WorkspaceTabHost from './dockview/workspace-tab-host.vue'
-import TerminalTab from './dockview/terminal-tab.vue'
+import WorkspaceTab from './dockview/workspace-tab.vue'
 import GroupActions from './dockview/group-actions.vue'
 import HeaderAddActions from './dockview/header-add-actions.vue'
 import PrefixHeaderActions from './dockview/prefix-header-actions.vue'
@@ -134,10 +132,7 @@ const panelComponents: Record<string, VueComponent> = {
 }
 
 const watermarkComponent = WorkspaceWatermark as unknown as VueComponent
-const tabComponents: Record<string, VueComponent> = {
-  terminalTab: TerminalTab as unknown as VueComponent,
-}
-const defaultTabComponent = WorkspaceTabHost as unknown as VueComponent
+const defaultTabComponent = WorkspaceTab as unknown as VueComponent
 // "+" cluster: leftActions renders right after the tabs (so it hugs the last
 // tab, Chrome-style), while Preview pins to rightActions at the strip's far
 // right. The growing void between them is dockview's droppable empty header.

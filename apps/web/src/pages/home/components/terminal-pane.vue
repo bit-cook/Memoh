@@ -1,5 +1,5 @@
 <template>
-  <div class="absolute inset-0 flex flex-col bg-[var(--terminal-background)]">
+  <div class="absolute inset-0 flex flex-col bg-surface-editor">
     <div
       ref="wrapperRef"
       class="flex-1 relative min-h-0 terminal-wrapper"
@@ -11,14 +11,15 @@
     </div>
     <div
       v-if="status === 'disconnected'"
-      class="shrink-0 flex items-center justify-end gap-2 px-3 py-1.5 text-xs text-muted-foreground border-t border-border bg-background"
+      class="absolute right-3 top-2 z-(--z-raised) rounded-md bg-surface-editor"
     >
-      <span>{{ t('bots.terminal.status.disconnected') }}</span>
       <Button
-        size="sm"
         variant="outline"
+        size="sm"
+        :title="t('bots.terminal.status.disconnected')"
         @click="reconnect"
       >
+        <RefreshCw />
         {{ t('bots.terminal.reconnect') }}
       </Button>
     </div>
@@ -32,6 +33,7 @@ import { Terminal, type ILink } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SerializeAddon } from '@xterm/addon-serialize'
 import { Button } from '@felinic/ui'
+import { RefreshCw } from 'lucide-vue-next'
 import {
   readTerminalSnapshot,
   terminalCacheKey,
@@ -62,7 +64,7 @@ function cssVar(name: string): string {
 
 function resolveTerminalTheme() {
   return {
-    background: cssVar('--terminal-background') || 'black',
+    background: cssVar('--surface-editor') || 'black',
     foreground: cssVar('--terminal-foreground') || 'white',
     cursor: cssVar('--terminal-cursor') || 'white',
     selectionBackground: cssVar('--terminal-selection') || 'gray',
