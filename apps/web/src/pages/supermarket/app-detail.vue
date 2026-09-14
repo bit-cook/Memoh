@@ -117,7 +117,7 @@
                     v-if="dep.summary && dependencyIconUrl(dep.summary)"
                     :src="dependencyIconUrl(dep.summary)"
                     alt=""
-                    class="size-6 object-contain"
+                    class="size-5 object-contain"
                   >
                   <App
                     v-else
