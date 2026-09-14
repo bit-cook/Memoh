@@ -185,6 +185,31 @@ export function createTranscriptHistory(deps: {
     return deps.isTurnLive?.(turnId) === true
   }
 
+  // Retained turns are not always the newest: a channel message persisted while
+  // a run streams takes a later position than the run's own turn, so appending
+  // the live turn rendered the reply below a request that came after it.
+  //
+  // The settled page arrives in the server's authoritative order and is left
+  // exactly as delivered — re-sorting it would reorder rows whenever the sort
+  // key is degenerate, which is how a whole page can be shuffled by a tie. Each
+  // retained turn is inserted before the first settled turn numbered past it;
+  // one with no number goes to the tail, because that is where the database
+  // will number it.
+  function mergeRetainedByPosition(next: ChatMessage[], retained: ChatMessage[]): ChatMessage[] {
+    if (retained.length === 0) return next
+    const merged = [...next]
+    for (const turn of retained) {
+      const position = turn.turnPosition
+      const index = position === undefined
+        ? -1
+        : merged.findIndex(settled =>
+            settled.turnPosition !== undefined && settled.turnPosition > position)
+      if (index < 0) merged.push(turn)
+      else merged.splice(index, 0, turn)
+    }
+    return merged
+  }
+
   function replaceMessages(
     items: UITurn[],
     targetSessionId?: string,
@@ -202,9 +227,7 @@ export function createTranscriptHistory(deps: {
     const retained = deps.messages.filter(turn =>
       isLiveBoundaryTurn(turn) && !settledKeys.has(turnIdentityKey(turn)),
     )
-    // The boundary turn is always the newest: one active run per session, and
-    // the settled page ends at the last persisted turn.
-    deps.messages.splice(0, deps.messages.length, ...next, ...retained)
+    deps.messages.splice(0, deps.messages.length, ...mergeRetainedByPosition(next, retained))
   }
 
   function mergeMessages(items: UITurn[], targetSessionId?: string) {

@@ -188,7 +188,7 @@ describe('runtime projection', () => {
       ['user', 'turn-1'],
       ['assistant', 'turn-1'],
       ['user', 'queue-steer:steer-item-1'],
-      ['assistant', 'queue-steer:steer-item-1:assistant'],
+      ['assistant', 'queue-steer:steer-item-1'],
     ])
     expect(claimed.transcript.turns[2]).toMatchObject({ text: 'change direction' })
     expect(claimed.transcript.turns[3]).toMatchObject({ messages: [] })

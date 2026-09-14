@@ -113,7 +113,7 @@ describe('live turn positions', () => {
       ['user', 'turn-5', 5],
       ['assistant', 'turn-5', 5],
       ['user', 'queue-steer:item-1', undefined],
-      ['assistant', 'queue-steer:item-1:assistant', undefined],
+      ['assistant', 'queue-steer:item-1', undefined],
     ])
   })
 
@@ -179,5 +179,91 @@ describe('live turn positions', () => {
       limit: 30,
       beforeMessageId: 'm1',
     })
+  })
+})
+
+describe('turns the database has not numbered yet', () => {
+  // Positions come from one monotonic per-session counter, so an unnumbered
+  // turn will always be numbered after every turn that already is. Ordering it
+  // by timestamp instead put a streaming steer above the request it answers:
+  // the request row is timestamped at step commit, which is later than the
+  // steer the model already accepted.
+  it('sorts after every numbered turn instead of by timestamp', () => {
+    const { transcript } = makeTranscript()
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript(runView({
+      messages: [
+        { id: 0, type: 'text', content: 'before steer' },
+        { id: 1, type: 'text', content: 'after steer' },
+      ],
+      user_turns: [{
+        turn_id: 'turn-5',
+        turn_position: 5,
+        role: 'user',
+        text: 'live ask',
+        // Persisted at step commit, so later than the steer below it.
+        timestamp: '2026-07-27T08:00:09.000Z',
+      }],
+      steer_turns: [{
+        item_id: 'item-1',
+        status: 'claimed',
+        text: 'steer me',
+        after_message_id: 0,
+        timestamp: '2026-07-27T08:00:02.000Z',
+      }],
+    })))
+    transcript.hasLoadedOlder.value = true
+
+    transcript.mergeMessages([
+      settledTurn('m1', 'turn-1', 1, 'user', '2026-07-27T07:00:00.000Z'),
+    ], 'session-1')
+
+    expect(transcript.messages.map(turn => `${turn.role}:${turn.turnId}`)).toEqual([
+      'user:turn-1',
+      'user:turn-5',
+      'assistant:turn-5',
+      'user:queue-steer:item-1',
+      'assistant:queue-steer:item-1',
+    ])
+  })
+
+  // Both halves of an uncommitted steer carry the same provisional identity, so
+  // role ordering inside the turn applies. Naming the segment separately left
+  // the pair with no shared key and the reply rendered above its own request.
+  it('keeps an uncommitted steer and its reply as one turn', () => {
+    const slice = projectRuntimeTranscript(runView({
+      messages: [{ id: 0, type: 'text', content: 'before' }, { id: 1, type: 'text', content: 'after' }],
+      steer_turns: [{
+        item_id: 'item-1',
+        status: 'claimed',
+        text: 'steer me',
+        after_message_id: 0,
+        timestamp: '2026-07-27T08:00:02.000Z',
+      }],
+    }))
+
+    const provisional = slice.turns.filter(turn => turn.turn_id.startsWith('queue-steer:'))
+    expect(provisional.map(turn => [turn.role, turn.turn_id, turn.id])).toEqual([
+      ['user', 'queue-steer:item-1', 'runtime:queue-steer:item-1:user'],
+      ['assistant', 'queue-steer:item-1', 'runtime:queue-steer:item-1:assistant'],
+    ])
+  })
+
+  // A channel message persisted while a run streams takes a later position than
+  // the run's own turn. Appending the retained live turn rendered the reply
+  // below a request that came after it.
+  it('places a retained live turn by position, not at the tail', () => {
+    const { transcript } = makeTranscript()
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript(runView()))
+
+    transcript.replaceMessages([
+      settledTurn('m5', 'turn-5', 5, 'user', '2026-07-27T08:00:00.000Z'),
+      settledTurn('m6', 'turn-6', 6, 'user', '2026-07-27T08:00:03.000Z'),
+    ], 'session-1')
+
+    expect(transcript.messages.map(turn => `${turn.role}:${turn.turnId}`)).toEqual([
+      'user:turn-5',
+      'assistant:turn-5',
+      'user:turn-6',
+    ])
   })
 })

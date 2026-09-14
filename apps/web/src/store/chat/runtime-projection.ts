@@ -209,7 +209,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
       const durable = steer.turn_id
         ? userTurns.find(turn => turn.turn_id.trim() === steer.turn_id?.trim())
         : undefined
-      const steerTurnId = durable?.turn_id.trim() || `${RUNTIME_STEER_TURN_PREFIX}${steer.item_id}`
+      const steerTurnId = durable?.turn_id.trim() || provisionalSteerTurnId(steer.item_id)
       turns.push({
         ...(durable ?? {
           turn_id: steerTurnId,
@@ -226,10 +226,12 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
       // assistant output that follows it under that turn. Name the live
       // segment after the durable turn as soon as it is known, so the settled
       // page replaces this segment instead of rendering beside it. Until then
-      // the segment carries the provisional steer identity.
-      segmentTurnId = durable
-        ? steerTurnId
-        : `${RUNTIME_STEER_TURN_PREFIX}${steer.item_id}:assistant`
+      // both halves carry the same provisional identity: role already
+      // separates them (turnIdentityKey is turn id + role, render ids end in
+      // :user / :assistant), while a distinct id for the segment left the two
+      // with nothing in common for the sort to key on, and the reply rendered
+      // above the steer that asked for it.
+      segmentTurnId = durable ? steerTurnId : provisionalSteerTurnId(steer.item_id)
       segmentTimestamp = steer.timestamp
     }
     // The final segment is the only live assistant after a steer boundary. It
@@ -253,6 +255,12 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
     turns,
     streaming: isRuntimeRunActive(run.status),
   }
+}
+
+// The identity a steer's turns carry until its step commit mints the durable
+// one. Minted from the queue item, so it is stable across frames.
+function provisionalSteerTurnId(itemID: string): string {
+  return `${RUNTIME_STEER_TURN_PREFIX}${itemID.trim()}`
 }
 
 function runtimeAssistantTurn(
