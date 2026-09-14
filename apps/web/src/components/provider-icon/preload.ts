@@ -4,7 +4,7 @@ import { shallowRef, type ShallowRef } from 'vue'
 // browser's HTTP cache. A remounted icon can reuse this source without another
 // remote resource request. Data URLs need no revocation while a consumer uses
 // them; the bounded map limits how many unused sources we retain.
-const sources = new Map<string, ShallowRef<string>>()
+const sources = new Map<string, ShallowRef<string | null>>()
 const maxEntries = 128
 const maxBytes = 512 * 1024
 const retryAfter = new Map<string, number>()
@@ -16,7 +16,7 @@ export function configureProviderIconLoader(loader: (url: string) => Promise<str
   remoteLoader = loader
 }
 
-export function providerIconSource(url: string): ShallowRef<string> {
+export function providerIconSource(url: string): ShallowRef<string | null> {
   const cached = sources.get(url)
   if (cached && (retryAfter.get(url) ?? Infinity) > Date.now()) {
     sources.delete(url)
@@ -24,7 +24,8 @@ export function providerIconSource(url: string): ShallowRef<string> {
     return cached
   }
   retryAfter.delete(url)
-  const source = shallowRef('')
+  // Empty means loading; null means the native transport failed or rejected the URL.
+  const source = shallowRef<string | null>('')
   sources.set(url, source)
   if (sources.size > maxEntries) {
     const oldest = sources.keys().next().value!
@@ -35,7 +36,7 @@ export function providerIconSource(url: string): ShallowRef<string> {
   return source
 }
 
-async function load(url: string, source: ShallowRef<string>): Promise<void> {
+async function load(url: string, source: ShallowRef<string | null>): Promise<void> {
   try {
     const dataUrl = remoteLoader ? await remoteLoader(url) : await fetchDataUrl(url)
     const image = new Image()
@@ -43,7 +44,9 @@ async function load(url: string, source: ShallowRef<string>): Promise<void> {
     await image.decode()
     source.value = dataUrl
   } catch {
-    source.value = url
+    // Never retry a native rejection through Chromium: that would bypass the
+    // public-destination policy and could send authenticated image requests.
+    source.value = remoteLoader ? null : url
     // Keep failed work shared briefly; preloading and menu remounts must not
     // immediately hammer the same unavailable host. A later mount can recover.
     if (sources.get(url) === source) retryAfter.set(url, Date.now() + 30_000)

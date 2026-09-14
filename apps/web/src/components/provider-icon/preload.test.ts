@@ -87,3 +87,22 @@ it('decodes and shares native image bytes without a renderer fetch', async () =>
   expect(request).not.toHaveBeenCalled()
   expect(decode).toHaveBeenCalledTimes(1)
 })
+
+it('keeps a native rejection out of browser image sources and retries after cooldown', async () => {
+  setup()
+  const { configureProviderIconLoader, providerIconSource } = await import('./preload')
+  const data = 'data:image/svg+xml;base64,PHN2Zy8+'
+  const native = vi.fn().mockRejectedValueOnce(new Error('Blocked destination')).mockResolvedValue(data)
+  configureProviderIconLoader(native)
+  const url = 'https://custom.example/icon.svg'
+  const first = providerIconSource(url)
+  await vi.waitFor(() => expect(first.value).toBeNull())
+  expect(providerIconSource(url)).toBe(first)
+  expect(request).not.toHaveBeenCalled()
+  expect(decode).not.toHaveBeenCalled()
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 30_001)
+  const second = providerIconSource(url)
+  clock.mockRestore()
+  await vi.waitFor(() => expect(second.value).toBe(data))
+  expect(native).toHaveBeenCalledTimes(2)
+})

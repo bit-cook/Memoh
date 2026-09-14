@@ -28,7 +28,7 @@
     v-bind="$attrs"
     aria-hidden="true"
   >
-    <slot v-if="imageSource && imageSource === failedSource" />
+    <slot v-if="imageSource === null || (imageSource && imageSource === failedSource)" />
   </span>
   <slot v-else />
 </template>
@@ -54,7 +54,7 @@ const isUrl = computed(() =>
 const source = computed(() => isUrl.value && typeof Image !== 'undefined'
   ? providerIconSource(props.icon)
   : undefined)
-const imageSource = computed(() => source.value?.value || '')
+const imageSource = computed(() => source.value ? source.value.value : '')
 const failedSource = ref('')
 
 function onImageError(event: Event): void {
