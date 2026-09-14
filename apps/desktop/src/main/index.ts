@@ -1,3 +1,4 @@
+import { loadRemoteIcon } from './remote-icon'
 import {
   app,
   Menu,
@@ -674,6 +675,11 @@ app.whenReady().then(async () => {
     const sender = BrowserWindow.fromWebContents(event.sender)
     sender?.close()
   })
+  ipcMain.handle('desktop:load-remote-icon', (event, url: unknown) => {
+    assertTrustedRenderer(event)
+    return loadRemoteIcon(url)
+  })
+
   ipcMain.handle('desktop:server-status', (event) => {
     assertTrustedRenderer(event)
     return getDesktopServerStatus()

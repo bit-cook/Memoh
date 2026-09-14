@@ -36,14 +36,19 @@ it('shares pending work and decoded bytes between preload and repeated mounts fo
   expect(decode).toHaveBeenCalledTimes(1)
 })
 
-it('falls back to normal embedding on CORS failure and retries on a later mount', async () => {
+it('shares the fallback during cooldown and retries on a later mount', async () => {
   setup()
   request.mockRejectedValueOnce(new TypeError('Failed to fetch'))
   const { providerIconSource } = await import('./preload')
   const url = 'https://custom.example/no-cors.png'
   const first = providerIconSource(url)
   await vi.waitFor(() => expect(first.value).toBe(url))
+  expect(providerIconSource(url)).toBe(first)
+  expect(request).toHaveBeenCalledTimes(1)
+  const now = Date.now()
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 30_001)
   const second = providerIconSource(url)
+  clock.mockRestore()
   await vi.waitFor(() => expect(second.value).toMatch(/^data:/))
   expect(request).toHaveBeenCalledTimes(2)
 })
@@ -66,4 +71,19 @@ it('evicts old cache entries without invalidating sources held by mounted consum
   for (let i = 0; i < 128; i++) providerIconSource(`https://custom.example/${i}.svg`)
   expect(first.value).toBe(loaded)
   expect(providerIconSource('https://custom.example/first.svg')).not.toBe(first)
+})
+
+
+it('decodes and shares native image bytes without a renderer fetch', async () => {
+  setup()
+  const { configureProviderIconLoader, providerIconSource } = await import('./preload')
+  const data = 'data:image/svg+xml;base64,PHN2Zy8+'
+  const native = vi.fn().mockResolvedValue(data)
+  configureProviderIconLoader(native)
+  const first = providerIconSource('https://custom.example/icon.svg')
+  await vi.waitFor(() => expect(first.value).toBe(data))
+  expect(providerIconSource('https://custom.example/icon.svg')).toBe(first)
+  expect(native).toHaveBeenCalledTimes(1)
+  expect(request).not.toHaveBeenCalled()
+  expect(decode).toHaveBeenCalledTimes(1)
 })

@@ -351,3 +351,7 @@ declare module '@memohai/web/*.vue' {
   const component: DefineComponent<Record<string, never>, Record<string, never>, unknown>
   export default component
 }
+
+declare module '@memohai/web/components/provider-icon/preload' {
+  export function configureProviderIconLoader(loader: (url: string) => Promise<string>): void
+}

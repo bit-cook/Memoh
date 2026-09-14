@@ -27,6 +27,7 @@ export interface RendererInvalidatePayload {
 // node-privileged main process.
 const api = {
   desktop: {
+    loadRemoteIcon: (url: string): Promise<string> => ipcRenderer.invoke('desktop:load-remote-icon', url),
     getServerStatus: (): Promise<{
       baseUrl: string
       managed: boolean

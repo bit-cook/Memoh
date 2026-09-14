@@ -7,40 +7,57 @@ import { shallowRef, type ShallowRef } from 'vue'
 const sources = new Map<string, ShallowRef<string>>()
 const maxEntries = 128
 const maxBytes = 512 * 1024
+const retryAfter = new Map<string, number>()
+let remoteLoader: ((url: string) => Promise<string>) | undefined
+
+// Desktop supplies a cookie-free native image transport before mounting. Web
+// retains browser fetch and the ordinary <img> fallback for non-CORS hosts.
+export function configureProviderIconLoader(loader: (url: string) => Promise<string>): void {
+  remoteLoader = loader
+}
 
 export function providerIconSource(url: string): ShallowRef<string> {
   const cached = sources.get(url)
-  if (cached) {
+  if (cached && (retryAfter.get(url) ?? Infinity) > Date.now()) {
     sources.delete(url)
     sources.set(url, cached)
     return cached
   }
+  retryAfter.delete(url)
   const source = shallowRef('')
   sources.set(url, source)
-  if (sources.size > maxEntries) sources.delete(sources.keys().next().value!)
+  if (sources.size > maxEntries) {
+    const oldest = sources.keys().next().value!
+    sources.delete(oldest)
+    retryAfter.delete(oldest)
+  }
   void load(url, source)
   return source
 }
 
 async function load(url: string, source: ShallowRef<string>): Promise<void> {
   try {
-    const response = await fetch(url)
-    if (!response.ok) throw new Error('Icon request failed')
-    const blob = await response.blob()
-    if (!blob.type.startsWith('image/') || blob.size > maxBytes) throw new Error('Icon cannot be cached')
-    const bytes = new Uint8Array(await blob.arrayBuffer())
-    const encoded = btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(''))
-    const dataUrl = `data:${blob.type};base64,${encoded}`
+    const dataUrl = remoteLoader ? await remoteLoader(url) : await fetchDataUrl(url)
     const image = new Image()
     image.src = dataUrl
     await image.decode()
     source.value = dataUrl
   } catch {
-    // Some custom hosts permit img embedding but not CORS fetches. Keep those
-    // working through the original URL and let a later mount retry the cache.
     source.value = url
-    if (sources.get(url) === source) sources.delete(url)
+    // Keep failed work shared briefly; preloading and menu remounts must not
+    // immediately hammer the same unavailable host. A later mount can recover.
+    if (sources.get(url) === source) retryAfter.set(url, Date.now() + 30_000)
   }
+}
+
+async function fetchDataUrl(url: string): Promise<string> {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('Icon request failed')
+  const blob = await response.blob()
+  if (!blob.type.startsWith('image/') || blob.size > maxBytes) throw new Error('Icon cannot be cached')
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  const encoded = btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(''))
+  return `data:${blob.type};base64,${encoded}`
 }
 
 export function preloadProviderIcons(icons: Iterable<string | undefined>): void {
