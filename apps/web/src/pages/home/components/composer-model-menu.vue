@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useElementBounding, useWindowSize } from '@vueuse/core'
 import { Check } from 'lucide-vue-next'
 import {
   DropdownMenuItem,
@@ -37,6 +38,17 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 const modelOpen = ref(false)
+const modelLabelElement = ref<HTMLElement>()
+const modelTriggerElement = computed(() => modelLabelElement.value?.closest<HTMLElement>('[role="menuitem"]'))
+const { right: menuRight } = useElementBounding(modelTriggerElement)
+const { width: viewportWidth } = useWindowSize()
+// Below the shared menu's 10rem baseline, keep a readable surface and let
+// Reka move it into the viewport instead of squeezing it into the right gutter.
+const needsSubmenuFallback = computed(() => {
+  if (!modelTriggerElement.value) return false
+  const rootRem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize)
+  return viewportWidth.value - menuRight.value - 8 < 10 * rootRem
+})
 const modelOptions = ref<InstanceType<typeof ModelOptions>>()
 const activeModel = computed(() => {
   const id = props.modelValue || props.defaultModelId
@@ -73,7 +85,7 @@ function onModelKeydown(event: KeyboardEvent) {
 <template>
   <DropdownMenuSub v-model:open="modelOpen">
     <DropdownMenuSubTrigger>
-      <span>{{ t('chat.modelOverride') }}</span>
+      <span ref="modelLabelElement">{{ t('chat.modelOverride') }}</span>
       <span
         class="ml-auto min-w-0 flex-1 truncate text-right text-muted-foreground"
       >{{ modelLabel }}</span>
@@ -82,8 +94,10 @@ function onModelKeydown(event: KeyboardEvent) {
       position-strategy="absolute"
       :scrollable="false"
       :collision-padding="8"
-      :avoid-collisions="false"
-      class="w-80 min-w-0 max-w-(--reka-dropdown-menu-content-available-width)"
+      :avoid-collisions="needsSubmenuFallback"
+      :prioritize-position="needsSubmenuFallback"
+      class="w-80 min-w-0"
+      :class="needsSubmenuFallback ? 'max-w-[calc(100vw-1rem)]' : 'max-w-(--reka-dropdown-menu-content-available-width)'"
       @entry-focus.prevent="focusModelSearch"
     >
       <DropdownMenuItem
@@ -129,8 +143,10 @@ function onModelKeydown(event: KeyboardEvent) {
     <DropdownMenuSubContent
       position-strategy="absolute"
       :collision-padding="8"
-      :avoid-collisions="false"
-      class="min-w-0 w-40 max-w-(--reka-dropdown-menu-content-available-width)"
+      :avoid-collisions="needsSubmenuFallback"
+      :prioritize-position="needsSubmenuFallback"
+      class="min-w-0 w-40"
+      :class="needsSubmenuFallback ? 'max-w-[calc(100vw-1rem)]' : 'max-w-(--reka-dropdown-menu-content-available-width)'"
     >
       <ModelDescriptionTooltip
         v-for="option in efforts"
