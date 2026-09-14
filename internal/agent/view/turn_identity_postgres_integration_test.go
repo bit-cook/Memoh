@@ -217,3 +217,61 @@ func setupPostgresViewTestFixtures(t *testing.T, ctx context.Context, tx pgx.Tx)
 		t.Fatalf("insert session: %v", err)
 	}
 }
+
+// A steer's turn is drawn when the input is claimed, so the name the client was
+// shown must be the name history ends up using. This drives the allocator and
+// the supplied-identity write path against a live database.
+func TestPostgresSteerTurnSlotSurvivesToTheHistoryPage(t *testing.T) {
+	ctx := context.Background()
+	tx := beginPostgresViewTestTx(t, ctx)
+	setupPostgresViewTestFixtures(t, ctx, tx)
+	svc := messagepkg.NewService(nil, postgresstore.NewQueries(dbsqlc.New(tx)))
+
+	requestTurnID, requestPosition := allocateTurnSlot(t, ctx, tx)
+	request := persistUser(t, ctx, svc, messagepkg.PersistInput{
+		Role: "user", DisplayText: "ask", Content: modelJSON(t, "user", "ask"),
+		TurnID: requestTurnID, TurnPosition: &requestPosition,
+	})
+	persistBound(t, ctx, svc, request.ID, "assistant", "first half")
+
+	slot, err := svc.AllocateTurnSlot(ctx, postgresViewTestSessionID)
+	if err != nil {
+		t.Fatalf("allocate steer turn slot: %v", err)
+	}
+	if slot.Position <= requestPosition {
+		t.Fatalf("steer slot %d must come after the request slot %d", slot.Position, requestPosition)
+	}
+	steer := persistUser(t, ctx, svc, messagepkg.PersistInput{
+		Role: "user", DisplayText: "steer me", Content: modelJSON(t, "user", "steer me"),
+		TurnID: slot.TurnID, TurnPosition: &slot.Position,
+	})
+	persistBound(t, ctx, svc, steer.ID, "assistant", "second half")
+
+	turns := chatview.ConvertMessagesToUITurns(mustPage(t, ctx, svc, 30))
+	assertTurnRoleIdentityUnique(t, turns)
+
+	var found bool
+	for _, turn := range turns {
+		if turn.TurnID != slot.TurnID {
+			continue
+		}
+		found = true
+		if turn.TurnPosition == nil || *turn.TurnPosition != slot.Position {
+			t.Fatalf("steer turn landed at position %v, want the allocated slot %d",
+				turn.TurnPosition, slot.Position)
+		}
+	}
+	if !found {
+		t.Fatalf("the allocated steer turn %q is not in the history page", slot.TurnID)
+	}
+	// The reply after the steer belongs to the steer's turn, not the request's.
+	for _, turn := range turns {
+		if turn.Role == "assistant" && turn.TurnID == requestTurnID {
+			for _, message := range turn.Messages {
+				if message.Content == "second half" {
+					t.Fatal("post-steer output was filed under the request turn")
+				}
+			}
+		}
+	}
+}
