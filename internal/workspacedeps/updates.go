@@ -159,7 +159,7 @@ func (w *UpdateWorker) RunOnce(ctx context.Context) (int, error) {
 			continue
 		}
 		dep, _ := s.catalogFor(ctx).Get(key.depID)
-		check, checkErr := s.checkUpdate(ctx, source.BotID, group.client, group.dataRoot, group.platform, dep, source.InstalledVersion)
+		check, checkErr := s.checkUpdate(ctx, group.client, group.dataRoot, group.platform, dep, source.InstalledVersion)
 		checks++
 		for _, rec := range group.members {
 			recKey := InstallationKey{BotID: rec.BotID, DependencyID: rec.DependencyID}

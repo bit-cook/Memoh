@@ -10,44 +10,33 @@ import (
 	"strings"
 	"time"
 
-	"github.com/felinics/memoh/internal/config"
 	"github.com/felinics/memoh/internal/workspace/bridge"
 	"github.com/felinics/memoh/internal/workspace/payloadlease"
 	"github.com/felinics/memoh/internal/workspacedeps/catalog"
 )
 
-// Store returns one dependency's payload directory. The metadata home always
-// remains under the persistent data root, including when payloads are local.
-func StorePath(dataRoot, configuredRoot, depID string) string {
-	if configuredRoot == "" {
-		configuredRoot = DepsRoot(dataRoot)
+// effectiveStoreRoot uses the fixed distribution layout. Agent Homes stay persistent.
+func (s *Service) effectiveStoreRoot(dataRoot string) string {
+	if s.dependencyStoreRoot != "" {
+		return s.dependencyStoreRoot
 	}
-	return path.Join(configuredRoot, depID)
+	return DepsRoot(dataRoot)
 }
 
-func ValidateDependencyStoreRoot(root string) error { return config.ValidateDependencyStoreRoot(root) }
-
-func (s *Service) effectiveStoreRoot(ctx context.Context, botID, dataRoot string) (string, error) {
-	root := strings.TrimSpace(s.dependencyStoreRoot)
-	if provider, ok := s.workspace.(interface {
-		DependencyStoreRoot(context.Context, string) (string, error)
-	}); ok {
-		var err error
-		root, err = provider.DependencyStoreRoot(ctx, botID)
-		if err != nil {
-			return "", err
+// Validate persisted cleanup paths before they are used for deletion.
+func validateDependencyStoreRoot(root string) error {
+	if root == "" {
+		return nil
+	}
+	if !path.IsAbs(root) || path.Clean(root) != root || strings.ContainsAny(root, "\x00\r\n") {
+		return errors.New("dependency store root must be a clean absolute sandbox path")
+	}
+	for _, protected := range []string{"/", "/bin", "/sbin", "/usr", "/etc", "/proc", "/sys", "/dev", "/opt/memoh/toolkit"} {
+		if root == protected || strings.HasPrefix(root, protected+"/") || strings.HasPrefix(protected, root+"/") {
+			return errors.New("dependency store root overlaps a protected directory")
 		}
 	}
-	if root == "" {
-		root = DepsRoot(dataRoot)
-	}
-	if err := ValidateDependencyStoreRoot(root); err != nil {
-		return "", err
-	}
-	if root == dataRoot || root == path.Join(dataRoot, ".memoh") || strings.HasPrefix(root, path.Join(dataRoot, ".codex")+"/") || root == path.Join(dataRoot, ".codex") || root == path.Join(dataRoot, ".claude") || strings.HasPrefix(root, path.Join(dataRoot, ".claude")+"/") {
-		return "", errors.New("dependency store root overlaps workspace state")
-	}
-	return root, nil
+	return nil
 }
 
 func (s *Service) validateProvision(ctx context.Context, op *operation, previous *State) error {
@@ -215,7 +204,7 @@ func cleanupFor(op *operation, previous *State) *PayloadCleanup {
 }
 
 func cleanupScript(home string, job PayloadCleanup, jobFile string, quiescent bool) (string, error) {
-	if !validReceiptID(job.OperationID) || !isPlainFileName(job.DependencyID) || ValidateDependencyStoreRoot(job.StoreRoot) != nil {
+	if !validReceiptID(job.OperationID) || !isPlainFileName(job.DependencyID) || validateDependencyStoreRoot(job.StoreRoot) != nil {
 		return "", errors.New("invalid payload cleanup identity")
 	}
 	parent := path.Join(job.StoreRoot, job.DependencyID, "installs")

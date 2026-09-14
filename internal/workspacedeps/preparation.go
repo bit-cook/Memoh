@@ -73,7 +73,7 @@ func (s *Service) PrepareInstall(ctx context.Context, botID, depID string, actio
 		if !dep.SupportsPlatform(platform.OS, platform.Arch, platform.Libc) {
 			return PreparedInstall{}, ErrPlatformUnsupported
 		}
-		check, err := s.checkUpdate(ctx, botID, client, root, platform, dep, "")
+		check, err := s.checkUpdate(ctx, client, root, platform, dep, "")
 		if err != nil {
 			return PreparedInstall{}, err
 		}

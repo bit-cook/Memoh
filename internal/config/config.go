@@ -485,16 +485,14 @@ type AppleConfig struct {
 }
 
 type WorkspaceConfig struct {
-	// DependencyStoreRoot is the sandbox-internal payload root. Empty preserves /data/.memoh/deps.
-	DependencyStoreRoot string `toml:"dependency_store_root"`
-	Registry            string `toml:"registry"`
-	DefaultImage        string `toml:"default_image"`
-	ImagePullPolicy     string `toml:"image_pull_policy"`
-	Snapshotter         string `toml:"snapshotter"`
-	DataRoot            string `toml:"data_root"`
-	CNIBinaryDir        string `toml:"cni_bin_dir"`
-	CNIConfigDir        string `toml:"cni_conf_dir"`
-	BridgePath          string `toml:"bridge_path"`
+	Registry        string `toml:"registry"`
+	DefaultImage    string `toml:"default_image"`
+	ImagePullPolicy string `toml:"image_pull_policy"`
+	Snapshotter     string `toml:"snapshotter"`
+	DataRoot        string `toml:"data_root"`
+	CNIBinaryDir    string `toml:"cni_bin_dir"`
+	CNIConfigDir    string `toml:"cni_conf_dir"`
+	BridgePath      string `toml:"bridge_path"`
 	// RuntimeDir is accepted for one compatibility release. New deployments
 	// should configure bridge_path because the Server no longer owns a toolkit
 	// or workspace templates directory.
@@ -830,9 +828,6 @@ func Load(path string) (Config, error) {
 }
 
 func (cfg Config) validate() error {
-	if err := ValidateDependencyStoreRoot(cfg.Workspace.DependencyStoreRoot); err != nil {
-		return err
-	}
 	if cfg.Database.DriverOrDefault() != DefaultDatabaseDriver {
 		return fmt.Errorf("unsupported database driver %q", cfg.Database.DriverOrDefault())
 	}
@@ -958,7 +953,6 @@ func containerHasWorkspaceFields(values map[string]any) bool {
 		"image_pull_policy",
 		"snapshotter",
 		"data_root",
-		"dependency_store_root",
 		"cni_bin_dir",
 		"cni_conf_dir",
 		"bridge_path",

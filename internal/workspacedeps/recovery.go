@@ -64,10 +64,7 @@ func (s *Service) recoverReceipt(ctx context.Context, key InstallationKey, dep c
 	receipt.Directory = path.Join(operationRoot(Home(root, dep.ID), dep.ID), receipt.ID)
 	op := &operation{key: key, dep: dep, client: client, dataRoot: root, home: Home(root, dep.ID), shimDir: ShimDir(root), platform: platform, version: receipt.RequestedVersion, receipt: receipt, previous: receipt.Previous, operationID: receipt.ID, storeRoot: receipt.StoreRoot, desiredRevision: receipt.DesiredRevision, repair: receipt.Repair, authorizedByActor: receipt.AuthorizedByActor, restorePayloadPath: receipt.RestorePayloadPath, restoreInstallationID: receipt.RestoreInstallationID}
 	if op.storeRoot == "" {
-		op.storeRoot, err = s.effectiveStoreRoot(ctx, key.BotID, root)
-		if err != nil {
-			return nil, err
-		}
+		op.storeRoot = s.effectiveStoreRoot(root)
 	}
 	op.catalog = s.catalogFor(ctx)
 	op.frozenDefinition = frozen

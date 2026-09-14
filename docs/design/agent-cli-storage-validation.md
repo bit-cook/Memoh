@@ -1,10 +1,21 @@
 # Agent CLI storage implementation validation
 
+> Historical validation record: the configurable store used below has since been removed.
+> Current paths are fixed: OSS `/data/.memoh/deps`, Cloud `/opt/memoh/deps`.
+
 Validation dates: 2026-09-14–15. Status: implementation and validation in progress.
 
 This record accompanies the [implementation plan](agent-cli-storage-and-single-install-plan.md). Results below describe completed checks, not release approval. Human QA has not been performed.
 
-## Local environment
+## Fixed-path update on 2026-09-15
+
+The dependency-store setting and provider override were removed. OSS uses `/data/.memoh/deps`; Cloud uses `/opt/memoh/deps`. Agent Homes remain under `/data`.
+
+On the rebuilt OSS development stack at `http://localhost:18082`, Computer Use opened the QA Bot's Codex App, selected reinstall, reviewed the exact `0.154.0` target, and completed installation using the local companion registry. The UI reported completion at `/data/.memoh/deps/codex/installs/1bf0c34d86475343facd34428625539a/bin/codex`. A separate live workspace check resolved the current payload to that directory and returned `codex-cli 0.154.0` from the managed launcher. See [the actual installation screenshot](../evidence/agent-cli-storage/fixed-path-codex-installed.png).
+
+Authenticated Codex chat and file-tool execution are still pending selection of the OpenAI account. Installation and a successful version command do not establish those results. Cloud runtime/UI testing was not repeated in this update, as requested.
+
+## Historical local environment
 
 - OSS implementation baseline: `58741b308`; branch `codex/agent-cli-local-store`.
 - Development stack: `devenv/docker-compose.yml`, with an ignored local configuration selecting `container.dependency_store_root = "/var/lib/memoh/deps"` and the local Supermarket at `http://host.docker.internal:5175`.

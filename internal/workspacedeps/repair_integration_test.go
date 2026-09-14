@@ -341,7 +341,8 @@ func TestDesiredReadinessInvalidatesPeerServerLauncherCache(t *testing.T) {
 	}
 	// A second Service owns its own process-local cache and commits a new
 	// payload against the same real PostgreSQL and workspace bridge.
-	peer := NewService(Options{Workspace: f.ws, Store: store, Provider: provider, DependencyStoreRoot: f.svc.dependencyStoreRoot})
+	peer := NewService(Options{Workspace: f.ws, Store: store, Provider: provider})
+	peer.dependencyStoreRoot = f.svc.dependencyStoreRoot
 	if _, err := peer.Update(ctx, botID, "foo", "2.0.0", nil); err != nil {
 		t.Fatal(err)
 	}

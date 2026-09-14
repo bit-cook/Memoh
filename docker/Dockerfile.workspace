@@ -82,7 +82,7 @@ RUN set -eux; \
 
 COPY --from=toolkit-builder /opt/memoh/toolkit /opt/memoh/toolkit
 COPY scripts/desktop-style.sh scripts/display-apply-style.sh scripts/display-prepare.sh /opt/memoh/scripts/
-RUN install -d -m 1777 /var/lib/memoh/deps /run/memoh/deps \
+RUN install -d -m 1777 /run/memoh/deps \
   && printf '%s\n' 'export PATH="/opt/memoh/toolkit/bin:$PATH"' > /etc/profile.d/memoh-toolkit.sh \
   && chmod 0755 /opt/memoh/scripts/*.sh \
   && test -x /usr/bin/tini \

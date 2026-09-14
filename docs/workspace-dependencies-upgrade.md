@@ -14,21 +14,14 @@ loss; adopting an existing executable does not.
 
 ## Storage and compatibility
 
-```toml
-[container]
-# Empty retains payloads beside persistent dependency metadata.
-dependency_store_root = ""
-```
-
-This path is inside the workspace, not on the Server host. Empty uses
-`/data/.memoh/deps`. For local storage, provision a writable directory such as
-`/var/lib/memoh/deps` and verify its mount and execution permissions. Do not point
-it at Agent Homes or the image toolkit.
+Dependency payloads and caches use the fixed workspace path `/data/.memoh/deps`.
+There is no dependency-store path setting. Agent Homes keep their existing paths.
+Existing installations and unfinished operations retain their recorded paths.
 
 Persistent `/data/.memoh/deps` retains state, launchers, receipts, composite-version
 resolution metadata and `.execution-window.json` lifetime/admission evidence.
 On Linux, kernel control uses the fixed local root `/run/memoh/deps`, independently
-of the payload-store configuration. It holds operation locks under `.locks/`,
+of the payload location. It holds operation locks under `.locks/`,
 launch and installation leases under `.leases/`, and `.execution-window.lock`.
 Non-default data roots use separate internal hashed namespaces. The image provides
 a default directory, but adapters must preserve a writable path with working local

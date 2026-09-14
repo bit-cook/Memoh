@@ -11,7 +11,7 @@ The main configuration file is `config.toml` (copied from `conf/app.example.toml
 - `[admin]` — Admin account credentials
 - `[auth]` — JWT authentication settings
 - `[database]` — Database backend selection (`postgres`)
-- `[container]` — Workspace container backend selection (`docker`, `containerd`, `apple`) and common workspace image/data/bridge/CNI settings. Optional `dependency_store_root` selects the in-workspace payload/cache root for managed dependencies; an empty value defaults to `/data/.memoh/deps`. Durable dependency metadata and Agent Homes retain their existing data paths. For ephemeral payload storage, provision a writable directory in the workspace image and use an absolute path such as `/var/lib/memoh/deps`.
+- `[container]` — Workspace container backend selection (`docker`, `containerd`, `apple`) and common workspace image/data/bridge/CNI settings. Managed dependency payloads and caches use the fixed workspace path `/data/.memoh/deps`; dependency metadata and Agent Homes retain their existing persistent data paths.
 - `[containerd]` / `[docker]` / `[apple]` — Backend-specific runtime configuration
 - `[postgres]` — PostgreSQL connection
 - `[qdrant]` — Qdrant vector database connection

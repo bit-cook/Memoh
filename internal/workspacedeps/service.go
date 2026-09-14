@@ -70,20 +70,20 @@ type Options struct {
 	// source-session notifications. Launcher discovery never starts an install.
 	Background                *background.Manager
 	OperationSessionValidator func(context.Context, string, string) error
-	DependencyStoreRoot       string
 }
 
 // Service reconciles the catalog, the installation records, and the
 // workspace and runs dependency actions.
 type Service struct {
-	workspace           WorkspaceAccess
-	store               Store
-	catalog             *catalog.Catalog
-	provider            CatalogProvider
-	cache               *Cache
-	logger              *slog.Logger
-	now                 func() time.Time
-	scriptEnv           func(ctx context.Context) []string
+	workspace WorkspaceAccess
+	store     Store
+	catalog   *catalog.Catalog
+	provider  CatalogProvider
+	cache     *Cache
+	logger    *slog.Logger
+	now       func() time.Time
+	scriptEnv func(ctx context.Context) []string
+	// Tests can substitute a temporary root; production uses the fixed distribution layout.
 	dependencyStoreRoot string
 	repairWake          chan struct{}
 
@@ -131,20 +131,19 @@ func NewService(opts Options) *Service {
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	s := &Service{
 		shutdownCtx: shutdownCtx, shutdownCancel: shutdownCancel,
-		workspace:           opts.Workspace,
-		store:               opts.Store,
-		catalog:             opts.Catalog,
-		provider:            opts.Provider,
-		cache:               opts.Cache,
-		logger:              opts.Logger,
-		now:                 opts.Now,
-		scriptEnv:           opts.ScriptEnv,
-		dependencyStoreRoot: opts.DependencyStoreRoot,
-		repairWake:          make(chan struct{}, 1),
-		probe:               ProbePlatform,
-		discover:            Discover,
-		run:                 Run,
-		locks:               operationLocks{held: make(map[InstallationKey]struct{})},
+		workspace:  opts.Workspace,
+		store:      opts.Store,
+		catalog:    opts.Catalog,
+		provider:   opts.Provider,
+		cache:      opts.Cache,
+		logger:     opts.Logger,
+		now:        opts.Now,
+		scriptEnv:  opts.ScriptEnv,
+		repairWake: make(chan struct{}, 1),
+		probe:      ProbePlatform,
+		discover:   Discover,
+		run:        Run,
+		locks:      operationLocks{held: make(map[InstallationKey]struct{})},
 
 		background:                opts.Background,
 		operationSessionValidator: opts.OperationSessionValidator,
@@ -895,7 +894,7 @@ func (s *Service) CheckUpdates(ctx context.Context, botID string) (ListResult, e
 		if !s.locks.tryLock(key) {
 			continue
 		}
-		check, checkErr := s.checkUpdate(ctx, botID, client, dataRoot, result.Platform, entry.Dependency, entry.InstalledVersion)
+		check, checkErr := s.checkUpdate(ctx, client, dataRoot, result.Platform, entry.Dependency, entry.InstalledVersion)
 		recordErr := s.recordCheck(ctx, key, check, checkErr)
 		s.locks.unlock(key)
 		if err := recordErr; err != nil {
@@ -1083,8 +1082,8 @@ func (s *Service) prepare(ctx context.Context, op *operation, requirePlatform bo
 	op.home = Home(dataRoot, op.dep.ID)
 	op.shimDir = ShimDir(dataRoot)
 	op.platform = platform
-	op.storeRoot, err = s.effectiveStoreRoot(ctx, botID, dataRoot)
-	return err
+	op.storeRoot = s.effectiveStoreRoot(dataRoot)
+	return nil
 }
 
 // ensureWorkspace makes the target runnable for a user-requested operation:
@@ -1489,7 +1488,7 @@ func targetVersion(dep catalog.Dependency, requested string) string {
 
 // checkUpdate runs the check_update script and decodes its result. The exit
 // status only says whether the check ran.
-func (s *Service) checkUpdate(ctx context.Context, botID string, client *bridge.Client, dataRoot string, platform Platform, dep catalog.Dependency, currentVersion string) (updateCheck, error) {
+func (s *Service) checkUpdate(ctx context.Context, client *bridge.Client, dataRoot string, platform Platform, dep catalog.Dependency, currentVersion string) (updateCheck, error) {
 	script, ok := s.catalogFor(ctx).Script(dep.ID, catalog.ActionCheckUpdate)
 	if !ok {
 		return updateCheck{}, fmt.Errorf("%w: %s has no check_update script", ErrActionUnsupported, dep.ID)
@@ -1505,10 +1504,7 @@ func (s *Service) checkUpdate(ctx context.Context, botID string, client *bridge.
 		Timeout:        dep.Timeouts.Duration(catalog.ActionCheckUpdate),
 	}
 	if dep.StorageLayout == "isolated" {
-		root, err := s.effectiveStoreRoot(ctx, botID, dataRoot)
-		if err != nil {
-			return updateCheck{}, err
-		}
+		root := s.effectiveStoreRoot(dataRoot)
 		spec.Store = path.Join(root, dep.ID)
 	}
 	if s.scriptEnv != nil {

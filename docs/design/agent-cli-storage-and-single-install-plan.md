@@ -100,23 +100,12 @@
 
 ### 4.1 分开声明用途
 
-实际配置为 `[container] dependency_store_root`（已替代原计划中的 `[workspace]`），表示**沙箱内部**所有受管依赖负载的根，不是 Server 宿主机 data root。
+依赖负载目录由版本固定，不提供路径配置：OSS 使用 `DepsRoot(dataRoot)`，标准工作区中为 `/data/.memoh/deps`；Cloud 使用 `/opt/memoh/deps`。
 
-```toml
-[container]
-# 空值：沿用 /data/.memoh/deps，避免默认改变 OSS 部署。
-dependency_store_root = ""
-```
-
-E2B 部署明确配置本地盘上的目录，例如 `/var/lib/memoh/deps`。`/opt/memoh/deps` 也可作为部署选择，但不是协议常量，不能因此要求创建 `/opt/memoh/agents`。
-
-- 空值返回 `DepsRoot(dataRoot)`；非空值直接作为 store root。不能将空值先替换为 `/data` 再拼 `deps`。
-- `Home(dataRoot, depID)` 继续是 `/data/.memoh/deps/<dep>`；`StorePath(dataRoot, configuredRoot, depID)` 返回该依赖的负载目录。
-- 通过 workspace 信息/`WorkspaceAccess` 传递有效值，驱动不自行判断 E2B、不读取另一个 target 的路径。
-- 校验绝对路径、规范化、与 toolkit 和其他受保护目录的重叠；不接受 API 调用方传入任意 store 路径。
-- 部署检查实际 mount，配置名字叫 local 不代表底层必然是本地盘。不存在、不允许写或位于错误 mount 时给出明确配置失败，不静默回退到 NFS。
-- 变更 store root 是受控存储迁移：新操作用新配置，已安装负载和未完成操作仍按记录中的实际路径定位与清理。
-- Linux control 根不跟随 store 配置迁移。默认 `/data` 对应 `/run/memoh/deps`；非默认 data root 使用内部独立 hash 命名空间。镜像提供默认目录，但适配器必须保证实际挂载后的目录对运行用户可写且本地锁有效，不能因为 payload 仍在 `/data` 就把 kernel lock 留在 NFS 上。
+- Agent Home、凭据和依赖元数据继续使用 `/data` 下的原有位置。
+- Cloud 镜像准备可写的 `/opt/memoh/deps`；不新增 `/opt/memoh/agents`。
+- 已安装负载和未完成操作仍按记录中的实际路径定位与清理，不在这次变更中搬动已有文件。
+- Linux control 根保持 `/run/memoh/deps`，不随负载目录变化；非默认 data root 使用内部独立 hash 命名空间。
 
 ### 4.2 目标布局
 

@@ -829,12 +829,11 @@ func provideWorkspaceDependencyCatalog(cfg config.Config, queries dbstore.Querie
 
 func provideWorkspaceDependencyService(log *slog.Logger, manager *workspace.Manager, queries dbstore.Queries, provider *workspacedeps.RemoteCatalog, bgManager *background.Manager, sessions *sessionpkg.Service, cfg config.Config) *workspacedeps.Service {
 	service := workspacedeps.NewService(workspacedeps.Options{
-		Workspace:           workspacedeps.NewManagerWorkspaceAccess(manager),
-		DependencyStoreRoot: cfg.Workspace.DependencyStoreRoot,
-		Store:               workspacedeps.NewPostgresStore(queries),
-		Provider:            provider,
-		Logger:              log,
-		Cache:               workspacedeps.NewCache(cfg.WorkspaceDependencies.DiscoveryCacheTTL()),
+		Workspace: workspacedeps.NewManagerWorkspaceAccess(manager),
+		Store:     workspacedeps.NewPostgresStore(queries),
+		Provider:  provider,
+		Logger:    log,
+		Cache:     workspacedeps.NewCache(cfg.WorkspaceDependencies.DiscoveryCacheTTL()),
 		ScriptEnv: func(context.Context) []string {
 			keys := make([]string, 0, len(cfg.WorkspaceDependencies.ScriptEnv))
 			for key := range cfg.WorkspaceDependencies.ScriptEnv {

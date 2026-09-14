@@ -114,11 +114,9 @@ remote target is not an installation target. Agent Home and credential ownership
 remain unchanged: Codex uses `/data/.codex/agents/<bot_agent_id>`, including
 `auth.json`; Claude Code keeps `HOME=/data` and `CLAUDE_CONFIG_DIR=/data/.claude`.
 
-`[container].dependency_store_root` selects a path inside the workspace. Empty
-uses `/data/.memoh/deps`; a writable local path such as `/var/lib/memoh/deps`
-separates disposable payloads from persistent metadata. `/opt` is not required.
-Deployment must prepare permissions and verify the actual mount. See
-[configuration](../configuration.md).
+Dependency payloads and caches use the fixed workspace path `/data/.memoh/deps`.
+There is no dependency-store path setting. The workspace image prepares the
+required directories; metadata and Agent Homes remain persistent.
 
 ```text
 /data/.memoh/deps/
@@ -145,7 +143,7 @@ Deployment must prepare permissions and verify the actual mount. See
 ```
 
 Linux kernel control uses the fixed local root `/run/memoh/deps`, independently of
-`dependency_store_root`; a non-default data root gets a separate internal hashed
+the payload location; a non-default data root gets a separate internal hashed
 namespace. The image provides a default directory, but adapters must ensure the
 actual mounted path is writable by the runtime user and supports local kernel
 locking. OSS binds the host `<workspace data root>/run/<bot>` directory at

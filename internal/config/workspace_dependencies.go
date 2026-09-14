@@ -1,11 +1,6 @@
 package config
 
-import (
-	"errors"
-	"path"
-	"strings"
-	"time"
-)
+import "time"
 
 // WorkspaceDependenciesConfig controls maintenance of the persisted dependency
 // catalog and workspace observations. Offline disables automatic upstream work;
@@ -42,19 +37,4 @@ func (c WorkspaceDependenciesConfig) ReapInterval() time.Duration {
 
 func (c WorkspaceDependenciesConfig) DiscoveryCacheTTL() time.Duration {
 	return dependencyInterval(c.DiscoveryCacheTTLSeconds, 10*time.Minute)
-}
-
-func ValidateDependencyStoreRoot(root string) error {
-	if root == "" {
-		return nil
-	}
-	if !path.IsAbs(root) || path.Clean(root) != root || strings.ContainsAny(root, "\x00\r\n") {
-		return errors.New("dependency store root must be a clean absolute sandbox path")
-	}
-	for _, protected := range []string{"/", "/bin", "/sbin", "/usr", "/etc", "/proc", "/sys", "/dev", "/opt/memoh/toolkit"} {
-		if root == protected || strings.HasPrefix(root, protected+"/") || strings.HasPrefix(protected, root+"/") {
-			return errors.New("dependency store root overlaps a protected directory")
-		}
-	}
-	return nil
 }

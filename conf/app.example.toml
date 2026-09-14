@@ -132,9 +132,6 @@ image_pull_policy = "if_not_present"
 snapshotter = "overlayfs"
 # Host/runtime data root for sockets, CNI state, overlay sidecars, and workspace metadata.
 data_root = "data"
-# Sandbox-internal dependency payload root; empty uses /data/.memoh/deps.
-# Set a writable local filesystem path for workspaces whose /data is remote.
-dependency_store_root = ""
 # Host path to the bridge binary mounted read-only into workspace containers.
 bridge_path = "/opt/memoh/runtime/bridge"
 # CNI paths used by containerd-backed runtime networking.

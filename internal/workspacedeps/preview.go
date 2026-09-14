@@ -102,10 +102,7 @@ func (s *Service) ScriptPreviewDetails(ctx context.Context, botID, depID string,
 		Timeout:        timeout,
 	}
 	if dep.StorageLayout == "isolated" {
-		root, err := s.effectiveStoreRoot(ctx, botID, dataRoot)
-		if err != nil {
-			return ScriptPreview{}, err
-		}
+		root := s.effectiveStoreRoot(dataRoot)
 		spec.Store = path.Join(root, dep.ID)
 		spec.InstallDir = path.Join(spec.Store, "installs", previewResultNonce)
 		spec.StagingDir = path.Join(spec.Store, ".staging-"+previewResultNonce)
