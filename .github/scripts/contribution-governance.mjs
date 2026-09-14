@@ -49,8 +49,8 @@ async function publishComment(github, repo, issue, errors) {
   const previous = comments.find(comment => comment.user?.login === 'github-actions[bot]' && comment.body?.startsWith(marker));
   if (!errors.length && !previous) return;
   const body = errors.length
-    ? `${marker}\n@${issue.user.login} 请按模板补充以下信息：\n\n${errors.map(error => `- ${error}`).join('\n')}\n\n编辑描述后会重新检查；格式提示不会阻止或取消代码 CI。`
-    : `${marker}\n格式检查通过，已移除 \`needs:format\`.`;
+    ? `${marker}\n@${issue.user.login} Please complete the following information using the template:\n\n${errors.map(error => `- ${error}`).join('\n')}\n\nEditing the description triggers another check; format feedback does not block or cancel code CI.`
+    : `${marker}\nFormat check passed; removed \`needs:format\`.`;
   if (previous?.body === body) return;
   if (previous) await github.rest.issues.updateComment({ ...repo, comment_id: previous.id, body });
   else await github.rest.issues.createComment({ ...repo, issue_number: issue.number, body });
@@ -75,20 +75,20 @@ export async function inspectPR({ github, context, core }, number, { classifyCha
   if (!await samePR(github, repo, pr)) return;
   const statuses = await github.paginate(github.rest.repos.listCommitStatusesForRef, { ...repo, ref: pr.head.sha, per_page: 100 });
   const last = statuses.find(status => status.context === statusContext);
-  // 格式问题通过标签和评论提示，不阻断代码检查或工作流审批。
+  // Report format issues through labels and comments without blocking code checks or workflow approval.
   const state = 'success';
-  const description = `${bodyFingerprint(pr)} ${errors.length ? '格式有待补充（不阻断 CI）' : '格式检查通过'}`;
+  const description = `${bodyFingerprint(pr)} ${errors.length ? 'Format corrections needed (non-blocking)' : 'Format check passed'}`;
   if (last?.state !== state || last?.description !== description) {
     await github.rest.repos.createCommitStatus({ ...repo, sha: pr.head.sha, state, context: statusContext, description,
       target_url: `${context.serverUrl}/${repo.owner}/${repo.repo}/actions/runs/${context.runId}` });
   }
-  // 仅清理当前 head 上最新的机器人取消标记，不覆盖真实测试或其他账号的状态。
+  // Retire only the latest bot cancellation status on the current head; preserve real tests and other accounts' statuses.
   const seen = new Set();
   for (const status of statuses) {
     if (seen.has(status.context)) continue;
     seen.add(status.context);
     if (/^PR Format cancellation \/ \d+$/.test(status.context) && status.state === 'failure' && status.creator?.login === 'github-actions[bot]') {
-      await github.rest.repos.createCommitStatus({ ...repo, sha: pr.head.sha, state: 'success', context: status.context, description: '旧格式门禁取消标记已停用；不代表代码检查通过' });
+      await github.rest.repos.createCommitStatus({ ...repo, sha: pr.head.sha, state: 'success', context: status.context, description: 'Legacy format cancellation retired; does not indicate code checks passed' });
     }
   }
   await syncLabels(github, repo, pr, wanted, name => typeLabels.includes(name) || name === 'needs:format'
@@ -134,7 +134,7 @@ export async function run({ github, context, core }) {
   }
 }
 
-// 旧 PR 分支仍会经复用工作流调用此入口；保留兼容，直接放行。
+// Older PR branches still call this entry point through a reusable workflow; keep it as a no-op.
 export async function gate({ core }) {
-  core.info('格式检查已改为独立提示，代码 CI 无需等待描述检查。');
+  core.info('Format checks now provide independent feedback; code CI does not wait for description validation.');
 }

@@ -158,7 +158,7 @@ Contributors can submit an issue or PR before format checks run. GitHub Actions 
 
 ### Label Configuration
 
-`.github/labels.json` is the source of truth for label names, colors, and descriptions. New descriptions default to Chinese. GitHub does not read this file natively. The `Sync labels` workflow applies changes from main through the GitHub API. Routine synchronization creates or updates labels; it never deletes them.
+`.github/labels.json` is the source of truth for label names, colors, and descriptions. New descriptions use English. GitHub does not read this file natively. The `Sync labels` workflow applies changes from main through the GitHub API. Routine synchronization creates or updates labels; it never deletes them.
 
 ```sh
 # Preview the configuration without changing GitHub
@@ -227,13 +227,13 @@ Issue forms include Bug Report, Feature Request, and Help. The blank issue entry
 - Help requires Problem, Desired Outcome, What You Have Tried, and Version and Environment.
 - All forms offer Screenshots / Recordings and Additional Context. Bug and Help also offer Logs.
 
-The PR template requires exactly one Author and Type choice, Summary, Validation, Screenshots / Recordings, and Human QA. Related Issues is optional. PR title enforcement is outside this workflow. Newly authored content defaults to Chinese, including contribution titles and free-form responses, as described in [Working Language](AGENTS.md#working-language). Other languages are welcome; quoted code, error logs, and upstream English material stay as-is. Only section names and choices must match the current template; the validator does not enforce a language for user-written content.
+The PR template requires exactly one Author and Type choice, Summary, Validation, Screenshots / Recordings, and Human QA. Related Issues is optional. PR title enforcement is outside this workflow. PR bodies in both Chinese and English are accepted. Agents should prefer Chinese when the user uses Chinese throughout the session, and write in English when the user uses English or another language, as described in [Working Language](AGENTS.md#working-language). Repository guidance, templates, and automated GitHub Actions messages use English. Only section names and choices must match the current template; the validator does not enforce a language for user-written content. Keep quoted code, error logs, and upstream material in their original language.
 
 Empty sections, placeholders (including bare OK/done/passed), missing selections, and multiple selections receive format feedback. Subheadings inside a template section remain part of that section; only recognized template headings start another field. Fenced examples cannot supply outer section headings or choices. Content quality is not judged by a minimum word count.
 
 Upload screenshots as GitHub-accessible attachments. For visible behavior, agents should use browser tools or Computer Use to exercise the change and capture evidence. If capture or upload is unavailable or not applicable, explain why and describe alternative verification. Local file paths are not uploaded evidence.
 
-Human QA 只保留一个 `- [ ] 已通过真人 QA` 复选框作为状态声明，不需要额外警告行。未勾选表示尚未验证；获得明确确认后勾选，并注明验收人和确认记录。选项和确认记录必须是可见正文，注释或代码块不算。Agent 测试和截图不能代替真人 QA；自动校验只检查声明结构，不证明验收实际发生。
+Human QA uses a single `- [ ] Human QA passed` status checkbox without an additional warning line. Leave it unchecked until a human explicitly confirms, then check it and identify the reviewer and confirmation record. The choice and confirmation must appear in visible body text, not comments or code blocks. Agent tests and screenshots do not replace human QA; automated validation checks the declaration structure without proving that verification occurred. The validator also accepts the previous Chinese checkbox label on existing PRs.
 
 ### Workflow Behavior
 
@@ -241,25 +241,25 @@ Human QA 只保留一个 `- [ ] 已通过真人 QA` 复选框作为状态声明�
 
 An invalid description receives `needs:format` and one identifiable bot comment mentioning the author and listing corrections. Editing the description triggers another check. Once corrected, the label is removed and the existing comment is updated instead of posting another one. An initially valid submission does not receive an extra success comment.
 
-#### 独立格式提示与工作流审批
+#### Independent Format Feedback and Workflow Approval
 
-格式反馈通过 `needs:format` 和已有机器人评论呈现。`PR Format` 状态始终为 success，并在描述中区分“通过”和“有待补充”，避免已有 required-status 配置因描述格式阻塞代码检查或合并。该状态只表示反馈已处理，不表示代码检查通过。控制器仍从可信默认分支加载规则，不执行贡献者代码。
+Format feedback appears through `needs:format` and the existing bot comment. The `PR Format` status always reports success, with a description distinguishing passed validation from needed corrections, so existing required-status configurations do not block code checks or merging on description format. This status only indicates that feedback was processed, not that code checks passed. The controller loads trusted default-branch rules without executing contributor code.
 
-代码 CI 不依赖格式任务，也不等待控制器。控制器不会因描述变化取消、重跑任何 CI；测试失败和人工取消仍由贡献者或维护者处理。现有路径过滤、只读 token、GitHub 托管 runner 和发布权限边界保持不变。Docker PR 仍固定 `publish: false`，不接收发布 secrets。
+Code CI does not depend on format jobs or wait for the controller. Description changes do not cause the controller to cancel or rerun CI; contributors or maintainers handle test failures and manual cancellations. Existing path filters, read-only tokens, GitHub-hosted runners, and publishing permission boundaries remain unchanged. Docker PR builds still use `publish: false` and receive no publishing secrets.
 
-外部贡献者待审批的工作流仍自动审批，审批检查仓库、PR、当前 head 和既有工作流白名单，不以描述格式为条件。发布、部署和文档维护工作流不在自动审批范围内。`workflow_run` 事件及五分钟定时扫描继续协调审批；授权失败会明确报错，不伪装成功。
+Pending external-contributor workflows are still approved automatically. Approval checks the repository, PR, current head, and existing workflow allowlist independently of description format. Release, deployment, and documentation maintenance workflows are excluded. Workflow-run events and scheduled scans every five minutes reconcile approvals; authorization failures are reported explicitly.
 
-旧 PR 分支可能仍引用 `contribution-format.yml`，因此保留兼容入口；该入口直接返回，不校验描述、不轮询状态。旧的 `PR Format cancellation / <run id>` 状态仅在当前 head 上、最新记录由 `github-actions[bot]` 创建且为 failure 时标记为已停用。不会改写真实测试状态、其他账号的状态或自动重跑历史任务；已经跳过或取消的旧 CI 需要手动重跑或通过新提交触发。
+Older PR branches may still reference `contribution-format.yml`, so its compatibility entry point remains as a no-op without description validation or status polling. A legacy `PR Format cancellation / <run id>` status is retired only on the current head when its latest record was created by `github-actions[bot]` and reports failure. Real test statuses and other accounts' statuses are preserved; historical jobs are not rerun automatically. Previously skipped or cancelled CI requires a manual rerun or a new commit.
 
-定时扫描继续跳过治理上线前、从未参与治理的旧 PR，避免批量打扰。由 `GITHUB_TOKEN` 创建的 PR 可能不触发普通 PR CI；此控制器不会另造运行，需要能产生正常 PR 事件的 GitHub App 或后续提交。
+Scheduled scans skip older PRs that predate governance and have never participated, avoiding bulk notifications. PRs created with `GITHUB_TOKEN` may not trigger ordinary PR CI; this controller does not create replacement runs. Use a GitHub App that produces normal PR events or a subsequent commit.
 
-API 操作保留有限重试。文件列表不完整时保留已有 size/scope 标签并报告分类错误；不会把分类故障说成描述不合格。格式提示不判断代码是否可信，也不代替代码 review、合并授权或真人 QA。
+API operations retain bounded retries. An incomplete file list preserves existing size/scope labels and reports a classification error rather than a description error. Format feedback does not establish code trust or replace code review, merge authorization, or human QA.
 
 #### Maintenance
 
 Maintainers can supply a PR number to `Contribution governance` through workflow_dispatch to reconcile it. An empty input scans eligible open PRs. `Sync labels` also supports manual dispatch and writes only from main in the primary repository.
 
-控制器在默认分支合并后才采用新行为。PR 自身的测试可验证新解析器、独立 CI 配置和模拟 API 行为，但不能证明默认分支控制器已更新。合并后应使用真实外部贡献者的 fork PR 验证自动审批、描述编辑和旧状态清理。Workflow YAML 仍需正常 review。
+The controller adopts the new behavior only after it lands on the default branch. PR tests can verify the parser, independent CI configuration, and mocked API behavior, but cannot prove that the default-branch controller has updated. After merging, verify automatic approval, description edits, and legacy status cleanup with a real external contributor fork PR. Workflow YAML still requires normal review.
 
 ### Migration and Verification
 
@@ -281,6 +281,6 @@ node --test .github/scripts/*.test.mjs
 # Use actionlint to validate workflow configuration.
 ```
 
-测试覆盖 Issue 表单、身份/类型选择、章节内小标题、QA 声明与附注、代码块和注释、重复字段、占位文本、代码量分类、幂等标签、评论复用、当前 head、独立工作流审批及旧取消状态清理。遍历所有普通 PR 工作流，检查不存在格式任务依赖。
+Tests cover issue forms, author/type selections, nested section headings, QA declarations and notes, code blocks and comments, duplicate fields, placeholders, size classification, idempotent labels, comment reuse, current-head checks, independent workflow approval, and legacy cancellation cleanup. All ordinary PR workflows are checked for format-job dependencies.
 
-合并后的线上验收需确认：无效描述只产生提示，代码 CI 照常运行；编辑描述不会取消或重跑 CI；真实首次贡献者的白名单工作流仍能自动审批；旧取消标记被停用但真实失败结果保留。本地模拟测试不替代这些验收。
+Post-merge verification must confirm that invalid descriptions only produce feedback while code CI runs normally; description edits do not cancel or rerun CI; allowlisted workflows from real first-time contributors are still approved automatically; and legacy cancellation statuses are retired while real failures remain. Local mocked tests do not replace these checks.

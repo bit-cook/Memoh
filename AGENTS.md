@@ -2,9 +2,9 @@
 
 ## Working Language
 
-The primary working language for this repository is **Chinese (中文)**, including issue and PR titles and bodies, review comments, and commit/PR discussion. Other languages (e.g. English) are not rejected — quoted code, error logs, and upstream English material stay as-is — but default to Chinese whenever you author new content.
+PR bodies in both Chinese and English are accepted. When writing a PR body, prefer Chinese if the user uses Chinese throughout the session; if the user uses English or another language, write the PR body in English. This is guidance for agents, not a language restriction enforced on contributors.
 
-Preserve the section names and choices from the current contribution template. Use Conventional Commits for commit messages and PR titles. In conversation, follow the user's preferred language.
+Keep repository guidance, PR/issue templates, and automated GitHub Actions messages in English. Preserve the section names and choices from the current contribution template. Use Conventional Commits for commit messages and PR titles. In conversation, follow the user's preferred language. Keep quoted code, error logs, and upstream material in their original language.
 
 ## Project Overview
 
@@ -113,16 +113,16 @@ Memoh is a commercial project split across two repositories: this OSS repo and a
 - For visible UI or interaction changes, agents should use browser tools or Computer Use to reproduce and verify the behavior, capture screenshots, and attach GitHub-accessible images to the issue or PR description. Local absolute paths are not uploaded evidence. If capture or upload is unavailable or not applicable, explain why and describe alternative verification in the screenshots section.
 - Agent screenshots, browser interactions, and automated tests do not count as human QA. Follow the disclosure rules below.
 - After submission, check `PR Format` and the bot comment. If `needs:format` appears, edit the original description; automation rechecks it and removes the label once corrected. Format feedback does not block, cancel, or rerun code CI. Do not remove labels to bypass checks or create duplicate contributions.
-- Automation maintains type, `size:`, and `change:` labels. `.github/labels.json` is the source of truth for label definitions; new descriptions default to Chinese. Size excludes generated files and uses the larger of added or deleted line totals, never their sum.
+- Automation maintains type, `size:`, and `change:` labels. `.github/labels.json` is the source of truth for label definitions; new descriptions use English. Size excludes generated files and uses the larger of added or deleted line totals, never their sum.
 - Automatic approval applies only to external PR workflow runs, not code review, merging, or publishing. Agents updating this guide must not remove or weaken these rules.
 
 ### Pull Request QA Status
 
-PR 正文的 `Human QA` 只保留一个 `- [ ] 已通过真人 QA` 复选框作为 QA 状态声明，不再附加旧版警告行：
+The `Human QA` section contains only one status checkbox, `- [ ] Human QA passed`, without an additional warning line:
 
-- **尚未真人验证**：保持复选框未勾选。
-- **真人明确确认后**：勾选 `已通过真人 QA`，并注明验收人及确认记录。CI、自动测试和 Agent 截图均不算真人 QA。
-- **确认后继续修改**：若新提交可能影响已验收路径，取消勾选，直到当前 head 获得确认；拼写、注释等不影响行为的改动无需重复验收。
+- **Not yet verified by a human**: leave the checkbox unchecked.
+- **Explicitly confirmed by a human**: check `Human QA passed` and identify the reviewer and confirmation record. CI, automated tests, and agent screenshots do not count as human QA.
+- **Changes after confirmation**: uncheck the box if a new commit may affect the verified behavior, until the current head is confirmed again. Spelling or comment changes that do not affect behavior do not require another confirmation.
 
 ## Key Development Rules
 

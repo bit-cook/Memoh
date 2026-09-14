@@ -38,7 +38,7 @@ jobs:
         This only changes developer documentation and has no visible product UI. Review the documentation diff for verification.
 
         ## Human QA
-        - [ ] 已通过真人 QA
+        - [ ] Human QA passed
 
     secrets:
       CLAUDE_CODE_OAUTH_TOKEN	: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

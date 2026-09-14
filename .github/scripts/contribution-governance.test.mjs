@@ -3,7 +3,7 @@ import test from 'node:test';
 import { belongsToPR, gate, inspectPR, reconcileRuns, run, syncLabels } from './contribution-governance.mjs';
 import { bodyFingerprint } from './contribution-policy.mjs';
 
-const body = `## Author\n- [x] Agent\n## Type\n- [x] bug\n## Summary\nFix the reported issue\n## Validation\nRegression tests passed\n## Screenshots / Recordings\nBackend-only change without a UI; verified using API requests\n## Human QA\n- [ ] 已通过真人 QA`;
+const body = `## Author\n- [x] Agent\n## Type\n- [x] bug\n## Summary\nFix the reported issue\n## Validation\nRegression tests passed\n## Screenshots / Recordings\nBackend-only change without a UI; verified using API requests\n## Human QA\n- [ ] Human QA passed`;
 const pr = { number:1,state:'open',head:{sha:'abc',repo:{id:2},ref:'patch'},base:{ref:'main',repo:{id:1}},body,labels:[],user:{login:'author'},changed_files:1,additions:10,deletions:0 };
 const ci = {id:10,path:'.github/workflows/eslint.yml',head_sha:'abc',event:'pull_request',run_attempt:1,pull_requests:[{number:1,head:{sha:'abc'},base:{repo:{id:1}}}]};
 function mock({ runs=[], jobs=[], fresh=pr, statuses=[], files=[{filename:'apps/web/a.vue',additions:10,deletions:0}], comments=[] } = {}) {
@@ -91,7 +91,7 @@ test('fixed descriptions update the existing bot comment instead of posting anot
   assert.equal(m.calls.filter(c=>c.name==='createComment').length,0);
 });
 test('unchanged success is idempotent',async()=>{
-  const m=mock({fresh:{...pr,labels:[{name:'bug'},{name:'size:XS'},{name:'change:web'}]},statuses:[{context:'PR Format',state:'success',description:`${bodyFingerprint(pr)} 格式检查通过`}]});
+  const m=mock({fresh:{...pr,labels:[{name:'bug'},{name:'size:XS'},{name:'change:web'}]},statuses:[{context:'PR Format',state:'success',description:`${bodyFingerprint(pr)} Format check passed`}]});
   await inspectPR(m,1);
   assert.deepEqual(m.calls,[]);
 });
@@ -107,5 +107,19 @@ test('issues use current API body, not stale event body',async()=>{
 test('legacy gate requires no API status, body validation, or controller wait', async () => {
   let message;
   await gate({core:{info(value){message=value;}}});
-  assert.ok(message.includes('无需等待'));
+  assert.ok(message.includes('does not wait'));
+});
+
+
+test('format feedback uses English for invalid and corrected PRs', async () => {
+  for (const fresh of [{...pr, body: ''}, pr]) {
+    const m = mock({fresh, comments: [{id: 5, user: {login: 'github-actions[bot]'}, body: '<!-- memoh-contribution-format:v1 -->\nPrevious feedback'}]});
+    await inspectPR(m, 1);
+    const comment = m.calls.find(call => call.name === 'updateComment').args.body;
+    assert.match(comment, fresh.body ? /Format check passed/ : /Please complete/);
+    assert.doesNotMatch(comment, /\p{Script=Han}/u);
+    for (const call of m.calls.filter(call => call.name === 'createCommitStatus')) {
+      assert.doesNotMatch(call.args.description, /\p{Script=Han}/u);
+    }
+  }
 });

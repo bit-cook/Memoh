@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      # 兼容仍引用此工作流的旧 PR；默认分支入口不再阻断代码 CI。
+      # Support older PRs that still reference this workflow; the default-branch entry point no longer blocks code CI.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.repository.default_branch }}

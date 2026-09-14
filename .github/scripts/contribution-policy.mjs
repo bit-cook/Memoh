@@ -11,7 +11,7 @@ const sectionNames = new Set([...Object.values(headings), 'Related Issues', 'Env
 export const typeLabels = ['bug', 'feat', 'test', 'help'];
 export const ciWorkflows = ['eslint.yml', 'go-ci.yml', 'rust-ci.yml', 'runtime-ci.yml', 'migrations.yml', 'install-ci.yml', 'electron-ci.yml', 'docker-pr.yml', 'contribution-policy-ci.yml'];
 
-// 代码示例不参与字段或勾选解析；未知标题保留在所属字段内。
+// Exclude code examples from field and checkbox parsing; keep unknown headings inside their containing field.
 export function sections(body = '') {
   const result = new Map();
   let heading;
@@ -64,10 +64,12 @@ export function validate(body, isPR) {
     ['summary', 'validation', 'screenshots', 'qa'].forEach(required);
     const qaText = parts.get(headings.qa)?.plain.join('\n') ?? '';
     const qaChoices = [...qaText.matchAll(/^\s*-\s+\[([ xX])\]\s+(.+?)\s*$/gm)];
-    if (qaChoices.length !== 1 || qaChoices[0][2] !== '已通过真人 QA') {
-      errors.push('Human QA 只保留一个“已通过真人 QA”复选框；未勾选表示尚未验证。');
+    // Accept the previous template label so existing PRs do not need a formatting-only edit.
+    const validQAChoice = qaChoices.length === 1 && ['Human QA passed', '已通过真人 QA'].includes(qaChoices[0][2]);
+    if (!validQAChoice) {
+      errors.push('Keep exactly one "Human QA passed" checkbox in "Human QA"; leave it unchecked until verified.');
     }
-    if (qaChoices.length === 1 && qaChoices[0][2] === '已通过真人 QA' && qaChoices[0][1].toLowerCase() === 'x') {
+    if (validQAChoice && qaChoices[0][1].toLowerCase() === 'x') {
       const evidence = qaText.replace(/^\s*-\s+\[[ xX]\].*$/gm, '').trim();
       if (!evidence || /^(?:TBD|TODO|待填写|N\/?A)$/i.test(evidence)) errors.push('Identify the reviewer and confirmation record in "Human QA".');
     }
