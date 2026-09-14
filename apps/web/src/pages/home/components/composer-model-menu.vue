@@ -14,6 +14,7 @@ import {
 import type { ModelsGetResponse, ProvidersGetResponse } from '@memohai/sdk'
 import ModelOptions from '@/pages/bots/components/model-options.vue'
 import ModelDescriptionTooltip from '@/components/model-description-tooltip/index.vue'
+import { useIsMobile } from '@/composables/useIsMobile'
 import { EFFORT_LABELS, REASONING_EFFORT_DISABLE, selectableEfforts } from '@/pages/bots/components/reasoning-effort'
 
 const props = defineProps<{
@@ -38,6 +39,8 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 const modelOpen = ref(false)
+const reasoningOpen = ref(false)
+const isMobile = useIsMobile()
 const modelLabelElement = ref<HTMLElement>()
 const modelTriggerElement = computed(() => modelLabelElement.value?.closest<HTMLElement>('[role="menuitem"]'))
 const { right: menuRight } = useElementBounding(modelTriggerElement)
@@ -72,6 +75,16 @@ const effortLabel = computed(() => efforts.value.find(option => option.value ===
 
 function focusModelSearch() {
   void nextTick(() => modelOptions.value?.focusSearch())
+}
+
+function selectModel(value: string) {
+  emit('update:modelValue', value)
+  if (isMobile.value) modelOpen.value = false
+}
+
+function selectReasoning(value: string) {
+  emit('update:reasoningEffort', value)
+  if (isMobile.value) reasoningOpen.value = false
 }
 
 function onModelKeydown(event: KeyboardEvent) {
@@ -128,12 +141,15 @@ function onModelKeydown(event: KeyboardEvent) {
           :none-label="noneLabel"
           model-type="chat"
           :open="modelOpen"
-          @select="emit('update:modelValue', $event)"
+          @select="selectModel"
         />
       </div>
     </DropdownMenuSubContent>
   </DropdownMenuSub>
-  <DropdownMenuSub v-if="showReasoning">
+  <DropdownMenuSub
+    v-if="showReasoning"
+    v-model:open="reasoningOpen"
+  >
     <DropdownMenuSubTrigger :disabled="loading || !!error || !efforts.length">
       <span>{{ t('chat.reasoningEffort') }}</span>
       <span
@@ -155,7 +171,7 @@ function onModelKeydown(event: KeyboardEvent) {
         side="right"
         :side-offset="12"
       >
-        <DropdownMenuItem @select.prevent="emit('update:reasoningEffort', option.value)">
+        <DropdownMenuItem @select.prevent="selectReasoning(option.value)">
           <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
           <Check v-if="currentEffort === option.value" />
         </DropdownMenuItem>
