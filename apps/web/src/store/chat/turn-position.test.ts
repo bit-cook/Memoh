@@ -267,3 +267,75 @@ describe('turns the database has not numbered yet', () => {
     ])
   })
 })
+
+describe('runtime frames preserve interleaved history', () => {
+  it.each([false, true])('keeps a channel turn ahead of the next steer across frames (persisted=%s)', (persisted) => {
+    const { transcript } = makeTranscript()
+    const run = runView({
+      messages: [
+        { id: 0, type: 'text', content: 'before steer' },
+        { id: 1, type: 'text', content: 'after steer' },
+      ],
+      steer_turns: [{
+        item_id: 'item-1',
+        status: persisted ? 'applied' : 'claimed',
+        ...(persisted ? { turn_id: 'turn-8' } : {}),
+        text: 'steer me',
+        after_message_id: 0,
+        timestamp: '2026-07-27T08:00:08.000Z',
+      }],
+    })
+    if (persisted) run.user_turns!.push({
+      turn_id: 'turn-8', turn_position: 8, role: 'user', text: 'steer me',
+      timestamp: '2026-07-27T08:00:08.000Z',
+    })
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript(run))
+    transcript.mergeMessages([
+      settledTurn('m5', 'turn-5', 5, 'user', '2026-07-27T08:00:05.000Z'),
+      settledTurn('m6', 'turn-6', 6, 'user', '2026-07-27T08:00:06.000Z'),
+    ], 'session-1')
+    const steerId = persisted ? 'turn-8' : 'queue-steer:item-1'
+    const expected = ['user:turn-5', 'assistant:turn-5', 'user:turn-6', `user:${steerId}`, `assistant:${steerId}`]
+    const identities = transcript.messages.map(turn => turn.id)
+    const channel = transcript.messages[2]
+    expect(transcript.messages.map(turn => `${turn.role}:${turn.turnId}`)).toEqual(expected)
+
+    for (const id of [2, 3]) {
+      run.messages.push({ id, type: 'text', content: `next block ${id}` })
+      transcript.applyRuntimeTranscript(projectRuntimeTranscript(run))
+      expect(transcript.messages.map(turn => `${turn.role}:${turn.turnId}`)).toEqual(expected)
+      expect(transcript.messages.map(turn => turn.id)).toEqual(identities)
+      expect(transcript.messages[2]).toBe(channel)
+      const last = transcript.messages.at(-1)
+      expect(last?.role === 'assistant' && last.messages.at(-1)).toMatchObject({ type: 'text', content: `next block ${id}` })
+    }
+  })
+
+  it('places the initial runtime snapshot around unrelated history without sorting that history', () => {
+    const { transcript } = makeTranscript()
+    transcript.replaceMessages([
+      settledTurn('z6', 'turn-6', 6, 'user', '2026-07-27T08:00:06.000Z'),
+      settledTurn('a6', 'turn-other', 6, 'user', '2026-07-27T08:00:06.000Z'),
+    ], 'session-1')
+
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript(runView()))
+
+    expect(transcript.messages.map(turn => turn.id)).toEqual([
+      'runtime:turn-5:user', 'runtime:turn-5:assistant', 'z6', 'a6',
+    ])
+  })
+
+  it('keeps the existing anchor for older servers without positions', () => {
+    const { transcript } = makeTranscript()
+    const run = runView({ turn_position: undefined })
+    run.user_turns![0]!.turn_position = undefined
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript(run))
+    transcript.appendToView(transcript.normalizeTurn(settledTurn('m6', 'turn-6', 6, 'user', '2026-07-27T08:00:06.000Z')))
+
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript(run))
+
+    expect(transcript.messages.map(turn => `${turn.role}:${turn.turnId}`)).toEqual([
+      'user:turn-5', 'assistant:turn-5', 'user:turn-6',
+    ])
+  })
+})

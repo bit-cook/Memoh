@@ -3,6 +3,36 @@ import { isRuntimeRunActive, type RuntimeTranscriptSlice } from './runtime-proje
 
 type RuntimeChatTurn = ChatUserTurn | ChatAssistantTurn
 
+// Keep unrelated history in server order while placing each runtime turn in
+// its own slot. One run can straddle channel turns after a steer; reinserting
+// the whole run at its first turn moves those channel turns behind its output.
+export function insertRuntimeTurns(
+  messages: ChatMessage[],
+  turns: RuntimeChatTurn[],
+  fallbackIndex: number,
+): void {
+  let cursor = 0
+  for (const turn of turns) {
+    let index: number
+    if (turn.turnPosition !== undefined) {
+      const position = turn.turnPosition
+      index = messages.findIndex((other, i) =>
+        i >= cursor && other.turnPosition !== undefined && other.turnPosition > position,
+      )
+      if (index < 0) index = messages.length
+    } else if (isRuntimeSteerTurnId(turn.turnId)) {
+      // A provisional steer has not reserved a durable position yet.
+      index = messages.length
+    } else {
+      // Older servers omit positions. Preserve their existing insertion anchor
+      // and the frame's order instead of inferring placement from timestamps.
+      index = Math.max(cursor, fallbackIndex)
+    }
+    messages.splice(index, 0, turn)
+    cursor = index + 1
+  }
+}
+
 export function markRuntimeTurn(
   turn: RuntimeChatTurn,
   slice: RuntimeTranscriptSlice,

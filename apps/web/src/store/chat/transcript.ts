@@ -24,7 +24,7 @@ import type { RuntimeTranscriptSlice } from './runtime-projection'
 import { createTranscriptHistory } from './transcript-history'
 import { createTranscriptDecisions } from './transcript-decisions'
 import { createTranscriptQueries } from './transcript-queries'
-import { admissibleRuntimeTurns, markRuntimeTurn, reconcileRuntimeTurns } from './runtime-transcript-merge'
+import { admissibleRuntimeTurns, insertRuntimeTurns, markRuntimeTurn, reconcileRuntimeTurns } from './runtime-transcript-merge'
 
 export interface TranscriptDeps {
   currentBotId: Ref<string | null>
@@ -540,7 +540,7 @@ export function createTranscriptController({
     if (operationAnchor && existing.length === 0) return false
 
     if (existing.length === 0) {
-      appendToView(...resolved)
+      insertRuntimeTurns(messages, resolved, messages.length)
       return true
     }
     const indices = existing
@@ -551,14 +551,7 @@ export function createTranscriptController({
     for (let index = indices.length - 1; index >= 0; index -= 1) {
       messages.splice(indices[index]!, 1)
     }
-    // The runtime frame already orders a run's turns: request users first,
-    // then assistant segments split around each steer by after_message_id.
-    // Insert that block as delivered. Re-sorting the whole transcript here
-    // would fall back to timestamps wherever a live assistant turn has no
-    // turn_position yet, and a request user persisted at step commit carries
-    // a later timestamp than the assistant turn that started streaming
-    // before it, which rendered the reply above its own request.
-    messages.splice(insertAt, 0, ...resolved)
+    insertRuntimeTurns(messages, resolved, insertAt)
     return true
   }
 
