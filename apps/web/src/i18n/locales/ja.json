@@ -3700,8 +3700,7 @@
       "installed": "インストール済み",
       "manageRequired": "App のインストールには、この Bot の管理権限が必要です。",
       "manage": "管理",
-      "discovered": "Workspace で利用可能",
-      "allLoaded": "すべてのアプリを読み込みました"
+      "discovered": "Workspace で利用可能"
     }
   },
   "connectors": {

@@ -3706,8 +3706,7 @@
       "installed": "已安装",
       "manageRequired": "需要此 Bot 的管理权限才能安装应用。",
       "manage": "管理",
-      "discovered": "工作区中已有",
-      "allLoaded": "已加载全部应用"
+      "discovered": "工作区中已有"
     }
   },
   "connectors": {
