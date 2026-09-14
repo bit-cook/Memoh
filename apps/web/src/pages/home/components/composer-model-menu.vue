@@ -128,7 +128,7 @@ function onModelKeydown(event: KeyboardEvent) {
           :none-label="noneLabel"
           model-type="chat"
           :open="modelOpen"
-          @update:model-value="emit('update:modelValue', $event)"
+          @select="emit('update:modelValue', $event)"
         />
       </div>
     </DropdownMenuSubContent>

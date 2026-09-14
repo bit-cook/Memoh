@@ -267,6 +267,7 @@ const props = defineProps<{
 // which breaks callers that bind :model-value + @update:model-value explicitly.
 const modelValue = defineModel<string>({ default: '' })
 const reasoningEffort = defineModel<string>('reasoningEffort', { default: '' })
+const emit = defineEmits<{ select: [value: string] }>()
 
 const searchTerm = ref('')
 const searchInput = ref<HTMLInputElement | null>(null)
@@ -455,6 +456,9 @@ const measureRow = (el: unknown) => {
 function commitModel(value: string) {
   reasoningOpen.value = false
   if (value !== modelValue.value) modelValue.value = value
+  // Selection is distinct from a value change: reselecting the current model
+  // must still let the host dismiss its menu.
+  emit('select', value)
 }
 
 const listboxId = useId()

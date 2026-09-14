@@ -180,6 +180,23 @@ describe('ModelOptions', () => {
     expect(updateModel).toHaveBeenCalledWith('model-1')
   })
 
+  it.each(['click', 'keyboard'])('notifies the host when reselecting the current model by %s', async (method) => {
+    const select = vi.fn()
+    const updateModel = vi.fn()
+    const el = await mountPicker({ onSelect: select, 'onUpdate:modelValue': updateModel })
+    if (method === 'click') {
+      el.querySelector<HTMLButtonElement>('[role="option"]')!.click()
+    } else {
+      const listbox = el.querySelector<HTMLElement>('[role="listbox"]')!
+      listbox.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+      await nextTick()
+      listbox.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    }
+    await nextTick()
+    expect(select).toHaveBeenCalledExactlyOnceWith('model-1')
+    expect(updateModel).not.toHaveBeenCalled()
+  })
+
   it.each([19, 20])('shows search starting at 20 available models (%i)', async (count) => {
     const el = await mountPicker({
       models: Array.from({ length: count }, (_, i) => ({ id: `model-${i}`, name: `Model ${i}`, type: 'chat' })),
