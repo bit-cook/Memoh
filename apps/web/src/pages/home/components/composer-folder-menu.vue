@@ -47,22 +47,24 @@
       >
         {{ t('chat.runtimeProject.empty') }}
       </DropdownMenuItem>
-      <DropdownMenuItem
-        v-for="folder in projects"
-        :key="folder.id"
-        :disabled="locked || !editable"
-        @select="emit('select', folder)"
-      >
-        <Folder />
-        <span class="min-w-0 flex-1">
-          <span class="block truncate">{{ folder.name }}</span>
-          <span
-            v-if="gitBranches"
-            class="block truncate text-caption text-muted-foreground"
-          >{{ folder.path }}</span>
-        </span>
-        <Check v-if="folder.id === project?.id" />
-      </DropdownMenuItem>
+      <template v-if="pickable">
+        <DropdownMenuItem
+          v-for="folder in projects"
+          :key="folder.id"
+          :disabled="locked || !editable"
+          @select="emit('select', folder)"
+        >
+          <Folder />
+          <span class="min-w-0 flex-1">
+            <span class="block truncate">{{ folder.name }}</span>
+            <span
+              v-if="gitBranches"
+              class="block truncate text-caption text-muted-foreground"
+            >{{ folder.path }}</span>
+          </span>
+          <Check v-if="folder.id === project?.id" />
+        </DropdownMenuItem>
+      </template>
       <DropdownMenuItem
         v-if="!pickable && project"
         disabled
