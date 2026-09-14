@@ -212,15 +212,19 @@ interface ActivityView {
   icon: Component
 }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const store = useWorkspaceTabsStore()
 const { sidebarView, sidebarWidth, workbenchOpen, dirtyFileCount } = storeToRefs(store)
 const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const { currentBotId, bots } = storeToRefs(chatStore)
 
-// 为展开的导航标签、其余图标和搜索按钮保留空间，并跟随界面字号放大。
-const minWidth = computed(() => Math.max(352, 22 * settingsStore.uiFontSizePx))
+// 按当前语言最长的导航标签保留最小空间，避免所有语言都为日文标签预留宽度。
+// 同一语言下切换选项不改变下限；放大界面字号时同步扩大。
+const minWidth = computed(() => {
+  const baseWidth = locale.value === 'ja' ? 344 : locale.value === 'zh' ? 256 : 304
+  return Math.ceil(baseWidth * Math.max(1, settingsStore.uiFontSizePx / 16))
+})
 const MAX_WIDTH = 480
 // 旧的持久化宽度也须遵守新下限，收起位移和拖拽起点使用同一实际宽度。
 const effectiveWidth = computed(() => Math.min(MAX_WIDTH, Math.max(minWidth.value, sidebarWidth.value)))
