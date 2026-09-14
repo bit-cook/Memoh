@@ -65,7 +65,9 @@
 
           <ModelDescriptionTooltip
             v-else
-            :description="vRow.row.option.description"
+            :description="vRow.row.option.description || vRow.row.option.label"
+            side="right"
+            :side-offset="12"
             :open="openDescriptionTooltipKey === vRow.row.key"
             @update:open="setDescriptionTooltipOpen(vRow.row.key, $event)"
           >
@@ -84,7 +86,6 @@
             >
               <span
                 class="min-w-0 flex-1 truncate text-left"
-                :title="vRow.row.option.label"
               >{{ vRow.row.option.label }}</span>
               <Check
                 v-if="modelValue === vRow.row.option.value"
@@ -147,6 +148,8 @@
               v-for="option in availableReasoningOptions"
               :key="option.value"
               :description="option.description"
+              side="right"
+              :side-offset="12"
               :open="openDescriptionTooltipKey === `reasoning:${option.value}`"
               @update:open="setDescriptionTooltipOpen(`reasoning:${option.value}`, $event)"
             >

@@ -76,7 +76,6 @@ function onModelKeydown(event: KeyboardEvent) {
       <span>{{ t('chat.modelOverride') }}</span>
       <span
         class="ml-auto min-w-0 flex-1 truncate text-right text-muted-foreground"
-        :title="modelLabel"
       >{{ modelLabel }}</span>
     </DropdownMenuSubTrigger>
     <DropdownMenuSubContent
@@ -137,6 +136,8 @@ function onModelKeydown(event: KeyboardEvent) {
         v-for="option in efforts"
         :key="option.value"
         :description="option.description"
+        side="right"
+        :side-offset="12"
       >
         <DropdownMenuItem @select.prevent="emit('update:reasoningEffort', option.value)">
           <span class="min-w-0 flex-1 truncate">{{ option.label }}</span>
