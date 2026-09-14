@@ -1,5 +1,5 @@
-import { isRuntimeSteerTurnId, type ChatAssistantTurn, type ChatUserTurn } from './types'
-import type { RuntimeTranscriptSlice } from './runtime-projection'
+import { isRuntimeSteerTurnId, type ChatAssistantTurn, type ChatMessage, type ChatUserTurn } from './types'
+import { isRuntimeRunActive, type RuntimeTranscriptSlice } from './runtime-projection'
 
 type RuntimeChatTurn = ChatUserTurn | ChatAssistantTurn
 
@@ -64,4 +64,28 @@ export function reconcileRuntimeTurns(
     }
   }
   return resolved
+}
+
+// A terminal run view is not cleared when the run ends: it survives in the
+// session snapshot for the whole state TTL and is replayed on every subscribe.
+// Appending from one re-added a days-old round below the newest turns once its
+// turn had aged out of the loaded window.
+//
+// The test is the run's own position against the settled history on screen, not
+// merely "the run is over": a run that has just finished may legitimately own
+// turns the history read has not caught up with, and that round is the newest
+// thing in the session. A settled turn numbered past the run is proof the
+// database has moved beyond it, so history — which did not include this run's
+// turns — is authoritative and the frame has nothing left to contribute.
+export function isStaleSettledRunFrame(
+  messages: readonly ChatMessage[],
+  slice: RuntimeTranscriptSlice,
+): boolean {
+  const position = slice.turnPosition
+  if (position === undefined || isRuntimeRunActive(slice.status)) return false
+  return messages.some(turn =>
+    turn.settled === true
+    && turn.turnPosition !== undefined
+    && turn.turnPosition > position,
+  )
 }

@@ -57,6 +57,31 @@ export function isRuntimeRunStreaming(run?: RuntimeCurrentRunView | null): boole
   return !run?.configuration_only && isRuntimeRunActive(run?.status)
 }
 
+// A run owns several turns, not one: an applied steer opens its own canonical
+// turn inside the same run, and the output after it is filed there
+// (SR-TURN-001, docs/design/session-input-queues.md). Comparing against
+// run.turn_id alone declares every post-steer turn foreign to the run that is
+// still producing it, which is what let a mid-run history refresh drop live
+// steer output off the screen.
+export function runOwnsTurn(
+  run: RuntimeCurrentRunView | null | undefined,
+  turnId: string,
+): boolean {
+  const target = turnId.trim()
+  if (!run || !target) return false
+  if (run.turn_id.trim() === target) return true
+  if (run.user_turns?.some(turn => turn.turn_id.trim() === target)) return true
+  if (run.request_user_turn?.turn_id.trim() === target) return true
+  return (run.steer_turns ?? []).some((steer) => {
+    if (steer.turn_id?.trim() === target) return true
+    // A steer that has not committed yet has no durable turn, so the projection
+    // names its bubble and the segment under it after the queue item. Those ids
+    // are minted from this run's own steer list, so the item is the match.
+    const provisional = `${RUNTIME_STEER_TURN_PREFIX}${steer.item_id.trim()}`
+    return target === provisional || target === `${provisional}:assistant`
+  })
+}
+
 function cloneUIMessage(message: UIMessage): UIMessage {
   if (message.type === 'tool') {
     return {

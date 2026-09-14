@@ -4,7 +4,7 @@ import {
   locateMessageUI,
 } from '@/composables/api/useChat'
 import type { RuntimeProjectionState } from './runtime-projection'
-import { isRuntimeRunStreaming } from './runtime-projection'
+import { isRuntimeRunStreaming, runOwnsTurn } from './runtime-projection'
 import { createAssistantStreamRegistry } from './assistant-streams'
 import type { createTranscriptController } from './transcript'
 import { createChatViewRegistry, type ChatViewEntry } from './view-registry'
@@ -52,11 +52,9 @@ export function createChatViews(deps: ChatViewsDeps) {
     isSessionStreaming: (botId, sessionId) => isSessionStreaming(botId, sessionId),
     isTurnLive: (sessionId, turnId) => {
       const run = runtimeProjectionProbe(sessionId)?.currentRunView
-      return Boolean(
-        run
-        && run.turn_id === turnId
-        && isRuntimeRunStreaming(run),
-      )
+      // A configuration save holds the slot without producing turns, so it
+      // keeps nothing alive; a streaming run keeps every turn it owns.
+      return Boolean(run && isRuntimeRunStreaming(run) && runOwnsTurn(run, turnId))
     },
     onRefreshApplied: (view, sessionId, latestTimestamp) => {
       refreshAppliedHook(view, sessionId, latestTimestamp)

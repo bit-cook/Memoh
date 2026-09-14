@@ -24,7 +24,7 @@ import type { RuntimeTranscriptSlice } from './runtime-projection'
 import { createTranscriptHistory } from './transcript-history'
 import { createTranscriptDecisions } from './transcript-decisions'
 import { createTranscriptQueries } from './transcript-queries'
-import { markRuntimeTurn, reconcileRuntimeTurns } from './runtime-transcript-merge'
+import { isStaleSettledRunFrame, markRuntimeTurn, reconcileRuntimeTurns } from './runtime-transcript-merge'
 
 export interface TranscriptDeps {
   currentBotId: Ref<string | null>
@@ -540,6 +540,7 @@ export function createTranscriptController({
     }
 
     if (existing.length === 0) {
+      if (isStaleSettledRunFrame(messages, slice)) return true
       appendToView(...resolved)
       return true
     }
