@@ -33,6 +33,7 @@
            and subagent threads back their own loops. -->
       <SessionSelect
         v-model="sessionModel"
+        :invalid="submitted && !form.targetSessionId"
         :bot-id="botId"
         :modes="TARGET_SESSION_MODES"
         :placeholder="t('bots.schedule.execution.sessionPlaceholder')"
@@ -61,6 +62,7 @@
         v-if="form.runTarget === 'new_session'"
         v-model="runtimeModel"
         v-model:reasoning-effort="effortModel"
+        :invalid="submitted && modelRequired && !form.modelId"
         :models="runtimePickerModels"
         :providers="runtimePickerProviders"
         model-type="chat"
@@ -199,6 +201,7 @@ export interface ScheduleExecutionForm {
 
 const props = defineProps<{
   botId: string
+  submitted?: boolean
   form: ScheduleExecutionForm
 }>()
 

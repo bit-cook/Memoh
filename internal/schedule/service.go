@@ -125,8 +125,8 @@ func (s *Service) Create(ctx context.Context, botID string, req CreateRequest) (
 	if s.queries == nil {
 		return Schedule{}, errors.New("schedule queries not configured")
 	}
-	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Description) == "" || strings.TrimSpace(req.Pattern) == "" || strings.TrimSpace(req.Command) == "" {
-		return Schedule{}, errors.New("name, description, pattern, command are required")
+	if strings.TrimSpace(req.Name) == "" || strings.TrimSpace(req.Pattern) == "" || strings.TrimSpace(req.Command) == "" {
+		return Schedule{}, invalidRequest("name, pattern, command are required")
 	}
 	if _, err := s.parser.Parse(req.Pattern); err != nil {
 		return Schedule{}, fmt.Errorf("invalid cron pattern: %w", err)
