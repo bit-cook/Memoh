@@ -208,6 +208,21 @@ type AgentStep struct {
 	Interrupted bool
 }
 
+// TurnSlot names a turn before any of its rows exist. Admission already draws
+// one for a run's request turn; an applied steer opens its own canonical turn
+// (SR-TURN-001) and needs the same treatment, so every subscriber learns the
+// turn's identity when the input is accepted rather than when the step commits.
+type TurnSlot struct {
+	TurnID   string
+	Position int64
+}
+
+// TurnSlotAllocator draws a slot from the session's turn counter without
+// writing a row.
+type TurnSlotAllocator interface {
+	AllocateTurnSlot(ctx context.Context, sessionID string) (TurnSlot, error)
+}
+
 type AgentStepPersister interface {
 	PersistAgentStep(ctx context.Context, step AgentStep) ([]Message, error)
 }

@@ -635,6 +635,23 @@ func (s *DBService) persist(ctx context.Context, input PersistInput) (Message, e
 	return s.finishPersistedMessage(ctx, result, row.ID, input.Assets)
 }
 
+// AllocateTurnSlot reserves the next turn slot for a session so a caller can
+// publish the turn's identity before the rows that belong to it are written.
+// The position is spent whether or not the turn ever persists: positions are
+// only ever compared, so a gap left by an input that was released costs
+// nothing, while reusing a slot would file two turns under one number.
+func (s *DBService) AllocateTurnSlot(ctx context.Context, sessionID string) (TurnSlot, error) {
+	pgSessionID, err := parseOptionalUUID(sessionID)
+	if err != nil || !pgSessionID.Valid {
+		return TurnSlot{}, fmt.Errorf("invalid session id: %w", err)
+	}
+	position, err := s.queries.AllocateSessionTurnPosition(ctx, pgSessionID)
+	if err != nil {
+		return TurnSlot{}, fmt.Errorf("allocate session turn position: %w", err)
+	}
+	return TurnSlot{TurnID: uuid.NewString(), Position: position}, nil
+}
+
 // turnIdentity is a turn decided before persistence, by admission. Both fields
 // are set or neither is; the pair is validated at preparePersistMessage.
 type turnIdentity struct {

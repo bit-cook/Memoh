@@ -493,7 +493,11 @@ export interface RuntimeSteerTurnView {
   item_id: string
   status: 'claimed' | 'applied'
   text: string
+  // The durable turn this input opens, drawn when it was claimed. Present from
+  // the first claimed frame, so the live bubble and the settled one share an
+  // identity instead of rendering side by side until the step commits.
   turn_id?: string
+  turn_position?: number
   after_message_id: number
   timestamp: string
 }

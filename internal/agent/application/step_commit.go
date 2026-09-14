@@ -203,6 +203,7 @@ func (c *agentStepCommitter) persist(ctx context.Context, stepIndex int, step *s
 	for i := range inputs {
 		inputs[i].TurnRequestMessageID = c.turnRequestMessageID
 	}
+	c.stampSteerTurn(inputs)
 	agentStep := messagepkg.AgentStep{RunID: c.req.RunID, Messages: inputs, Interrupted: interrupted}
 	var persisted []messagepkg.Message
 	var queueErr error
@@ -264,6 +265,35 @@ func (c *agentStepCommitter) persist(ctx context.Context, stepIndex int, step *s
 	return nil
 }
 
+// stampSteerTurn files this step's injected steer input under the turn drawn
+// when the input was claimed, instead of letting persistence mint a second name
+// for it. The row is identified structurally rather than by text: a step that
+// carries a claimed steer has exactly one user row admission did not already
+// name, and the injection is prepended to the provider request, so the
+// synthetic user rows a tool can append (screenshots, background pings) always
+// come after it.
+func (c *agentStepCommitter) stampSteerTurn(inputs []messagepkg.PersistInput) {
+	if c == nil || c.queueStep == nil {
+		return
+	}
+	slot := c.queueStep.steerTurnForStep()
+	if slot == nil || strings.TrimSpace(slot.TurnID) == "" {
+		return
+	}
+	for i := range inputs {
+		if !strings.EqualFold(strings.TrimSpace(inputs[i].Role), "user") {
+			continue
+		}
+		if strings.TrimSpace(inputs[i].TurnID) != "" {
+			continue
+		}
+		position := slot.Position
+		inputs[i].TurnID = slot.TurnID
+		inputs[i].TurnPosition = &position
+		return
+	}
+}
+
 func (c *agentStepCommitter) publishQueueUserTurns(ctx context.Context, stepIndex int, outcome queueStepOutcome) {
 	if c == nil || c.service == nil || c.service.sessionManager == nil {
 		return
@@ -290,6 +320,10 @@ func (c *agentStepCommitter) publishQueueUserTurns(ctx context.Context, stepInde
 		update.ClaimedSteerItemID = string(outcome.claimedSteer.ID)
 		update.ClaimedSteerText = QueuePayloadText(outcome.claimedSteer.Payload)
 		update.ClaimedSteerTimestamp = outcome.claimedSteer.CreatedAt
+		if outcome.claimedSteerTurn != nil {
+			update.ClaimedSteerTurnID = outcome.claimedSteerTurn.TurnID
+			update.ClaimedSteerTurnPosition = outcome.claimedSteerTurn.Position
+		}
 		// Anchor after the step that just committed. Its step_end marker was
 		// emitted by the native loop before the commit barrier ran, so the wait
 		// only covers event consumption and is bounded.

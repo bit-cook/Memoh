@@ -306,7 +306,12 @@ type SteerTurnView struct {
 	ItemID         string    `json:"item_id" validate:"required" format:"uuid"`
 	Status         string    `json:"status" validate:"required" enums:"claimed,applied"`
 	Text           string    `json:"text" validate:"required"`
+	// TurnID and TurnPosition are drawn when the steer is claimed, not when its
+	// step commits: a subscriber that only learns the queue item id cannot line
+	// the input up against history, which left the live bubble and the settled
+	// one rendering side by side until the commit published the durable name.
 	TurnID         string    `json:"turn_id,omitempty" format:"uuid"`
+	TurnPosition   int64     `json:"turn_position,omitempty"`
 	AfterMessageID int       `json:"after_message_id"`
 	Timestamp      time.Time `json:"timestamp" validate:"required" format:"date-time"`
 }

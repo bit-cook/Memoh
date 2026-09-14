@@ -125,3 +125,61 @@ func TestRunViewWireCarriesTurnPosition(t *testing.T) {
 		t.Fatalf("decoded turn position = %#v, want 42", decoded.CurrentRunView)
 	}
 }
+
+// A steer's turn is named when the input is claimed, not when its step commits.
+// Publishing it only at commit left the live bubble and the settled one
+// describing one input under two identities for as long as the commit took.
+func TestPublishQueueUserTurnsNamesAClaimedSteer(t *testing.T) {
+	fixture := newAdmitFixture(t)
+	in := fixture.input("invocation-claimed-steer", "payload")
+	in.Execution.Admission = func(_ context.Context, handle RunHandle) (RunAdmissionView, error) {
+		return RunAdmissionView{RequestUserTurn: &chatview.UITurn{
+			TurnID: handle.TurnID, Role: "user", Text: "hello", Timestamp: time.Now(),
+		}}, nil
+	}
+	admission, err := fixture.manager.Admit(context.Background(), in)
+	if err != nil {
+		t.Fatalf("admit: %v", err)
+	}
+
+	claimedPosition := admission.TurnPosition + 1
+	if err := fixture.manager.PublishQueueUserTurns(context.Background(), admission.Handle, QueueUserTurnUpdate{
+		ClaimedSteerItemID:       "item-1",
+		ClaimedSteerText:         "steer me",
+		ClaimedSteerTurnID:       "turn-steer",
+		ClaimedSteerTurnPosition: claimedPosition,
+	}); err != nil {
+		t.Fatalf("publish claimed steer: %v", err)
+	}
+
+	snapshot, err := fixture.manager.Snapshot(context.Background(), testBotID, testSessionID)
+	if err != nil {
+		t.Fatalf("snapshot: %v", err)
+	}
+	steers := snapshot.CurrentRunView.SteerTurns
+	if len(steers) != 1 {
+		t.Fatalf("steer turns = %#v, want the claimed entry", steers)
+	}
+	if steers[0].Status != "claimed" {
+		t.Fatalf("steer status = %q, want claimed", steers[0].Status)
+	}
+	if steers[0].TurnID != "turn-steer" || steers[0].TurnPosition != claimedPosition {
+		t.Fatalf("claimed steer identity = (%q, %d), want (turn-steer, %d)",
+			steers[0].TurnID, steers[0].TurnPosition, claimedPosition)
+	}
+
+	// Re-publishing the claim (an owner retry) must not take the name back.
+	if err := fixture.manager.PublishQueueUserTurns(context.Background(), admission.Handle, QueueUserTurnUpdate{
+		ClaimedSteerItemID: "item-1",
+		ClaimedSteerText:   "steer me, again",
+	}); err != nil {
+		t.Fatalf("republish claimed steer: %v", err)
+	}
+	snapshot, err = fixture.manager.Snapshot(context.Background(), testBotID, testSessionID)
+	if err != nil {
+		t.Fatalf("snapshot after republish: %v", err)
+	}
+	if got := snapshot.CurrentRunView.SteerTurns[0]; got.TurnID != "turn-steer" || got.TurnPosition != claimedPosition {
+		t.Fatalf("republished claim lost its name: %#v", got)
+	}
+}

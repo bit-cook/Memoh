@@ -179,7 +179,9 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
     if (!id) return undefined
     const owner = userTurns.find(turn => turn.turn_id.trim() === id)
     if (owner?.turn_position !== undefined) return owner.turn_position
-    return id === turnId ? run.turn_position : undefined
+    if (id === turnId) return run.turn_position
+    // A claimed steer knows its slot before its row exists.
+    return (run.steer_turns ?? []).find(steer => steer.turn_id?.trim() === id)?.turn_position
   }
   const active = isRuntimeRunActive(run.status)
   const steerTurns = [...(run.steer_turns ?? [])]
@@ -233,10 +235,17 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
       if (segment.length > 0) {
         turns.push(runtimeAssistantTurn(segmentTurnId, segmentTimestamp, segment, positionOf(segmentTurnId)))
       }
-      const durable = steer.turn_id
-        ? userTurns.find(turn => turn.turn_id.trim() === steer.turn_id?.trim())
+      // The server names a steer's turn when it claims the input, so the name
+      // is authoritative from the first frame — waiting for the persisted user
+      // turn to appear in user_turns left history and the projection disagreeing
+      // about one input for as long as the commit took to publish. The
+      // provisional identity only covers a server that does not send one.
+      const durableTurnId = steer.turn_id?.trim() ?? ''
+      const durable = durableTurnId
+        ? userTurns.find(turn => turn.turn_id.trim() === durableTurnId)
         : undefined
-      const steerTurnId = durable?.turn_id.trim() || provisionalSteerTurnId(steer.item_id)
+      const steerTurnId = durableTurnId || provisionalSteerTurnId(steer.item_id)
+      const steerTurnPosition = durable?.turn_position ?? steer.turn_position
       turns.push({
         ...(durable ?? {
           turn_id: steerTurnId,
@@ -245,7 +254,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
           timestamp: steer.timestamp,
         }),
         turn_id: steerTurnId,
-        turn_position: durable?.turn_position,
+        turn_position: steerTurnPosition,
         id: `runtime:${RUNTIME_STEER_TURN_PREFIX}${steer.item_id}:user`,
       })
       segmentStart = segmentEnd
@@ -258,7 +267,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
       // :user / :assistant), while a distinct id for the segment left the two
       // with nothing in common for the sort to key on, and the reply rendered
       // above the steer that asked for it.
-      segmentTurnId = durable ? steerTurnId : provisionalSteerTurnId(steer.item_id)
+      segmentTurnId = steerTurnId
       segmentTimestamp = steer.timestamp
     }
     // The final segment is the only live assistant after a steer boundary. It
