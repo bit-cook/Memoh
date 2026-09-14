@@ -152,17 +152,29 @@ export function createTranscriptHistory(deps: {
   // matches twins by entity identity and hands the prior's render key to the
   // incoming twin, so a live → settled handover never remounts the component.
   // The database id survives on serverId for pagination cursors.
+  //
+  // Pairing is positional and each prior is handed out once. A history page
+  // holds at most one turn per (turn_id, role) today — every visible user row
+  // opens its own turn, so a turn is one request and one reply — but no code
+  // enforces that across persistence paths. The previous lookup gave the same
+  // render id to every twin sharing a key, and mergeMessages then collapsed
+  // them into a single turn: the rest vanished with no diagnostic. Consuming
+  // the prior downgrades a broken invariant to an ordering question, which is
+  // visible and recoverable, instead of silent data loss.
   function adoptRenderIdentity(incoming: ChatMessage[]) {
     if (deps.messages.length === 0 || incoming.length === 0) return
-    const byIdentity = new Map<string, ChatMessage>()
+    const byIdentity = new Map<string, ChatMessage[]>()
     for (const existing of deps.messages) {
       const key = turnIdentityKey(existing)
-      if (key && !byIdentity.has(key)) byIdentity.set(key, existing)
+      if (!key) continue
+      const priors = byIdentity.get(key)
+      if (priors) priors.push(existing)
+      else byIdentity.set(key, [existing])
     }
     for (const twin of incoming) {
       const key = turnIdentityKey(twin)
       if (!key) continue
-      const prior = byIdentity.get(key)
+      const prior = byIdentity.get(key)?.shift()
       if (!prior || twin.id === prior.id) continue
       twin.serverId = twin.serverId ?? twin.id
       twin.id = prior.id
