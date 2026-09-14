@@ -1,6 +1,7 @@
 package textutil
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 )
@@ -52,5 +53,34 @@ func TestStorageJSONReturnsInputUntouchedWithoutNUL(t *testing.T) {
 	}
 	if len(clean) == 0 || len(raw) == 0 || &clean[0] != &raw[0] {
 		t.Fatalf("re-encoded a document that holds no NUL escape: %s", clean)
+	}
+}
+
+// A lone surrogate escape is pure ASCII and syntactically valid JSON, so it
+// slips past both json.Valid and utf8.Valid. jsonb still rejects it with
+// SQLSTATE 22P02, so it must not take the fast path. The assertion is on the
+// returned bytes, not on a decode of them: encoding/json repairs a lone
+// surrogate on the way into a Go string, so decoding would pass even when the
+// escape survived untouched and reached the database. Deliberately carries no
+// NUL escape, which would otherwise mask a fast path screening only for NUL.
+func TestStorageJSONRepairsSurrogateEscapesWithoutNUL(t *testing.T) {
+	for name, raw := range map[string]string{
+		"lone high":  `{"role":"user","content":"\ud800"}`,
+		"lone low":   `{"role":"user","content":"\udc00"}`,
+		"uppercase":  `{"role":"user","content":"\uD800"}`,
+		"valid pair": `{"role":"user","content":"\ud83d\ude00"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			clean, err := StorageJSON([]byte(raw))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Contains(clean, []byte(`\ud`)) || bytes.Contains(clean, []byte(`\uD`)) {
+				t.Fatalf("surrogate escape reached jsonb: %s", clean)
+			}
+			if !json.Valid(clean) {
+				t.Fatalf("repair produced invalid JSON: %s", clean)
+			}
+		})
 	}
 }
