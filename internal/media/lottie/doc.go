@@ -28,6 +28,21 @@ package lottie
 // and the package's tests render a known animation and check where its subject
 // ends up, so a mismapped entry point does not pass silently.
 //
+// After upgrading, render a real-world corpus, not just this package's
+// hand-written fixtures — those use a layer or two and never reach a host
+// import, so they cannot tell you whether the new build leans on host
+// behaviour this package does not provide. Google's Noto animated emoji are
+// published as Lottie JSON and are a good stand-in for sticker complexity:
+//
+//	curl -s https://googlefonts.github.io/noto-emoji-animation/data/api.json
+//	# then, per codepoint:
+//	curl -s https://fonts.gstatic.com/s/e/notoemoji/latest/<codepoint>/lottie.json
+//
+// Render each one and check three things: none fail, none come out blank, and
+// ReachedHostImports stays within the set TestRealWorldLottie allows. At the
+// time of writing, 119 of them render with no failures and reach five stubbed
+// imports.
+//
 // resizeHeapImport needs the same treatment. It is the single host import
 // ThorVG reaches on the software render path — the hook malloc calls when
 // linear memory runs out. It was identified by answering every import with a

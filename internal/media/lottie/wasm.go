@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -56,13 +57,20 @@ var loadEngine = sync.OnceValues(func() (*engine, error) {
 	return &engine{runtime: runtime, compiled: compiled}, nil
 })
 
-// registerHostImports answers the module's imports. ThorVG's software render
-// path needs exactly one of them — the heap-growth hook. The rest are the
-// Emscripten C runtime, the WebGL and WebGPU bindings and embind's
-// registration hooks; none are reached, so they trap instead of returning a
-// zero. A call we did not anticipate means the module took a path this package
-// has not verified, and failing the render beats letting the guest continue on
-// a fabricated answer.
+// registerHostImports answers the module's imports.
+//
+// ThorVG's software render path needs exactly one of them to do real work: the
+// heap-growth hook. The rest are the Emscripten C runtime, the WebGL and
+// WebGPU bindings and embind's registration hooks, and they are answered with
+// zeros.
+//
+// Zeros rather than a trap, because the module does reach a few of them on
+// real content — hand-written fixtures never do, and a corpus of 119 published
+// Noto animated emoji reached two. Rendering stays correct when they are
+// answered this way; trapping instead turned those documents into failed
+// renders. Every reached import is counted so that a ThorVG upgrade which
+// starts depending on one is visible rather than silent; TestRealWorldLottie
+// asserts the set stays the size it is.
 func registerHostImports(ctx context.Context, runtime wazero.Runtime, compiled wazero.CompiledModule) error {
 	builder := runtime.NewHostModuleBuilder("a")
 	seenResizeHeap := false
@@ -71,7 +79,7 @@ func registerHostImports(ctx context.Context, runtime wazero.Runtime, compiled w
 		if module != "a" {
 			return fmt.Errorf("thorvg module imports from unexpected namespace %q", module)
 		}
-		fn := trapImport(name)
+		fn := stubImport(name, len(imported.ResultTypes()))
 		if name == resizeHeapImport {
 			seenResizeHeap = true
 			fn = resizeHeap
@@ -87,9 +95,31 @@ func registerHostImports(ctx context.Context, runtime wazero.Runtime, compiled w
 	return err
 }
 
-func trapImport(name string) api.GoModuleFunc {
-	return func(context.Context, api.Module, []uint64) {
-		panic(fmt.Sprintf("thorvg called unhandled host import %q", name))
+// reachedImports records which stubbed imports the module has actually called.
+var reachedImports sync.Map
+
+// ReachedHostImports reports the stubbed imports reached so far, by name and
+// call count. It is diagnostic: the set is expected to stay small and stable,
+// and growing means a ThorVG build has started relying on host behaviour this
+// package does not provide.
+func ReachedHostImports() map[string]int64 {
+	out := map[string]int64{}
+	reachedImports.Range(func(key, value any) bool {
+		out[key.(string)] = value.(*atomic.Int64).Load()
+		return true
+	})
+	return out
+}
+
+func stubImport(name string, results int) api.GoModuleFunc {
+	counter := &atomic.Int64{}
+	return func(_ context.Context, _ api.Module, stack []uint64) {
+		if counter.Add(1) == 1 {
+			reachedImports.Store(name, counter)
+		}
+		for i := range results {
+			stack[i] = 0
+		}
 	}
 }
 

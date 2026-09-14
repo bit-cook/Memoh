@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"image"
+	"os"
+	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
@@ -203,6 +205,55 @@ func TestFrameIndices(t *testing.T) {
 	} {
 		if got := frameIndices(tc.total, tc.count); !reflect.DeepEqual(got, tc.want) {
 			t.Fatalf("frameIndices(%d, %d) = %v, want %v", tc.total, tc.count, got, tc.want)
+		}
+	}
+}
+
+// TestRealWorldLottie renders published Noto animated emoji. Hand-written
+// fixtures use a layer or two; these use the shape groups, masks and
+// interpolation actual stickers do, and they are what first showed ThorVG
+// reaching host imports beyond heap growth.
+func TestRealWorldLottie(t *testing.T) {
+	for _, name := range []string{"bird", "pointing-up"} {
+		t.Run(name, func(t *testing.T) {
+			document, err := os.ReadFile(filepath.Join("testdata", name+".json")) //nolint:gosec // G304: fixed test fixture names.
+			if err != nil {
+				t.Fatal(err)
+			}
+			frames, err := Render(context.Background(), document, Options{})
+			if err != nil {
+				t.Fatalf("Render(%s): %v", name, err)
+			}
+			if len(frames) == 0 {
+				t.Fatalf("Render(%s) produced no frames", name)
+			}
+			// A render that "succeeds" into a fully transparent canvas has
+			// produced nothing, which is the shape a mishandled host import
+			// takes: no error, no picture.
+			for i, frame := range frames {
+				opaque := 0
+				for p := 3; p < len(frame.Pix); p += 4 {
+					if frame.Pix[p] > 0 {
+						opaque++
+					}
+				}
+				if ratio := float64(opaque) / float64(len(frame.Pix)/4); ratio < 0.05 {
+					t.Fatalf("frame %d of %s is %.1f%% opaque — the emoji did not draw", i, name, ratio*100)
+				}
+			}
+		})
+	}
+
+	// ThorVG reaches a handful of stubbed imports on real content. This is the
+	// set observed across 119 published Noto animated emoji, all of which
+	// render correctly with those imports answered by zeros. A name outside it
+	// is a code path that has never been checked, so it fails here rather than
+	// silently producing whatever a zero happens to mean.
+	known := map[string]bool{"b": true, "c": true, "fa": true, "j": true, "n": true}
+	for name, calls := range ReachedHostImports() {
+		if !known[name] {
+			t.Fatalf("ThorVG reached host import %q (%d calls), which this package has never verified; "+
+				"render the corpus in doc.go before widening the set", name, calls)
 		}
 	}
 }
