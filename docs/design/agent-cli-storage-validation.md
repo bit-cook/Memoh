@@ -73,8 +73,16 @@ The seven benchmark protocol tests pass. The full `mise run lint` currently stop
 
 The first commit hook run hit the unchanged `TestIdleTimeoutToolCallRearmsCurrentWindow` timing test (a 50 ms sleep against an 80 ms deadline) under parallel checks. The isolated test then passed 20 consecutive runs; the complete commit hook then passed without changing that unrelated test.
 
+## Non-root Linux CI correction (2026-09-15)
+
+The first remote Go Test run exposed a cross-UID `/proc/1/ns/pid` permission failure and a dependent legacy-epoch test panic. Epoch collection now reads the caller's own namespace only after a single `NSpid` proves that `/proc` represents the same PID namespace; boot ID and PID 1 start time remain required. Incomplete or ancestor-namespace evidence still fails closed. Normal epoch values remain unchanged.
+
+Real Linux tests with a root PID 1 and UID 1000, plus separate root runs, passed all bridge, payload-lease and dependency race suites without skips. Non-root collection correctly retains payloads when other processes cannot be inspected. Scoped Linux lint passed. The development bridge was rebuilt, and live Codex same-version replacement followed by the real stop/start API again passed: the old app-server responded, the old payload survived until full restart, and the replacement CLI remained usable. Fresh screenshot and sanitized runtime evidence are in `docs/evidence/agent-cli-storage`.
+
 ## Related contributions
 
 OSS draft PR [#1258](https://github.com/felinics/Memoh/pull/1258) contains the implementation and public screenshot evidence. PR Format passed; the remaining CI checks are tracked on the PR.
+
+Cloud outer draft PR [#352](https://github.com/felinics/Memoh-Cloud/pull/352) contains template/configuration changes and the real Cloud installation, capacity failure, rebuild/backoff/retry and NFS Home failure evidence. It does not switch production templates.
 
 Supermarket draft PR [#26](https://github.com/felinics/supermarket/pull/26) has passed both CI checks and contains the 32 recipe updates, generated lock and versioned screenshots from the real Memoh installation flow. It does not deploy the registry.

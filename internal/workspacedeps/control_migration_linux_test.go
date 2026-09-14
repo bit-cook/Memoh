@@ -58,6 +58,10 @@ func TestLegacyOperationWaitsForWholeWorkspaceRestart(t *testing.T) {
 	// Simulate the database fence recorded before a controlled full restart.
 	f.store.mu.Lock()
 	current := f.store.records[f.key("foo")]
+	if current.OperationIntent == nil || current.OperationIntent.ControlMigrationEpoch == "" {
+		f.store.mu.Unlock()
+		t.Fatal("legacy operation did not enroll a proven workspace lifetime")
+	}
 	current.OperationIntent.ControlMigrationEpoch = "prior-workspace-lifetime"
 	f.store.records[f.key("foo")] = current
 	f.store.mu.Unlock()

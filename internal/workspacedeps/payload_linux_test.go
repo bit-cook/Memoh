@@ -63,6 +63,28 @@ func startupCleanupClient(t *testing.T, root string) *bridge.Client {
 	return newExecTestClientAtRoot(t, root)
 }
 
+func assertStartupCleanupResult(t *testing.T, payload string) {
+	t.Helper()
+	// A non-root CI process cannot inspect root's PID 1 maps. That is a real
+	// missing ownership proof, so this environment must exercise retention;
+	// the same tests exercise successful collection in a readable namespace.
+	initMaps, err := os.Open("/proc/1/maps")
+	if errors.Is(err, os.ErrPermission) {
+		if _, err := os.Stat(payload); err != nil {
+			t.Fatal("payload removed despite unreadable bootstrap process", err)
+		}
+		t.Log("unreadable PID 1 ownership correctly retains the retired payload")
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = initMaps.Close()
+	if _, err := os.Stat(payload); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("safe startup did not reclaim old payload: %v", err)
+	}
+}
+
 func TestStartupPayloadGCDefersForReferenceAndClosesAfterExec(t *testing.T) {
 	f := isolatedFixture(t)
 	first := installPendingCleanup(t, f)
@@ -97,9 +119,7 @@ func TestStartupPayloadGCDefersForReferenceAndClosesAfterExec(t *testing.T) {
 	if err := f.svc.ReapPayloadsAtStartup(f.ctx(), testBot, client); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(first.PayloadPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("safe startup did not reclaim old payload: %v", err)
-	}
+	assertStartupCleanupResult(t, first.PayloadPath)
 	if _, err := os.Stat(f.readState(t, "foo").PayloadPath); err != nil {
 		t.Fatal("current removed", err)
 	}
@@ -164,9 +184,7 @@ func TestStartupPayloadGCHonorsResolvedLauncherLease(t *testing.T) {
 	if err := f.svc.ReapPayloadsAtStartup(f.ctx(), testBot, client); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(first.PayloadPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("released payload retained: %v", err)
-	}
+	assertStartupCleanupResult(t, first.PayloadPath)
 	marker := filepath.Join(t.TempDir(), "must-not-spawn")
 	stale := payloadlease.Command("touch "+shellQuote(marker), lease.Path, "previous-workspace-lifetime")
 	result, err := f.client.Exec(f.ctx(), stale, "", 5)

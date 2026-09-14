@@ -12,3 +12,5 @@ Captured from the running OSS development application at `http://localhost:18082
 The screenshots establish the management flow, not authenticated model calls or human QA. They contain no Agent credentials. JPEG extensions match the bytes emitted by the browser capture API.
 
 Sanitized [runtime outcomes](runtime-results.json) and [47 HTTP contract outcomes](http-results.json) record the backend checks alongside the screenshots.
+
+After the Linux non-root epoch fix, the bridge was rebuilt and the live same-version replacement/stop/start flow was repeated on 2026-09-15. [Fresh UI](codex-epoch-fix-verified.jpg) and [sanitized runtime results](epoch-fix-runtime-results.json) show the current installed version, old-process continuity and cleanup only after full restart. Separate real root/UID 1000 Linux race suites passed without skips.

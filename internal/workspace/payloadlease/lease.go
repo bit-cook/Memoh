@@ -24,7 +24,10 @@ const EpochCommand = `if [ "$(uname -s)" != Linux ]; then exit 0; fi
 [ -r /proc/sys/kernel/random/boot_id ] && [ -r /proc/1/stat ] || exit 0
 boot=$(cat /proc/sys/kernel/random/boot_id) || exit 0
 started=$(awk '{sub(/^.*\) /, ""); print $20}' /proc/1/stat) || exit 0
-namespace=$(readlink /proc/1/ns/pid) || exit 0
+# Self avoids cross-UID ptrace permission; one NSpid proves /proc/1 belongs
+# to the same namespace rather than an ancestor procfs mount.
+awk '$1 == "NSpid:" { if (NF == 2 && $2 ~ /^[0-9]+$/ && $2 > 0) ok=1; exit } END { exit !ok }' /proc/self/status || exit 0
+namespace=$(readlink /proc/self/ns/pid) || exit 0
 case "$boot" in ''|*[!a-fA-F0-9-]*) exit 0 ;; esac
 case "$started" in ''|*[!0-9]*) exit 0 ;; esac
 [ -n "$namespace" ] || exit 0

@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -26,11 +27,15 @@ type executionWindowState struct {
 }
 
 func workspaceProcessEpoch() (string, error) {
-	boot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	return workspaceProcessEpochAt("/proc")
+}
+
+func workspaceProcessEpochAt(procRoot string) (string, error) {
+	boot, err := os.ReadFile(filepath.Join(procRoot, "sys/kernel/random/boot_id")) //nolint:gosec // Production passes the fixed /proc root; only tests pass a fixture directory.
 	if err != nil {
 		return "", err
 	}
-	stat, err := os.ReadFile("/proc/1/stat")
+	stat, err := os.ReadFile(filepath.Join(procRoot, "1/stat")) //nolint:gosec // Production passes the fixed /proc root; only tests pass a fixture directory.
 	if err != nil {
 		return "", err
 	}
@@ -42,7 +47,28 @@ func workspaceProcessEpoch() (string, error) {
 	if len(fields) < 20 {
 		return "", errors.New("invalid PID 1 start time")
 	}
-	namespace, err := os.Readlink("/proc/1/ns/pid")
+	// Reading another UID's namespace link requires ptrace permission. Self is
+	// readable without it; a single NSpid proves this procfs mount represents
+	// our PID namespace, so /proc/1 is also its init, not an ancestor's init.
+	status, err := os.ReadFile(filepath.Join(procRoot, "self/status")) //nolint:gosec // Production passes the fixed /proc root; only tests pass a fixture directory.
+	if err != nil {
+		return "", err
+	}
+	sameNamespace := false
+	for _, line := range strings.Split(string(status), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == "NSpid:" {
+			if len(fields) == 2 {
+				pid, err := strconv.ParseUint(fields[1], 10, 64)
+				sameNamespace = err == nil && pid > 0
+			}
+			break
+		}
+	}
+	if !sameNamespace {
+		return "", errors.New("procfs does not prove the current PID namespace")
+	}
+	namespace, err := os.Readlink(filepath.Join(procRoot, "self/ns/pid"))
 	if err != nil {
 		return "", err
 	}

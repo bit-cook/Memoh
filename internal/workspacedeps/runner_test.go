@@ -588,10 +588,7 @@ func TestCancelledClaimCannotExecuteAfterNewOperation(t *testing.T) {
 	// The old Server has claimed its ID but has not started Run. The reaper
 	// fences that ID under the kernel lock before making room for a new claim.
 	fenceScript := "mkdir -p " + shellQuote(root) + "\n: > " + shellQuote(marker) + "\n"
-	fenced, err := f.client.ExecWithOptions(ctx, scriptExecCommand, defaultWorkDir, 5, []byte(fenceScript), bridge.ExecOptions{Env: []string{
-		"MEMOH_DEP_HOME=" + old.Home, "MEMOH_DEP_ID=" + old.DepID,
-	}})
-	if err != nil || fenced.ExitCode != 0 {
+	if err := runFilesystemScript(ctx, f.client, old.Home, old.DepID, fenceScript); err != nil {
 		t.Fatalf("reaper did not establish its fence: %v", err)
 	}
 	current := f.spec(old.DepID, "printf new > "+shellQuote(effect)+"\ndep_result '{\"version\":\"2.0.0\"}'\n")
