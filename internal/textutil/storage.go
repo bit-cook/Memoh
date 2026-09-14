@@ -15,13 +15,22 @@ func StorageText(text string) string {
 	return strings.ReplaceAll(strings.ToValidUTF8(text, "\uFFFD"), "\x00", `\x00`)
 }
 
+// jsonNUL is the only JSON escape that decodes to U+0000.
+var jsonNUL = []byte(`\u0000`)
+
 // StorageJSON normalizes string values before they reach jsonb. Decode only
 // potentially unsafe input, preserving numeric precision and literal escapes.
 func StorageJSON(raw []byte) ([]byte, error) {
 	if !json.Valid(raw) {
 		return nil, errors.New("invalid JSON content")
 	}
-	if utf8.Valid(raw) && !bytes.Contains(raw, []byte(`\u`)) {
+	// jsonNUL is JSON's only spelling of U+0000: the escape is fixed-width and
+	// its four hex digits carry no letters, so there is no case variant to
+	// match. Screening for a bare backslash-u instead would push every message
+	// carrying an ordinary escape down the decode path - encoding/json escapes
+	// <, > and & by default, so any reply holding markup or a code block would
+	// pay a full decode and re-encode on the persistence hot path.
+	if utf8.Valid(raw) && !bytes.Contains(raw, jsonNUL) {
 		return raw, nil
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))

@@ -40,3 +40,17 @@ func TestStorageJSONRejectsAmbiguousKeysAndInvalidDocuments(t *testing.T) {
 		}
 	}
 }
+
+// encoding/json escapes <, > and & by default, so ordinary replies carry
+// escapes constantly. Those documents must not pay a decode and re-encode:
+// the returned slice has to be the caller's own backing array.
+func TestStorageJSONReturnsInputUntouchedWithoutNUL(t *testing.T) {
+	raw := []byte(`{"text":"\u003cdiv\u003e a \u0026 b","emoji":"😀"}`)
+	clean, err := StorageJSON(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(clean) == 0 || len(raw) == 0 || &clean[0] != &raw[0] {
+		t.Fatalf("re-encoded a document that holds no NUL escape: %s", clean)
+	}
+}
