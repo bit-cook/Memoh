@@ -310,3 +310,47 @@ describe('a terminal run view is not a source of new turns', () => {
     expect(transcript.messages.map(turn => turn.turnId)).toEqual(['turn-9', 'turn-5', 'turn-5'])
   })
 })
+
+// Ownership reads the run's inputs through the same wire-shape adapter the
+// projection uses, so every shape the server can send is covered by one chain.
+describe('ownership covers every shape a run view can carry', () => {
+  it('claims the legacy request_user_turn when user_turns is absent', () => {
+    expect(runOwnsTurn({
+      run_id: 'run-1',
+      turn_id: 'turn-5',
+      generation: 'g',
+      status: 'running',
+      started_at: '2026-07-27T08:00:00.000Z',
+      updated_at: '2026-07-27T08:00:00.000Z',
+      messages: [],
+      request_user_turn: {
+        turn_id: 'turn-legacy',
+        role: 'user',
+        text: 'ask',
+        timestamp: '2026-07-27T08:00:00.000Z',
+      },
+    }, 'turn-legacy')).toBe(true)
+  })
+
+  it('claims an edit\'s replacement turn', () => {
+    expect(runOwnsTurn({
+      run_id: 'run-1',
+      turn_id: 'turn-5',
+      generation: 'g',
+      status: 'running',
+      started_at: '2026-07-27T08:00:00.000Z',
+      updated_at: '2026-07-27T08:00:00.000Z',
+      messages: [],
+      operation: {
+        kind: 'edit',
+        replace_from_message_id: 'm1',
+        replacement_user_turn: {
+          turn_id: 'turn-replacement',
+          role: 'user',
+          text: 'edited',
+          timestamp: '2026-07-27T08:00:00.000Z',
+        },
+      },
+    }, 'turn-replacement')).toBe(true)
+  })
+})

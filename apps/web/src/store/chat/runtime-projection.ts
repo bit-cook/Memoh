@@ -57,6 +57,14 @@ export function isRuntimeRunStreaming(run?: RuntimeCurrentRunView | null): boole
   return !run?.configuration_only && isRuntimeRunActive(run?.status)
 }
 
+// Older snapshots carry a single request/replacement turn. Keep this wire
+// adaptation shared by full projection and incremental delta application.
+function userTurnsForRun(run: RuntimeCurrentRunView) {
+  if (run.user_turns?.length) return run.user_turns
+  const fallback = run.request_user_turn ?? run.operation?.replacement_user_turn
+  return fallback ? [{ ...fallback }] : []
+}
+
 // A run owns several turns, not one: an applied steer opens its own canonical
 // turn inside the same run, and the output after it is filed there
 // (SR-TURN-001, docs/design/session-input-queues.md). Comparing against
@@ -70,8 +78,11 @@ export function runOwnsTurn(
   const target = turnId.trim()
   if (!run || !target) return false
   if (run.turn_id.trim() === target) return true
-  if (run.user_turns?.some(turn => turn.turn_id.trim() === target)) return true
-  if (run.request_user_turn?.turn_id.trim() === target) return true
+  // userTurnsForRun owns the whole wire-shape chain — user_turns, the legacy
+  // request_user_turn, and an edit's replacement turn. Re-deriving it here
+  // duplicated two thirds of it and dropped the third, so a retry or edit whose
+  // replacement was the run's only user turn read as foreign to its own run.
+  if (userTurnsForRun(run).some(turn => turn.turn_id.trim() === target)) return true
   return (run.steer_turns ?? []).some((steer) => {
     if (steer.turn_id?.trim() === target) return true
     // A steer that has not committed yet has no durable turn, so both its
@@ -152,14 +163,6 @@ function emptyTranscript(): RuntimeTranscriptSlice {
     turns: [],
     streaming: false,
   }
-}
-
-// Older snapshots carry a single request/replacement turn. Keep this wire
-// adaptation shared by full projection and incremental delta application.
-function userTurnsForRun(run: RuntimeCurrentRunView) {
-  if (run.user_turns?.length) return run.user_turns
-  const fallback = run.request_user_turn ?? run.operation?.replacement_user_turn
-  return fallback ? [{ ...fallback }] : []
 }
 
 function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptSlice {
