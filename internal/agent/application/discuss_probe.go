@@ -33,11 +33,16 @@ const (
 	// the decide tool definition when sizing input against the judge's own
 	// context window.
 	discussProbePromptOverheadTokens = 1024
-	// discussProbeContextFloorTokens is the minimum window kept even when the
-	// judge's context window cannot cover the reservation. Sending a small
-	// sample risks one rejected request; sending nothing would gate every
-	// wake-up shut on a model that is merely small.
+	// discussProbeContextFloorTokens is the smallest input window worth sending.
+	// A judge that cannot be given this much has nothing to judge from, which is
+	// a configuration fault to report rather than a request to send hopefully.
+	// It is a floor on usefulness, never a floor the window may exceed.
 	discussProbeContextFloorTokens = 2048
+	// discussProbeFallbackWindow is the window assumed when the catalog declares
+	// none. 8k sits below virtually every chat model's real window, so the
+	// reservation stays valid rather than optimistic — the same reasoning as
+	// titleInputFallbackWindow.
+	discussProbeFallbackWindow = 8192
 
 	discussProbeToolName = "decide"
 	// discussProbeForcedToolChoice is the one spelling every provider adapter
@@ -63,6 +68,10 @@ const (
 	discussProbeOutcomeMissing   = "missing"
 	discussProbeOutcomeMalformed = "malformed"
 	discussProbeOutcomeError     = "error"
+
+	// discussProbeCauseNotConfigured is the one exit that is ordinary enough to
+	// log quietly; every other disabled path is a fault worth surfacing.
+	discussProbeCauseNotConfigured = "not_configured"
 )
 
 // discussProbeResult is the gate's verdict for one discuss wake-up.
@@ -147,29 +156,35 @@ func discussProbeGenerateOptions(model *sdk.Model, system string, messages []sdk
 	}
 }
 
-// discussProbeContextBudget sizes the judge's input window.
+// discussProbeContextBudget sizes the judge's input window, or reports that no
+// valid request exists for this model.
 //
-// Two bounds, both necessary. The fixed cap keeps a long thread from handing
-// the judge the whole history for a question that only concerns the recent
-// surface. The judge's own context window is the other bound: a small judge
-// model paired with a large primary would otherwise receive a request it must
-// reject, and a rejected probe gates the bot shut.
-func discussProbeContextBudget(contextWindowTokens int) int {
-	budget := discussProbeContextMaxTokens
-	if contextWindowTokens > 0 {
-		available := contextWindowTokens - discussProbeMaxTokens - discussProbePromptOverheadTokens
-		if available < budget {
-			budget = available
-		}
+// The reservation is a hard cap, not a suggestion: input plus the output cap
+// plus the prompt and tool-schema overhead must all fit inside the judge's own
+// context window. An earlier version clamped the input *up* to a floor, which
+// made a 4097-token model ask for 5120 and be rejected on every wake-up — the
+// gate then failed closed forever on what was really a configuration mistake.
+//
+// When the window cannot hold even a minimal request the answer is ok=false.
+// Handing the provider a request already known to exceed its limit, to find out
+// from the error, is not a check.
+func discussProbeContextBudget(contextWindowTokens int) (budget int, ok bool) {
+	window := contextWindowTokens
+	if window <= 0 {
+		window = discussProbeFallbackWindow
 	}
-	if budget < discussProbeContextFloorTokens {
-		budget = discussProbeContextFloorTokens
+	available := window - discussProbeMaxTokens - discussProbePromptOverheadTokens
+	if available < discussProbeContextFloorTokens {
+		return 0, false
 	}
-	return budget
+	if available > discussProbeContextMaxTokens {
+		available = discussProbeContextMaxTokens
+	}
+	return available, true
 }
 
 // admitDiscussProbeMessages selects the newest messages that fit the judge's
-// window, as a contiguous suffix.
+// window, as a contiguous suffix that is a valid standalone history.
 //
 // It deliberately does NOT reuse admitDiscussMessages. That one pins every
 // compaction summary because the primary must not lose thread history — but
@@ -182,12 +197,22 @@ func discussProbeContextBudget(contextWindowTokens int) int {
 //
 // The judge does not need thread history to answer "should the bot speak right
 // now"; it needs the tail. Dropping the pin removes the overflow class rather
-// than handling it. The newest message is always kept so the window is never
-// empty, even when that single message exceeds the budget.
+// than handling it.
+//
+// Two shapes still have to be enforced, and a size-only suffix enforces
+// neither. A window may not open on a tool response whose tool call was cut:
+// that is not a history any provider accepts, so the request fails as a
+// protocol error rather than returning a judgement. And the window may not
+// exceed the budget just because its last message does; an oversized newest
+// message is truncated instead, since "what was just said" is the one thing the
+// judge cannot do without.
+//
+// An empty return means no valid window exists, and the caller fails closed.
 func admitDiscussProbeMessages(messages []turn.DiscussMessage, budgetTokens int) []turn.DiscussMessage {
-	if len(messages) == 0 {
+	if len(messages) == 0 || budgetTokens <= 0 {
 		return nil
 	}
+
 	start := len(messages) - 1
 	used := discussMessageTokens(messages[start])
 	for i := start - 1; i >= 0; i-- {
@@ -198,7 +223,56 @@ func admitDiscussProbeMessages(messages []turn.DiscussMessage, budgetTokens int)
 		used += cost
 		start = i
 	}
-	return messages[start:]
+
+	// Mirrors the raw-window trim in turn.AdmitContextEntries: advance the start
+	// past any tool response whose originating call is no longer in the window.
+	for start < len(messages) && isDiscussToolResponse(messages[start]) {
+		start++
+	}
+	if start >= len(messages) {
+		return nil
+	}
+
+	window := messages[start:]
+	if len(window) == 1 && discussMessageTokens(window[0]) > budgetTokens {
+		truncated, ok := truncateDiscussProbeMessage(window[0], budgetTokens)
+		if !ok {
+			return nil
+		}
+		return []turn.DiscussMessage{truncated}
+	}
+	return window
+}
+
+func isDiscussToolResponse(message turn.DiscussMessage) bool {
+	return strings.EqualFold(strings.TrimSpace(message.Role), "tool")
+}
+
+// truncateDiscussProbeMessage shrinks a single oversized message to the budget.
+//
+// Only plain text is reduced. A message carrying RawContent is a structured
+// provider payload — tool calls and their arguments — and cutting bytes out of
+// it yields something no provider will parse. Those report false so the caller
+// fails closed with a cause, rather than sending a request that is malformed
+// instead of merely large.
+//
+// The head/tail sample mirrors boundTitleInput: a long paste may state its
+// subject at either end, and a pure head cut drops the part that usually
+// decides whether the bot was addressed at all.
+func truncateDiscussProbeMessage(message turn.DiscussMessage, budgetTokens int) (turn.DiscussMessage, bool) {
+	if len(message.RawContent) > 0 {
+		return turn.DiscussMessage{}, false
+	}
+	runes := []rune(message.Content)
+	// discussMessageTokens estimates from byte length; holding to one rune per
+	// token keeps the truncated result from creeping back over budget.
+	if budgetTokens <= 0 || len(runes) <= budgetTokens {
+		return message, true
+	}
+	head := budgetTokens * 2 / 3
+	tail := budgetTokens - head
+	message.Content = string(runes[:head]) + "\n…\n" + string(runes[len(runes)-tail:])
+	return message, true
 }
 
 // discussProbeTool is the probe's only move. It carries no side effect: the
@@ -312,7 +386,7 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 		return s.reportDiscussProbe(cmd, "", discussProbeResult{}, "fallback_lookup_failed", err)
 	}
 	if probeModelID == "" {
-		return s.reportDiscussProbe(cmd, "", discussProbeResult{}, "not_configured", nil)
+		return s.reportDiscussProbe(cmd, "", discussProbeResult{}, discussProbeCauseNotConfigured, nil)
 	}
 
 	probeModel, provider, err := s.fetchChatModel(ctx, probeModelID)
@@ -320,13 +394,30 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 		return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(), "model_unresolvable", err)
 	}
 	if !discussProbeModelCanJudge(probeModel) {
-		return s.reportDiscussProbe(cmd, probeModelID, discussProbeResult{}, "model_cannot_call_tools", nil)
+		if gateConfigured {
+			// The operator named this model for this job. That it cannot do the
+			// job is a configuration error to surface, not permission to skip
+			// the check they asked for — the same rule as an unreadable config.
+			return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(),
+				"configured_model_cannot_call_tools", nil)
+		}
+		// Inherited: nobody chose this model for judging, and the title model is
+		// only validated as type=chat. Leaving the chat ungated is the stated
+		// policy for a fallback that cannot judge.
+		return s.reportDiscussProbe(cmd, probeModelID, discussProbeResult{},
+			"inherited_model_cannot_call_tools", nil)
 	}
 
-	budget := discussProbeContextBudget(probeModel.Config.ContextBudgetMaxTokens())
+	budget, ok := discussProbeContextBudget(probeModel.Config.ContextBudgetMaxTokens())
+	if !ok {
+		// The judge's window cannot hold a minimal request. That is a
+		// configuration fault, reported as such instead of discovered from a
+		// provider rejection on every wake-up.
+		return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(), "model_window_too_small", nil)
+	}
 	messages := discussMessagesToSDK(admitDiscussProbeMessages(cmd.DiscussMessages, budget))
 	if len(messages) == 0 {
-		return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(), "empty_context", nil)
+		return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(), "no_valid_window", nil)
 	}
 
 	// The run config already carries the bot identity; re-reading the row here
@@ -416,13 +507,20 @@ func (s *Service) reportDiscussProbe(
 	if err != nil {
 		fields = append(fields, slog.Any("error", err))
 	}
+	// Level is chosen by cause, not by whether the gate ran. Keying off Ran
+	// buried the abnormal shutdowns — a model that cannot call tools disables
+	// the gate with no error attached, so it logged at DEBUG and vanished from
+	// a default INFO deployment, which is precisely the case an operator needs
+	// to see.
 	switch {
-	case err != nil || result.Outcome == discussProbeOutcomeError ||
-		result.Outcome == discussProbeOutcomeMissing || result.Outcome == discussProbeOutcomeMalformed:
-		s.logger.Warn("discuss probe", fields...)
-	case !result.Ran:
-		// An unconfigured chat is the default state, not an event.
+	case cause == discussProbeCauseNotConfigured:
+		// A chat with no gate configured is the default state, not an event.
 		s.logger.Debug("discuss probe", fields...)
+	case err != nil || !result.Ran ||
+		result.Outcome == discussProbeOutcomeError ||
+		result.Outcome == discussProbeOutcomeMissing ||
+		result.Outcome == discussProbeOutcomeMalformed:
+		s.logger.Warn("discuss probe", fields...)
 	default:
 		s.logger.Info("discuss probe", fields...)
 	}

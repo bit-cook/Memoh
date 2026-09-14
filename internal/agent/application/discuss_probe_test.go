@@ -479,32 +479,43 @@ func TestAdmitDiscussProbeMessagesSelectsASuffix(t *testing.T) {
 	})
 }
 
-// A judge paired with a large primary may have a much smaller window of its
-// own. Sizing input only against the fixed cap would build a request that model
-// must reject, and a rejected probe gates the bot shut.
-func TestDiscussProbeContextBudget(t *testing.T) {
-	cases := []struct {
-		name   string
-		window int
-		want   int
-	}{
-		{"unknown window falls back to the cap", 0, discussProbeContextMaxTokens},
-		{"large window is still capped", 200000, discussProbeContextMaxTokens},
-		{"small window bounds the input", 8192, 8192 - discussProbeMaxTokens - discussProbePromptOverheadTokens},
-		{"tiny window clamps to the floor", 2048, discussProbeContextFloorTokens},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := discussProbeContextBudget(tc.window); got != tc.want {
-				t.Fatalf("discussProbeContextBudget(%d) = %d, want %d", tc.window, got, tc.want)
+// The reservation has to be a hard cap. The previous version clamped the input
+// window *up* to a floor, so a 4097-token model asked for 2048 input + 2048
+// output + 1024 overhead = 5120 and was rejected on every wake-up — and this
+// test asserted that clamp as intended behaviour, which is how the bug survived
+// review. The property to pin is arithmetic, not a constant.
+func TestDiscussProbeContextBudgetNeverExceedsTheWindow(t *testing.T) {
+	for _, window := range []int{1, 512, 2048, 4096, 4097, 8192, 32000, 128000, 1000000} {
+		budget, ok := discussProbeContextBudget(window)
+		if !ok {
+			if budget != 0 {
+				t.Fatalf("window %d refused but returned budget %d", window, budget)
 			}
-		})
-	}
-
-	for _, window := range []int{0, 1, 2048, 4097, 8192, 128000} {
-		if got := discussProbeContextBudget(window); got <= 0 {
-			t.Fatalf("discussProbeContextBudget(%d) = %d; a non-positive budget yields an empty window", window, got)
+			continue
 		}
+		total := budget + discussProbeMaxTokens + discussProbePromptOverheadTokens
+		if total > window {
+			t.Fatalf("window %d: input %d + output %d + overhead %d = %d exceeds the window",
+				window, budget, discussProbeMaxTokens, discussProbePromptOverheadTokens, total)
+		}
+		if budget > discussProbeContextMaxTokens {
+			t.Fatalf("window %d: budget %d exceeds the cap %d", window, budget, discussProbeContextMaxTokens)
+		}
+	}
+}
+
+func TestDiscussProbeContextBudgetRefusesUnusableWindows(t *testing.T) {
+	// 4097 is a real provider-template window and cannot hold a usable probe.
+	if _, ok := discussProbeContextBudget(4097); ok {
+		t.Fatal("a 4097-token window was accepted; the request it produces cannot fit")
+	}
+	// An undeclared window must not be read as unlimited.
+	budget, ok := discussProbeContextBudget(0)
+	if !ok {
+		t.Fatal("an undeclared window must fall back, not refuse")
+	}
+	if total := budget + discussProbeMaxTokens + discussProbePromptOverheadTokens; total > discussProbeFallbackWindow {
+		t.Fatalf("undeclared window: total %d exceeds the assumed %d", total, discussProbeFallbackWindow)
 	}
 }
 
@@ -529,5 +540,102 @@ func TestDiscussProbeModelCanJudge(t *testing.T) {
 	}
 	if discussProbeModelCanJudge(withCompat(models.CompatVision, models.CompatReasoning)) {
 		t.Fatal("a capable but non-tool-calling model was accepted; every wake-up would fail closed")
+	}
+}
+
+// A window is handed to a provider as a standalone history. Slicing a suffix by
+// size alone can open it on a tool response whose originating call was cut,
+// which no provider accepts — the request then fails as a protocol error and
+// the gate reports a non-verdict, silencing the bot for reasons unrelated to
+// judgement. The earlier tests used only user messages and could not see this.
+func TestAdmitDiscussProbeMessagesNeverOpensOnAnOrphanedToolResponse(t *testing.T) {
+	big := strings.Repeat("call", 3000)
+
+	cases := []struct {
+		name     string
+		messages []turn.DiscussMessage
+	}{
+		{
+			name: "tool result whose call is trimmed",
+			messages: []turn.DiscussMessage{
+				{Role: "assistant", Content: big},
+				{Role: "tool", Content: "result of call-1"},
+				{Role: "user", Content: "so what now?"},
+			},
+		},
+		{
+			name: "consecutive tool results",
+			messages: []turn.DiscussMessage{
+				{Role: "assistant", Content: big},
+				{Role: "tool", Content: "result-1"},
+				{Role: "tool", Content: "result-2"},
+				{Role: "user", Content: "and?"},
+			},
+		},
+		{
+			name: "role casing is not a loophole",
+			messages: []turn.DiscussMessage{
+				{Role: "assistant", Content: big},
+				{Role: "Tool", Content: "result-1"},
+				{Role: "user", Content: "and?"},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := admitDiscussProbeMessages(tc.messages, 2048)
+			if len(got) == 0 {
+				t.Fatal("window is empty")
+			}
+			if isDiscussToolResponse(got[0]) {
+				t.Fatalf("window opens on an orphaned tool response: %q", got[0].Content)
+			}
+			if got[len(got)-1].Content != tc.messages[len(tc.messages)-1].Content {
+				t.Fatalf("newest message was dropped: %q", got[len(got)-1].Content)
+			}
+		})
+	}
+}
+
+// The budget is a cap on the whole window, including its last message. Keeping
+// an oversized newest message whole put ~20K tokens into an 8K model's request.
+func TestAdmitDiscussProbeMessagesBoundsAnOversizedNewestMessage(t *testing.T) {
+	budget, ok := discussProbeContextBudget(8192)
+	if !ok {
+		t.Fatal("8192 must yield a usable budget")
+	}
+
+	got := admitDiscussProbeMessages([]turn.DiscussMessage{
+		{Role: "user", Content: strings.Repeat("x", 80000)},
+	}, budget)
+	if len(got) != 1 {
+		t.Fatalf("len = %d, want 1", len(got))
+	}
+	if cost := discussMessageTokens(got[0]); cost > budget {
+		t.Fatalf("selected ~%d tokens against a budget of %d", cost, budget)
+	}
+	if !strings.Contains(got[0].Content, "…") {
+		t.Fatal("oversized message was not truncated")
+	}
+
+	// A structured payload cannot be cut without producing something no
+	// provider will parse, so it reports no valid window instead. Its cost is
+	// measured from RawContent, so that is what has to be oversized.
+	oversizedRaw := []byte(`[{"type":"tool-call","args":"` + strings.Repeat("y", 80000) + `"}]`)
+	unshrinkable := []turn.DiscussMessage{{Role: "assistant", Content: "call", RawContent: oversizedRaw}}
+	if cost := discussMessageTokens(unshrinkable[0]); cost <= budget {
+		t.Fatalf("precondition lost: payload costs %d, not above the %d budget", cost, budget)
+	}
+	if got := admitDiscussProbeMessages(unshrinkable, budget); len(got) != 0 {
+		t.Fatalf("an unshrinkable oversized payload produced a %d-message window", len(got))
+	}
+}
+
+// An explicitly configured gate must not be switched off by a capability
+// failure; only an inherited model may leave the chat ungated.
+func TestDiscussProbeCapabilityFailureRespectsConfigSource(t *testing.T) {
+	if got := discussProbeFailedClosed(); !got.Ran || got.Activated {
+		t.Fatalf("failed-closed verdict = %+v, want Ran with no activation", got)
 	}
 }

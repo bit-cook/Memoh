@@ -11,10 +11,16 @@ import (
 // capturingHandler keeps the structured fields of each record so a test can
 // assert on the account the gate leaves behind.
 type capturingHandler struct {
+	// level mirrors a real deployment's threshold. An always-enabled handler
+	// cannot observe the bug it is meant to guard: a record emitted below the
+	// configured level is invisible in production but captured in the test.
+	level   slog.Level
 	records []map[string]any
 }
 
-func (*capturingHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *capturingHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= h.level
+}
 
 func (h *capturingHandler) Handle(_ context.Context, record slog.Record) error {
 	fields := map[string]any{"msg": record.Message, "level": record.Level.String()}
@@ -31,7 +37,14 @@ func (h *capturingHandler) WithGroup(string) slog.Handler      { return h }
 
 func runProbeCapturingLogs(t *testing.T, cmd turn.StartTurnCommand, resolved ResolveRunConfigResult) (discussProbeResult, []map[string]any) {
 	t.Helper()
-	handler := &capturingHandler{}
+	return runProbeAtLevel(t, cmd, resolved, slog.LevelDebug)
+}
+
+// runProbeAtLevel drives the gate behind a handler with a real threshold, so a
+// test can assert what a deployment at that level would actually record.
+func runProbeAtLevel(t *testing.T, cmd turn.StartTurnCommand, resolved ResolveRunConfigResult, level slog.Level) (discussProbeResult, []map[string]any) {
+	t.Helper()
+	handler := &capturingHandler{level: level}
 	svc := &Service{logger: slog.New(handler)}
 	return svc.runDiscussProbe(context.Background(), cmd, resolved), handler.records
 }
@@ -126,5 +139,64 @@ func TestDiscussProbeLogsNothingForPrivateChats(t *testing.T) {
 	}
 	if result.Ran {
 		t.Fatal("gate ran for a private chat")
+	}
+}
+
+// Default deployments run at INFO. An abnormal shutdown that only logs at DEBUG
+// is, operationally, not logged at all — and a silently disabled gate is the
+// exact condition someone goes looking for when a bot stops talking.
+func TestDiscussProbeAbnormalExitsAreVisibleAtInfo(t *testing.T) {
+	// A configured gate whose config cannot be read: the gate holds the turn.
+	result, records := runProbeAtLevel(t, groupCommand(),
+		ResolveRunConfigResult{DiscussProbeModelID: "configured-model"}, slog.LevelInfo)
+	if len(records) != 1 {
+		t.Fatalf("an INFO deployment recorded %d lines for a gate holding a turn shut, want 1", len(records))
+	}
+	if records[0]["level"] != "WARN" {
+		t.Fatalf("level = %v, want WARN", records[0]["level"])
+	}
+	if !result.Ran {
+		t.Fatal("configured gate reported Ran=false")
+	}
+
+	// An unconfigured chat is the ordinary state and stays quiet.
+	_, quiet := runProbeAtLevel(t, groupCommand(), ResolveRunConfigResult{}, slog.LevelInfo)
+	for _, record := range quiet {
+		if record["cause"] == discussProbeCauseNotConfigured {
+			t.Fatalf("the ordinary unconfigured case reached an INFO deployment: %v", record)
+		}
+	}
+}
+
+// Every cause must state its own level intent, so adding a branch cannot
+// silently inherit DEBUG the way model_cannot_call_tools did.
+func TestDiscussProbeLogLevelByCause(t *testing.T) {
+	cases := []struct {
+		cause     string
+		result    discussProbeResult
+		err       error
+		wantLevel string
+	}{
+		{discussProbeCauseNotConfigured, discussProbeResult{}, nil, "DEBUG"},
+		{"inherited_model_cannot_call_tools", discussProbeResult{}, nil, "WARN"},
+		{"configured_model_cannot_call_tools", discussProbeFailedClosed(), nil, "WARN"},
+		{"model_window_too_small", discussProbeFailedClosed(), nil, "WARN"},
+		{"no_valid_window", discussProbeFailedClosed(), nil, "WARN"},
+		{"judged", discussProbeResult{Ran: true, Outcome: discussProbeOutcomeNoAction}, nil, "INFO"},
+		{"judged", discussProbeResult{Ran: true, Activated: true, Outcome: discussProbeOutcomeAct}, nil, "INFO"},
+		{"judged", discussProbeResult{Ran: true, Outcome: discussProbeOutcomeMissing}, nil, "WARN"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.cause+"/"+tc.result.Outcome, func(t *testing.T) {
+			handler := &capturingHandler{level: slog.LevelDebug}
+			svc := &Service{logger: slog.New(handler)}
+			svc.reportDiscussProbe(groupCommand(), "model-1", tc.result, tc.cause, tc.err)
+			if len(handler.records) != 1 {
+				t.Fatalf("emitted %d records, want 1", len(handler.records))
+			}
+			if got := handler.records[0]["level"]; got != tc.wantLevel {
+				t.Fatalf("cause %q outcome %q logged at %v, want %v", tc.cause, tc.result.Outcome, got, tc.wantLevel)
+			}
+		})
 	}
 }
