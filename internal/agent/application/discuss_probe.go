@@ -8,13 +8,10 @@ import (
 	"time"
 
 	sdk "github.com/felinics/twilight/sdk"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	contextfrag "github.com/felinics/memoh/internal/agent/context/fragment"
 	"github.com/felinics/memoh/internal/agent/runtime/native"
 	"github.com/felinics/memoh/internal/agent/turn"
-	"github.com/felinics/memoh/internal/db"
-	"github.com/felinics/memoh/internal/db/postgres/sqlc"
 	"github.com/felinics/memoh/internal/models"
 	"github.com/felinics/memoh/internal/oauthctx"
 	"github.com/felinics/memoh/internal/providers"
@@ -301,59 +298,35 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 	// resolve to "there is no gate" — that would let a transient database error
 	// hand the turn a free pass through the very check the operator asked for.
 	gateConfigured := strings.TrimSpace(resolved.DiscussProbeModelID) != ""
-	requestedAtMs := time.Now().UnixMilli()
 
 	probeModelID, ownerUserID, err := s.resolveDiscussProbeModel(ctx, cmd.BotID, resolved.DiscussProbeModelID)
 	if err != nil {
 		if gateConfigured {
-			s.logger.Warn("discuss probe: configured gate failed to resolve, failing closed",
-				slog.String("bot_id", cmd.BotID),
-				slog.Any("error", err))
-			result := discussProbeResult{Ran: true, Outcome: discussProbeOutcomeError}
-			s.persistDiscussProbeDecision(ctx, cmd, requestedAtMs, result, resolved.DiscussProbeModelID, sdk.Usage{})
-			return result
+			return s.reportDiscussProbe(cmd, resolved.DiscussProbeModelID,
+				discussProbeFailedClosed(), "config_unreadable", err)
 		}
 		// No override: the only thing that failed is the lookup that would have
 		// told us whether a fallback exists. Failing closed here would mute every
 		// bot without a gate — including the permanent case of a bot with no
 		// owner — so an unconfigured chat stays unconfigured.
-		s.logger.Warn("discuss probe: fallback model lookup failed, gate stays disabled",
-			slog.String("bot_id", cmd.BotID),
-			slog.Any("error", err))
-		return discussProbeResult{}
+		return s.reportDiscussProbe(cmd, "", discussProbeResult{}, "fallback_lookup_failed", err)
 	}
 	if probeModelID == "" {
-		s.logger.Debug("discuss probe: no probe model configured, gate disabled",
-			slog.String("bot_id", cmd.BotID))
-		return discussProbeResult{}
+		return s.reportDiscussProbe(cmd, "", discussProbeResult{}, "not_configured", nil)
 	}
-
-	result := discussProbeResult{Ran: true, Outcome: discussProbeOutcomeError}
 
 	probeModel, provider, err := s.fetchChatModel(ctx, probeModelID)
 	if err != nil {
-		s.logger.Warn("discuss probe: failed to resolve model",
-			slog.String("model_id", probeModelID),
-			slog.Any("error", err))
-		s.persistDiscussProbeDecision(ctx, cmd, requestedAtMs, result, "", sdk.Usage{})
-		return result
+		return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(), "model_unresolvable", err)
 	}
-
 	if !discussProbeModelCanJudge(probeModel) {
-		s.logger.Warn("discuss probe: model cannot call tools, gate disabled",
-			slog.String("bot_id", cmd.BotID),
-			slog.String("model_id", probeModelID),
-			slog.String("model", probeModel.ModelID))
-		return discussProbeResult{}
+		return s.reportDiscussProbe(cmd, probeModelID, discussProbeResult{}, "model_cannot_call_tools", nil)
 	}
 
 	budget := discussProbeContextBudget(probeModel.Config.ContextBudgetMaxTokens())
 	messages := discussMessagesToSDK(admitDiscussProbeMessages(cmd.DiscussMessages, budget))
 	if len(messages) == 0 {
-		s.logger.Debug("discuss probe: empty context, failing closed",
-			slog.String("session_id", cmd.ThreadID))
-		s.persistDiscussProbeDecision(ctx, cmd, requestedAtMs, result, probeModelID, sdk.Usage{})
-		return result
+		return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(), "empty_context", nil)
 	}
 
 	// The run config already carries the bot identity; re-reading the row here
@@ -365,9 +338,7 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 	authCtx := oauthctx.WithUserID(ctx, ownerUserID)
 	creds, err := authService.ResolveModelCredentials(authCtx, provider)
 	if err != nil {
-		s.logger.Warn("discuss probe: failed to resolve provider credentials", slog.Any("error", err))
-		s.persistDiscussProbeDecision(ctx, cmd, requestedAtMs, result, probeModelID, sdk.Usage{})
-		return result
+		return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(), "credentials_unresolvable", err)
 	}
 
 	sdkModel := models.NewSDKChatModel(models.SDKModelConfig{
@@ -389,27 +360,72 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 	generated, err := sdk.NewClient().GenerateTextResult(probeCtx,
 		discussProbeGenerateOptions(sdkModel, cachedSystem, cachedMessages, cachedTools)...)
 	if err != nil {
-		s.logger.Warn("discuss probe: model call failed, failing closed",
-			slog.String("session_id", cmd.ThreadID),
-			slog.Any("error", err))
-		s.persistDiscussProbeDecision(ctx, cmd, requestedAtMs, result, probeModelID, sdk.Usage{})
-		return result
+		return s.reportDiscussProbe(cmd, probeModelID, discussProbeFailedClosed(), "model_call_failed", err)
 	}
 
 	shouldAct, reason, outcome := extractDiscussProbeDecision(generated.ToolCalls)
-	result.Outcome = outcome
-	result.Reason = reason
-	result.Activated = shouldAct == discussProbeActSend
+	return s.reportDiscussProbe(cmd, probeModelID, discussProbeResult{
+		Ran:       true,
+		Activated: shouldAct == discussProbeActSend,
+		Reason:    reason,
+		Outcome:   outcome,
+	}, "judged", nil)
+}
 
-	s.logger.Info("discuss probe: decision",
+// discussProbeFailedClosed is the verdict for a gate that was configured but
+// could not reach a judgement. Named rather than inlined so every such exit is
+// visibly the same decision: the gate ran, and it stays shut.
+func discussProbeFailedClosed() discussProbeResult {
+	return discussProbeResult{Ran: true, Outcome: discussProbeOutcomeError}
+}
+
+// reportDiscussProbe emits one line per gate exit and returns the verdict
+// unchanged, so every return from the gate is also a record of it.
+//
+// The field set is identical on every path on purpose. This log is the only
+// account of why a bot did or did not speak, and the question it has to answer
+// — "was that a judgement, a broken config, or an outage?" — is unanswerable if
+// each branch logs a different shape. `cause` distinguishes the branches;
+// `gate_ran` separates "the gate held it shut" from "there was no gate".
+func (s *Service) reportDiscussProbe(
+	cmd turn.StartTurnCommand,
+	modelID string,
+	result discussProbeResult,
+	cause string,
+	err error,
+) discussProbeResult {
+	if s.logger == nil {
+		return result
+	}
+	outcome := result.Outcome
+	if !result.Ran {
+		outcome = "disabled"
+	}
+	fields := []any{
 		slog.String("bot_id", cmd.BotID),
 		slog.String("session_id", cmd.ThreadID),
-		slog.String("model_id", probeModelID),
+		slog.String("model_id", modelID),
+		slog.String("cause", cause),
+		slog.String("outcome", outcome),
+		slog.Bool("gate_ran", result.Ran),
 		slog.Bool("activated", result.Activated),
-		slog.String("outcome", result.Outcome),
-		slog.String("reason", result.Reason))
-
-	s.persistDiscussProbeDecision(ctx, cmd, requestedAtMs, result, probeModelID, generated.Usage)
+	}
+	if result.Reason != "" {
+		fields = append(fields, slog.String("reason", result.Reason))
+	}
+	if err != nil {
+		fields = append(fields, slog.Any("error", err))
+	}
+	switch {
+	case err != nil || result.Outcome == discussProbeOutcomeError ||
+		result.Outcome == discussProbeOutcomeMissing || result.Outcome == discussProbeOutcomeMalformed:
+		s.logger.Warn("discuss probe", fields...)
+	case !result.Ran:
+		// An unconfigured chat is the default state, not an event.
+		s.logger.Debug("discuss probe", fields...)
+	default:
+		s.logger.Info("discuss probe", fields...)
+	}
 	return result
 }
 
@@ -477,49 +493,4 @@ func discussActivationFrag(message sdk.Message, index int, scope contextfrag.Sco
 		Collector:  "discuss_probe",
 		Budget:     contextfrag.BudgetPolicy{Overflow: contextfrag.OverflowKeep},
 	})
-}
-
-// persistDiscussProbeDecision records the verdict. Persistence failures are
-// logged and swallowed: an audit-trail outage must not decide whether the bot
-// speaks.
-func (s *Service) persistDiscussProbeDecision(
-	ctx context.Context,
-	cmd turn.StartTurnCommand,
-	requestedAtMs int64,
-	result discussProbeResult,
-	modelID string,
-	usage sdk.Usage,
-) {
-	if s.queries == nil {
-		return
-	}
-	botUUID, err := db.ParseUUID(cmd.BotID)
-	if err != nil {
-		return
-	}
-	sessionUUID, err := db.ParseUUID(cmd.ThreadID)
-	if err != nil {
-		return
-	}
-	modelUUID := pgtype.UUID{}
-	if parsed, parseErr := db.ParseUUID(modelID); parseErr == nil {
-		modelUUID = parsed
-	}
-	if _, err := s.queries.CreateDiscussProbeDecision(ctx, sqlc.CreateDiscussProbeDecisionParams{
-		BotID:            botUUID,
-		SessionID:        sessionUUID,
-		RequestedAtMs:    requestedAtMs,
-		Activated:        result.Activated,
-		Outcome:          result.Outcome,
-		Reason:           result.Reason,
-		ModelID:          modelUUID,
-		InputTokens:      int32(usage.InputTokens),       //nolint:gosec // provider-reported counts are well below int32
-		OutputTokens:     int32(usage.OutputTokens),      //nolint:gosec // provider-reported counts are well below int32
-		CacheReadTokens:  int32(usage.CachedInputTokens), //nolint:gosec // provider-reported counts are well below int32
-		CacheWriteTokens: 0,
-	}); err != nil {
-		s.logger.Warn("discuss probe: failed to persist decision",
-			slog.String("session_id", cmd.ThreadID),
-			slog.Any("error", err))
-	}
 }

@@ -288,23 +288,6 @@ type BotDependencyInstallation struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
-type BotDiscussProbeDecision struct {
-	ID               pgtype.UUID        `json:"id"`
-	TeamID           pgtype.UUID        `json:"team_id"`
-	BotID            pgtype.UUID        `json:"bot_id"`
-	SessionID        pgtype.UUID        `json:"session_id"`
-	RequestedAtMs    int64              `json:"requested_at_ms"`
-	Activated        bool               `json:"activated"`
-	Outcome          string             `json:"outcome"`
-	Reason           string             `json:"reason"`
-	ModelID          pgtype.UUID        `json:"model_id"`
-	InputTokens      int32              `json:"input_tokens"`
-	OutputTokens     int32              `json:"output_tokens"`
-	CacheReadTokens  int32              `json:"cache_read_tokens"`
-	CacheWriteTokens int32              `json:"cache_write_tokens"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-}
-
 type BotEmailBinding struct {
 	ID              pgtype.UUID        `json:"id"`
 	BotID           pgtype.UUID        `json:"bot_id"`
