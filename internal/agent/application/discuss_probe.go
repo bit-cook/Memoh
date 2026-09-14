@@ -27,14 +27,31 @@ const (
 	// the tool call, so a small cap truncates the decision away, while a large
 	// cap makes short-context models reject the request outright.
 	discussProbeMaxTokens = 2048
-	// discussProbeContextMaxTokens bounds the judge's view independently of the
-	// primary budget. Admission keeps compaction summaries plus the newest
-	// messages, which is exactly the surface needed to judge "should the bot
-	// speak right now" — and keeps the gate from re-walking the same cliff the
-	// primary path OOM'd on.
+	// discussProbeContextMaxTokens caps the judge's view independently of the
+	// primary budget: "should the bot speak right now" is answered from the
+	// recent conversational surface, not from the whole thread, and the gate
+	// must not re-walk the cliff the primary path OOM'd on.
 	discussProbeContextMaxTokens = 16384
+	// discussProbePromptOverheadTokens reserves room for the judge prompt and
+	// the decide tool definition when sizing input against the judge's own
+	// context window.
+	discussProbePromptOverheadTokens = 1024
+	// discussProbeContextFloorTokens is the minimum window kept even when the
+	// judge's context window cannot cover the reservation. Sending a small
+	// sample risks one rejected request; sending nothing would gate every
+	// wake-up shut on a model that is merely small.
+	discussProbeContextFloorTokens = 2048
 
 	discussProbeToolName = "decide"
+	// discussProbeForcedToolChoice is the one spelling every provider adapter
+	// converts correctly. `decide` is the only tool on a probe request, so
+	// "required" and a named-function choice are equivalent in intent — but the
+	// Chat Completions object form is not portable: the Responses adapter
+	// forwards it verbatim to an API that expects a top-level name, and the
+	// Gemini adapter recognises only string choices and silently drops the
+	// object, leaving the judge free to answer in prose. Both land as
+	// missing/malformed and gate the bot shut.
+	discussProbeForcedToolChoice = "required"
 
 	// should_act values. Deliberately two-valued: there is no "react only"
 	// option, because a standalone reaction must not wake the primary.
@@ -93,6 +110,98 @@ func (s *Service) resolveDiscussProbeModel(ctx context.Context, botID, botConfig
 		return configured, ownerUserID, nil
 	}
 	return s.resolveTitleModel(ctx, botID)
+}
+
+// discussProbeModelCanJudge reports whether a resolved model can actually
+// return a verdict.
+//
+// Tool calling is the whole channel: the judge's only output is a forced
+// `decide` call. A model without it answers in prose on every wake-up, which
+// the gate reads as a missing verdict and fails closed — a bot that goes
+// permanently silent with no error anyone would think to look for.
+//
+// This guard is load-bearing rather than defensive. The picker filters the
+// explicit choice for tool calling, but the inherited path does not go through
+// the picker: a title model is only validated as type=chat (see
+// Store.IsValidTitleModel), so a perfectly legitimate text-only title model can
+// arrive here as the gate. When it does, the right answer is to leave the gate
+// off, not to hold it shut.
+func discussProbeModelCanJudge(model models.GetResponse) bool {
+	return model.HasCompatibility(models.CompatToolCall)
+}
+
+// discussProbeGenerateOptions builds the judge's request.
+//
+// It exists as a named function rather than an inline option list so the
+// provider-request tests drive the same construction production does. Asserting
+// the wire shape against a request the test assembled itself would only prove
+// that the SDK converts a constant correctly, not that the gate sends it.
+//
+// MaxSteps stays at its zero default: one call, no tool auto-execution.
+// `decide` reports a judgement; there is nothing to execute.
+func discussProbeGenerateOptions(model *sdk.Model, system string, messages []sdk.Message, tools []sdk.Tool) []sdk.GenerateOption {
+	return []sdk.GenerateOption{
+		sdk.WithModel(model),
+		sdk.WithSystem(system),
+		sdk.WithMessages(messages),
+		sdk.WithTools(tools),
+		sdk.WithToolChoice(discussProbeForcedToolChoice),
+		sdk.WithMaxTokens(discussProbeMaxTokens),
+	}
+}
+
+// discussProbeContextBudget sizes the judge's input window.
+//
+// Two bounds, both necessary. The fixed cap keeps a long thread from handing
+// the judge the whole history for a question that only concerns the recent
+// surface. The judge's own context window is the other bound: a small judge
+// model paired with a large primary would otherwise receive a request it must
+// reject, and a rejected probe gates the bot shut.
+func discussProbeContextBudget(contextWindowTokens int) int {
+	budget := discussProbeContextMaxTokens
+	if contextWindowTokens > 0 {
+		available := contextWindowTokens - discussProbeMaxTokens - discussProbePromptOverheadTokens
+		if available < budget {
+			budget = available
+		}
+	}
+	if budget < discussProbeContextFloorTokens {
+		budget = discussProbeContextFloorTokens
+	}
+	return budget
+}
+
+// admitDiscussProbeMessages selects the newest messages that fit the judge's
+// window, as a contiguous suffix.
+//
+// It deliberately does NOT reuse admitDiscussMessages. That one pins every
+// compaction summary because the primary must not lose thread history — but
+// summaries are sized against the primary's window, so on a long thread their
+// combined cost alone exceeds any judge-sized budget and admission returns
+// ProtectedOverflow forever. The gate would then fail closed on every wake-up
+// with no way back: a declined wake-up returns before sync compaction runs, so
+// the summaries that caused the overflow are never reduced, and no amount of
+// new messages — not even a direct mention — recovers it.
+//
+// The judge does not need thread history to answer "should the bot speak right
+// now"; it needs the tail. Dropping the pin removes the overflow class rather
+// than handling it. The newest message is always kept so the window is never
+// empty, even when that single message exceeds the budget.
+func admitDiscussProbeMessages(messages []turn.DiscussMessage, budgetTokens int) []turn.DiscussMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	start := len(messages) - 1
+	used := discussMessageTokens(messages[start])
+	for i := start - 1; i >= 0; i-- {
+		cost := discussMessageTokens(messages[i])
+		if used+cost > budgetTokens {
+			break
+		}
+		used += cost
+		start = i
+	}
+	return messages[start:]
 }
 
 // discussProbeTool is the probe's only move. It carries no side effect: the
@@ -230,17 +339,16 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 		return result
 	}
 
-	admitted, admission := admitDiscussMessages(cmd.DiscussMessages, discussProbeContextMaxTokens)
-	if admission.ProtectedOverflow {
-		s.logger.Warn("discuss probe: context overflow, failing closed",
+	if !discussProbeModelCanJudge(probeModel) {
+		s.logger.Warn("discuss probe: model cannot call tools, gate disabled",
 			slog.String("bot_id", cmd.BotID),
-			slog.String("session_id", cmd.ThreadID),
-			slog.Int("estimated_tokens", admission.EstimatedTokens),
-			slog.Int("budget_tokens", admission.BudgetTokens))
-		s.persistDiscussProbeDecision(ctx, cmd, requestedAtMs, result, probeModelID, sdk.Usage{})
-		return result
+			slog.String("model_id", probeModelID),
+			slog.String("model", probeModel.ModelID))
+		return discussProbeResult{}
 	}
-	messages := discussMessagesToSDK(admitted)
+
+	budget := discussProbeContextBudget(probeModel.Config.ContextBudgetMaxTokens())
+	messages := discussMessagesToSDK(admitDiscussProbeMessages(cmd.DiscussMessages, budget))
 	if len(messages) == 0 {
 		s.logger.Debug("discuss probe: empty context, failing closed",
 			slog.String("session_id", cmd.ThreadID))
@@ -278,19 +386,8 @@ func (s *Service) runDiscussProbe(ctx context.Context, cmd turn.StartTurnCommand
 	cacheTTL := providers.ProviderConfigString(provider, "prompt_cache_ttl")
 	cachedSystem, cachedMessages, cachedTools := models.ApplyPromptCache(sdkModel, cacheTTL, system, messages, tools)
 
-	// MaxSteps stays at its zero default: one call, no tool auto-execution.
-	// `decide` reports a judgement; there is nothing to execute.
 	generated, err := sdk.NewClient().GenerateTextResult(probeCtx,
-		sdk.WithModel(sdkModel),
-		sdk.WithSystem(cachedSystem),
-		sdk.WithMessages(cachedMessages),
-		sdk.WithTools(cachedTools),
-		sdk.WithToolChoice(map[string]any{
-			"type":     "function",
-			"function": map[string]any{"name": discussProbeToolName},
-		}),
-		sdk.WithMaxTokens(discussProbeMaxTokens),
-	)
+		discussProbeGenerateOptions(sdkModel, cachedSystem, cachedMessages, cachedTools)...)
 	if err != nil {
 		s.logger.Warn("discuss probe: model call failed, failing closed",
 			slog.String("session_id", cmd.ThreadID),

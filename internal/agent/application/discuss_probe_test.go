@@ -15,6 +15,7 @@ import (
 	"github.com/felinics/memoh/internal/db"
 	"github.com/felinics/memoh/internal/db/postgres/sqlc"
 	dbstore "github.com/felinics/memoh/internal/db/store"
+	"github.com/felinics/memoh/internal/models"
 )
 
 // countingAccountStore records whether the owner's account profile was read, so
@@ -407,5 +408,126 @@ func TestDiscussProbeUnconfiguredStaysDisabledOnResolveError(t *testing.T) {
 
 	if got.Ran {
 		t.Fatalf("unconfigured gate reported Ran=%v; it must leave the turn untouched", got.Ran)
+	}
+}
+
+func probeMessage(content string, artifactID string) turn.DiscussMessage {
+	return turn.DiscussMessage{Role: "user", Content: content, CompactionArtifactID: artifactID}
+}
+
+// The judge gets a tail, not a pinned history. Reusing the primary's admission
+// pinned every compaction summary; once their combined cost passed the judge's
+// budget it returned ProtectedOverflow on every wake-up, and because a declined
+// wake-up returns before sync compaction runs, nothing ever shrank them. The
+// bot went permanently silent with no recovery — not even a direct mention.
+func TestAdmitDiscussProbeMessagesSurvivesOversizedSummaries(t *testing.T) {
+	// Five ~4K-token summaries against a 16K budget: the shape that wedged the
+	// old path shut.
+	summary := strings.Repeat("s", 4*1024*4)
+	messages := []turn.DiscussMessage{
+		probeMessage(summary, "artifact-1"),
+		probeMessage(summary, "artifact-2"),
+		probeMessage(summary, "artifact-3"),
+		probeMessage(summary, "artifact-4"),
+		probeMessage(summary, "artifact-5"),
+		probeMessage("@bot are you there?", ""),
+	}
+
+	// The primary's admission fails closed on exactly this input.
+	if _, admission := admitDiscussMessages(messages, discussProbeContextMaxTokens); !admission.ProtectedOverflow {
+		t.Fatal("precondition lost: the primary admission no longer overflows, so this test no longer guards anything")
+	}
+
+	got := admitDiscussProbeMessages(messages, discussProbeContextMaxTokens)
+	if len(got) == 0 {
+		t.Fatal("probe window is empty; the gate would fail closed forever")
+	}
+	newest := got[len(got)-1]
+	if newest.Content != "@bot are you there?" {
+		t.Fatalf("newest message = %q, want the mention that should wake the bot", newest.Content)
+	}
+}
+
+func TestAdmitDiscussProbeMessagesSelectsASuffix(t *testing.T) {
+	messages := []turn.DiscussMessage{
+		probeMessage(strings.Repeat("a", 4000), ""),
+		probeMessage(strings.Repeat("b", 4000), ""),
+		probeMessage("newest", ""),
+	}
+
+	t.Run("keeps what fits, newest first", func(t *testing.T) {
+		got := admitDiscussProbeMessages(messages, 2000)
+		if len(got) != 2 {
+			t.Fatalf("len = %d, want 2 (newest plus the one that fits)", len(got))
+		}
+		if got[len(got)-1].Content != "newest" {
+			t.Fatalf("selection is not a suffix: %q", got[len(got)-1].Content)
+		}
+	})
+
+	t.Run("keeps the newest even when it alone exceeds the budget", func(t *testing.T) {
+		got := admitDiscussProbeMessages([]turn.DiscussMessage{probeMessage(strings.Repeat("x", 40000), "")}, 10)
+		if len(got) != 1 {
+			t.Fatalf("len = %d, want 1; an empty window gates the bot shut", len(got))
+		}
+	})
+
+	t.Run("empty input yields nothing", func(t *testing.T) {
+		if got := admitDiscussProbeMessages(nil, 1000); len(got) != 0 {
+			t.Fatalf("len = %d, want 0", len(got))
+		}
+	})
+}
+
+// A judge paired with a large primary may have a much smaller window of its
+// own. Sizing input only against the fixed cap would build a request that model
+// must reject, and a rejected probe gates the bot shut.
+func TestDiscussProbeContextBudget(t *testing.T) {
+	cases := []struct {
+		name   string
+		window int
+		want   int
+	}{
+		{"unknown window falls back to the cap", 0, discussProbeContextMaxTokens},
+		{"large window is still capped", 200000, discussProbeContextMaxTokens},
+		{"small window bounds the input", 8192, 8192 - discussProbeMaxTokens - discussProbePromptOverheadTokens},
+		{"tiny window clamps to the floor", 2048, discussProbeContextFloorTokens},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := discussProbeContextBudget(tc.window); got != tc.want {
+				t.Fatalf("discussProbeContextBudget(%d) = %d, want %d", tc.window, got, tc.want)
+			}
+		})
+	}
+
+	for _, window := range []int{0, 1, 2048, 4097, 8192, 128000} {
+		if got := discussProbeContextBudget(window); got <= 0 {
+			t.Fatalf("discussProbeContextBudget(%d) = %d; a non-positive budget yields an empty window", window, got)
+		}
+	}
+}
+
+// The inherited title model never passes through the picker's tool-call filter,
+// so the runtime guard is the only thing standing between a text-only model and
+// a permanently muted group chat.
+func TestDiscussProbeModelCanJudge(t *testing.T) {
+	withCompat := func(compat ...string) models.GetResponse {
+		return models.GetResponse{Model: models.Model{Config: models.ModelConfig{Compatibilities: compat}}}
+	}
+
+	if !discussProbeModelCanJudge(withCompat(models.CompatToolCall)) {
+		t.Fatal("a tool-calling model must be accepted as a judge")
+	}
+	if !discussProbeModelCanJudge(withCompat(models.CompatVision, models.CompatToolCall)) {
+		t.Fatal("extra capabilities must not disqualify a tool-calling model")
+	}
+
+	// The shape a title model commonly has: a valid chat model, no tool calling.
+	if discussProbeModelCanJudge(withCompat()) {
+		t.Fatal("a model with no declared capabilities was accepted; it can never emit a verdict")
+	}
+	if discussProbeModelCanJudge(withCompat(models.CompatVision, models.CompatReasoning)) {
+		t.Fatal("a capable but non-tool-calling model was accepted; every wake-up would fail closed")
 	}
 }
