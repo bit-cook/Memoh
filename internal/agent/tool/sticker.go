@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	sdk "github.com/felinics/twilight/sdk"
 
@@ -29,7 +30,7 @@ type StickerLibrary interface {
 
 // StickerSightingReader resolves recently seen stickers in a conversation.
 type StickerSightingReader interface {
-	RecentStickerSightings(ctx context.Context, sessionID string, limit int) ([]dbstore.StickerSighting, error)
+	RecentStickerSightings(ctx context.Context, sessionID string, limit int, before time.Time) ([]dbstore.StickerSighting, error)
 }
 
 // StickerProvider exposes the bot's sticker library: save_sticker records what
@@ -42,6 +43,7 @@ type StickerProvider struct {
 	library   StickerLibrary
 	sightings StickerSightingReader
 	logger    *slog.Logger
+	now       func() time.Time
 }
 
 func NewStickerProvider(log *slog.Logger, library StickerLibrary, sightings StickerSightingReader) *StickerProvider {
@@ -52,6 +54,7 @@ func NewStickerProvider(log *slog.Logger, library StickerLibrary, sightings Stic
 		library:   library,
 		sightings: sightings,
 		logger:    log.With(slog.String("tool", "sticker")),
+		now:       time.Now,
 	}
 }
 
@@ -79,6 +82,12 @@ func (p *StickerProvider) Tools(_ context.Context, session SessionContext) ([]sd
 		return nil, nil
 	}
 	sess := session
+	// "The most recent sticker" has to mean the most recent one this turn could
+	// actually see. Resolving it when the tool runs would read the newest row
+	// at that instant instead — and in a group chat, messages from other people
+	// are persisted whether or not they wake the bot, so a sticker arriving
+	// while the model is still writing its description would steal it.
+	visibleUntil := p.now()
 	tools := []sdk.Tool{
 		{
 			Name: ToolSearchStickers().String(),
@@ -167,7 +176,7 @@ func (p *StickerProvider) Tools(_ context.Context, session SessionContext) ([]sd
 			if sessionID == "" {
 				return nil, errors.New("session_id is required")
 			}
-			sightings, err := p.sightings.RecentStickerSightings(ctx.Context, sessionID, stickerSightingLookback)
+			sightings, err := p.sightings.RecentStickerSightings(ctx.Context, sessionID, stickerSightingLookback, visibleUntil)
 			if err != nil {
 				return nil, err
 			}
@@ -231,10 +240,19 @@ func entryFromSighting(sighting dbstore.StickerSighting) sticker.Entry {
 }
 
 func stickerResult(entry sticker.Entry) map[string]any {
+	platform := strings.TrimSpace(entry.Platform)
+	if platform == "" {
+		platform = sticker.PlatformTelegram
+	}
+	// source_platform travels with the key, and is not decoration: an
+	// attachment that arrives without one is normalized to the platform it is
+	// being sent on, which would present a Telegram handle to another platform
+	// as one of its own.
 	result := map[string]any{
-		"platform_key": entry.Ref,
-		"type":         string(messaging.AttachmentSticker),
-		"description":  entry.Description,
+		"platform_key":    entry.Ref,
+		"source_platform": platform,
+		"type":            string(messaging.AttachmentSticker),
+		"description":     entry.Description,
 	}
 	if entry.Emoji != "" {
 		result["emoji"] = entry.Emoji

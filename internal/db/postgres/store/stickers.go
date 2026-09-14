@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/felinics/memoh/internal/attachment"
 	"github.com/felinics/memoh/internal/db"
@@ -20,7 +23,7 @@ const attachmentMetadataKeyFileID = "file_id"
 // widens the window in which two different stickers share a description.
 const recentStickerSightingsMax = 50
 
-func (s *Store) RecentStickerSightings(ctx context.Context, sessionID string, limit int) ([]dbstore.StickerSighting, error) {
+func (s *Store) RecentStickerSightings(ctx context.Context, sessionID string, limit int, before time.Time) ([]dbstore.StickerSighting, error) {
 	sessionUUID, err := db.ParseUUID(sessionID)
 	if err != nil {
 		return nil, err
@@ -28,9 +31,16 @@ func (s *Store) RecentStickerSightings(ctx context.Context, sessionID string, li
 	if limit <= 0 || limit > recentStickerSightingsMax {
 		limit = recentStickerSightingsMax
 	}
+	// A zero cutoff would select nothing, which reads as "this conversation has
+	// no stickers" — a caller that forgot to pass its turn boundary must not be
+	// silently answered with an empty list.
+	if before.IsZero() {
+		before = time.Now()
+	}
 	rows, err := s.queries.ListRecentStickerAssetsBySession(ctx, dbsqlc.ListRecentStickerAssetsBySessionParams{
-		SessionID: sessionUUID,
-		MaxCount:  int32(limit),
+		SessionID:    sessionUUID,
+		VisibleUntil: pgtype.Timestamptz{Time: before.UTC(), Valid: true},
+		MaxCount:     int32(limit),
 	})
 	if err != nil {
 		return nil, mapQueryErr(err)

@@ -136,6 +136,9 @@ DELETE FROM bot_history_message_assets WHERE team_id = public.memoh_current_team
 -- animated sticker. The lookup goes through message assets rather than a
 -- sticker table because the library that owns descriptions lives in the bot's
 -- workspace, not in Postgres: this only answers "which sticker was just seen".
+-- visible_until is the caller's turn boundary. Group messages are persisted
+-- whether or not they wake the bot, so without it "the most recent sticker"
+-- would drift to one that arrived after the turn started.
 SELECT a.content_hash, a.mime, a.name, a.metadata, m.created_at
 FROM bot_history_message_assets a
 JOIN bot_history_messages m
@@ -144,5 +147,6 @@ JOIN bot_history_messages m
 WHERE a.team_id = public.memoh_current_team_id()
   AND m.session_id = sqlc.arg(session_id)
   AND a.metadata ->> 'sticker_unique_id' IS NOT NULL
+  AND m.created_at <= sqlc.arg(visible_until)
 ORDER BY m.created_at DESC, a.ordinal ASC
 LIMIT sqlc.arg(max_count);

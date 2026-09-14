@@ -367,13 +367,15 @@ JOIN bot_history_messages m
 WHERE a.team_id = public.memoh_current_team_id()
   AND m.session_id = $1
   AND a.metadata ->> 'sticker_unique_id' IS NOT NULL
+  AND m.created_at <= $2
 ORDER BY m.created_at DESC, a.ordinal ASC
-LIMIT $2
+LIMIT $3
 `
 
 type ListRecentStickerAssetsBySessionParams struct {
-	SessionID pgtype.UUID `json:"session_id"`
-	MaxCount  int32       `json:"max_count"`
+	SessionID    pgtype.UUID        `json:"session_id"`
+	VisibleUntil pgtype.Timestamptz `json:"visible_until"`
+	MaxCount     int32              `json:"max_count"`
 }
 
 type ListRecentStickerAssetsBySessionRow struct {
@@ -392,8 +394,11 @@ type ListRecentStickerAssetsBySessionRow struct {
 // animated sticker. The lookup goes through message assets rather than a
 // sticker table because the library that owns descriptions lives in the bot's
 // workspace, not in Postgres: this only answers "which sticker was just seen".
+// visible_until is the caller's turn boundary. Group messages are persisted
+// whether or not they wake the bot, so without it "the most recent sticker"
+// would drift to one that arrived after the turn started.
 func (q *Queries) ListRecentStickerAssetsBySession(ctx context.Context, arg ListRecentStickerAssetsBySessionParams) ([]ListRecentStickerAssetsBySessionRow, error) {
-	rows, err := q.db.Query(ctx, listRecentStickerAssetsBySession, arg.SessionID, arg.MaxCount)
+	rows, err := q.db.Query(ctx, listRecentStickerAssetsBySession, arg.SessionID, arg.VisibleUntil, arg.MaxCount)
 	if err != nil {
 		return nil, err
 	}

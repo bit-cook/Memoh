@@ -47,10 +47,22 @@ func (f *fakeStickerLibrary) FindByRef(_ context.Context, _ string, ref string) 
 type fakeStickerSightings struct {
 	sightings []dbstore.StickerSighting
 	err       error
+	// before records the visibility cutoff the tool asked for, which is the
+	// whole difference between "the sticker this turn saw" and "whatever
+	// arrived while the model was still writing".
+	before time.Time
 }
 
-func (f *fakeStickerSightings) RecentStickerSightings(_ context.Context, _ string, _ int) ([]dbstore.StickerSighting, error) {
-	return f.sightings, f.err
+func (f *fakeStickerSightings) RecentStickerSightings(_ context.Context, _ string, _ int, before time.Time) ([]dbstore.StickerSighting, error) {
+	f.before = before
+	visible := make([]dbstore.StickerSighting, 0, len(f.sightings))
+	for _, sighting := range f.sightings {
+		if !before.IsZero() && sighting.SeenAt.After(before) {
+			continue
+		}
+		visible = append(visible, sighting)
+	}
+	return visible, f.err
 }
 
 func stickerToolSession() SessionContext {
@@ -108,6 +120,9 @@ func TestStickerProvider_SaveBindsToMostRecentSighting(t *testing.T) {
 	}
 	if result["platform_key"] != "sticker-file-new" || result["type"] != "sticker" {
 		t.Fatalf("result = %+v, want a ready-to-send attachment reference", result)
+	}
+	if result["source_platform"] != sticker.PlatformTelegram {
+		t.Fatalf("result = %+v, want the key's own platform, so another platform cannot take it for one of its own", result)
 	}
 }
 
@@ -226,6 +241,9 @@ func TestStickerProvider_SearchReturnsSendableReference(t *testing.T) {
 	if !ok || len(items) != 1 {
 		t.Fatalf("stickers = %#v", result["stickers"])
 	}
+	if items[0]["source_platform"] != sticker.PlatformTelegram {
+		t.Fatalf("item = %+v, want the key tagged with the platform that issued it", items[0])
+	}
 	if items[0]["platform_key"] != "sticker-file" || items[0]["type"] != "sticker" {
 		t.Fatalf("item = %+v, want a send-ready attachment reference", items[0])
 	}
@@ -255,5 +273,38 @@ func TestStickerProvider_WithoutLibraryExposesNoTools(t *testing.T) {
 	}
 	if len(toolList) != 0 {
 		t.Fatalf("tools = %+v, want none", toolList)
+	}
+}
+
+// 群里其他人发的消息不触发 agent 也会立刻入库。模型正在描述 A 的时候 B 到达,
+// 保存必须仍然绑定 A——工具在装配时就定下了本轮能看见什么,而不是执行到那一刻
+// 再去问数据库"最新的是哪张"。
+func TestStickerProvider_SaveIgnoresStickersArrivingMidTurn(t *testing.T) {
+	t.Parallel()
+
+	turnStart := time.Now()
+	library := &fakeStickerLibrary{}
+	sightings := &fakeStickerSightings{sightings: []dbstore.StickerSighting{
+		{Ref: "arrived-mid-turn", UniqueID: "unique-late", SeenAt: turnStart.Add(2 * time.Second)},
+		{Ref: "the-one-in-context", UniqueID: "unique-seen", SeenAt: turnStart.Add(-2 * time.Second)},
+	}}
+	provider := NewStickerProvider(nil, library, sightings)
+	provider.now = func() time.Time { return turnStart }
+
+	toolList, err := provider.Tools(context.Background(), stickerToolSession())
+	if err != nil {
+		t.Fatalf("Tools() error = %v", err)
+	}
+	tool := toolByNameForTest(t, toolList, ToolSaveSticker())
+	if _, err := tool.Execute(&sdk.ToolExecContext{Context: context.Background()}, map[string]any{
+		"description": "描述的是本轮看到的那张",
+	}); err != nil {
+		t.Fatalf("save_sticker error = %v", err)
+	}
+	if len(library.saved) != 1 || library.saved[0].Ref != "the-one-in-context" {
+		t.Fatalf("saved = %+v, want the sticker this turn could see", library.saved)
+	}
+	if !sightings.before.Equal(turnStart) {
+		t.Fatalf("visibility cutoff = %v, want the turn boundary %v", sightings.before, turnStart)
 	}
 }

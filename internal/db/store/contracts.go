@@ -513,5 +513,7 @@ type StickerSighting struct {
 // see", so a save can name a sticker without the model having to quote an
 // opaque platform id back.
 type StickerSightingStore interface {
-	RecentStickerSightings(ctx context.Context, sessionID string, limit int) ([]StickerSighting, error)
+	// before is the caller's turn boundary: sightings after it exist in the
+	// conversation but were not visible to the turn asking.
+	RecentStickerSightings(ctx context.Context, sessionID string, limit int, before time.Time) ([]StickerSighting, error)
 }
