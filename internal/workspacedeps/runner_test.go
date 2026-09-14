@@ -52,7 +52,7 @@ func (f *runFixture) spec(depID, script string) RunSpec {
 }
 
 func (f *runFixture) lockDir(depID string) string {
-	return filepath.Join(LocksDir(f.dataRoot), depID+lockFileSuffix)
+	return executionLockPath(Home(f.dataRoot, depID), depID, f.platform.OS)
 }
 
 func (f *runFixture) assertNoLeftovers(t *testing.T, depID string) {
@@ -120,7 +120,7 @@ func TestRunForwardsLogsAndReadsResult(t *testing.T) {
 	if !sink.has(StreamStderr, wantEnv) {
 		t.Errorf("stderr lines = %q, want %q", sink.get(StreamStderr), wantEnv)
 	}
-	for _, dir := range []string{Home(f.dataRoot, "demo"), VersionsDir(Home(f.dataRoot, "demo")), ShimDir(f.dataRoot)} {
+	for _, dir := range []string{Home(f.dataRoot, "demo"), ShimDir(f.dataRoot)} {
 		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 			t.Errorf("expected directory %s to exist (err = %v)", dir, err)
 		}

@@ -694,3 +694,26 @@ func TestAgentConfigEffectiveContextAbsoluteMaxTokens(t *testing.T) {
 		t.Fatalf("explicit cap = %d, want 500000", got)
 	}
 }
+
+func TestDependencyStoreRootRemainsSandboxAbsolute(t *testing.T) {
+	for _, section := range []string{"container", "workspace"} {
+		t.Run(section, func(t *testing.T) {
+			filename := filepath.Join(t.TempDir(), "config.toml")
+			if err := os.WriteFile(filename, []byte("["+section+"]\ndependency_store_root = \"/var/lib/memoh/deps\"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := Load(filename)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Workspace.DependencyStoreRoot != "/var/lib/memoh/deps" {
+				t.Fatalf("sandbox root changed: %s", cfg.Workspace.DependencyStoreRoot)
+			}
+		})
+	}
+	for _, root := range []string{"relative", "/", "/usr/local", "/opt/memoh/toolkit/deps", "/tmp/../data"} {
+		if ValidateDependencyStoreRoot(root) == nil {
+			t.Fatalf("accepted unsafe root %q", root)
+		}
+	}
+}
