@@ -1224,6 +1224,7 @@ import type { BotWorkdir } from '@/composables/api/useWorkdirs'
 import { useWorkspaceTabsStore } from '@/store/workspace-tabs'
 import { storeToRefs } from 'pinia'
 import { useElementSize, useIntersectionObserver } from '@vueuse/core'
+import { useIsMobile } from '@/composables/useIsMobile'
 import { useRuntimeControls } from '@/composables/useRuntimeControls'
 import { useQuery } from '@pinia/colada'
 import { getAcpProfiles, getBotsByBotIdAgents, getBotsByBotIdSettings, getBotsByBotIdWorkspaceTargets, postTranscriptionModelsByIdTest } from '@memohai/sdk'
@@ -1330,6 +1331,7 @@ const composerError = ref('')
 const forkDialogOpen = ref(false)
 const pendingForkTurnId = ref('')
 const modelPopoverOpen = ref(false)
+const isMobile = useIsMobile()
 const agentPopoverOpen = ref(false)
 const hoveredAgentChoice = ref('')
 watch(agentPopoverOpen, (open) => {
@@ -3041,6 +3043,7 @@ function onModelSelected() {
 
 async function onComposerModelValueSelected(value: string) {
   if (activeUsesACPRuntime.value && acpConfigChanging.value) return
+  if (isMobile.value) modelPopoverOpen.value = false
   const previous = composerPair.snapshot()
   if (!composerPair.selectModel(value)) return
   if (!activeUsesExternalAgentComposer.value) {
@@ -3121,6 +3124,7 @@ async function onRuntimeModeSelected(value: unknown) {
 
 async function onComposerReasoningEffortSelected(value: string) {
   if (activeUsesACPRuntime.value && acpConfigChanging.value) return
+  if (isMobile.value) modelPopoverOpen.value = false
   const previous = composerPair.snapshot()
   if (activeUsesDirectRuntime.value && !overrideModelId.value) overrideModelId.value = composerModelId.value
   overrideReasoningEffort.value = value
