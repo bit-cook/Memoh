@@ -847,6 +847,7 @@
     "folderUnavailable": "Unavailable folder",
     "folderDetachDraft": "Start without a folder",
     "folderNewSession": "New session in {name}",
+    "apps": "Apps",
     "manageConnectors": "Manage connectors",
     "attachFiles": "Upload Files or Images",
     "dropToAttach": "Drop files here to add to chat",

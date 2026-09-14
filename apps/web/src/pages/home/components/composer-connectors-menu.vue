@@ -47,7 +47,7 @@ function goToSettings() {
   >
     <DropdownMenuSubTrigger :disabled="!botId">
       <ConnectorIcon />
-      <span>{{ t('connectors.title') }}</span>
+      <span>{{ t('chat.apps') }}</span>
     </DropdownMenuSubTrigger>
     <DropdownMenuSubContent class="w-72">
       <DropdownMenuItem
