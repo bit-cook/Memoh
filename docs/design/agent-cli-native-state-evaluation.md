@@ -158,6 +158,24 @@ python3 -m unittest discover -s scripts -p test_bench_agent_storage.py -v
 
 七项回归测试通过。本地实际 app-server 流程已执行；仓库整体 UI/API、依赖安装与授权 repair 的验证由对应实施工作包提供，不能由此工具替代。
 
+## E2B NFS 启动门控补验（2026-09-15）
+
+在专用 Cloud 测试工作区中，Codex `0.154.0` 已通过真实安装和 `--version`，负载位于本地盘，Memoh 自身的 `/run/memoh/deps` 文件锁也正常。正确保持 stdin 的 app-server initialize 仍在持久 Home 上阻塞。以下都是未认证的初始化实验，不代表真实模型 turn：
+
+| 实验 | 观察结果 |
+| --- | --- |
+| Home 保持 `/data/.codex` | `tmp/arg0/.../.lock` 的 `flock(LOCK_EX|LOCK_NB)` 不返回；30 s 内未完成 initialize |
+| 新测试 Home 保持 `/data/.codex/agents/qa-arg0-probe`，仅 `tmp/arg0` 链接到本地 `/run` | arg0 锁立即成功，随后 `state_5.sqlite` 上的 `fcntl(F_SETLK)` 阻塞；34.75 s 后报告 SQLite runtime 初始化失败，initialize 仍未完成 |
+| 全部 Home 放到专用本地测试目录 | initialize 在 0.8805 s 返回；这不满足持久 Home 的既定契约，未作为生产修复 |
+
+精确版本源码支持这条失败链：
+
+- [`arg0/src/lib.rs`](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/arg0/src/lib.rs#L338-L385) 固定使用 `CODEX_HOME/tmp/arg0`。该路径不读取 `CODEX_TMPDIR`；`TMPDIR` 只参与整体 Home 的临时目录安全检查。
+- [CLI 初始化顺序](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/cli/src/main.rs#L1120-L1137) 先执行 arg0 setup，之后才解析 CLI 配置，因此 `sqlite_home`、`log_dir` 无法绕过第一处锁。
+- arg0 内容是进程生命周期内的 helper 软链接与锁，可重建；[SQLite runtime](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/state/src/sqlite.rs#L278-L289) 和 [thread writer 锁](https://github.com/openai/codex/blob/rust-v0.154.0/codex-rs/thread-store/src/local/writer_lock.rs#L89-L114) 另有持久/互斥语义。SQL 的 busy timeout 不提供 NFS 系统调用的硬超时。
+
+**保留 Home 在当前 E2B NFS、只迁移 CLI 负载，未通过原生 Codex 启动验收。** 单独迁移 arg0 也不足以解决。此结果不授权迁移整个 Home、丢弃 SQLite、修改 NFS 挂载锁语义或切换生产模板；后续需要明确持久状态的存储契约并重新验证。未将这个测试软链接写入生产运行时代码，也没有读取或绑定现有 Agent 凭证。
+
 ## 尚未完成的性能与业务验收
 
 - E2B 的实际模板、NFS mount、资源规格和 cold/warm 对照；安装阶段的下载、npm view、解压、发布、state 提交、GC 分解。

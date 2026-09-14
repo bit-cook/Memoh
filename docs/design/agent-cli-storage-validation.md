@@ -1,6 +1,6 @@
 # Agent CLI storage implementation validation
 
-Date: 2026-09-14. Status: implementation and validation in progress.
+Validation dates: 2026-09-14–15. Status: implementation and validation in progress.
 
 This record accompanies the [implementation plan](agent-cli-storage-and-single-install-plan.md). Results below describe completed checks, not release approval. Human QA has not been performed.
 
@@ -58,10 +58,11 @@ The [Codex native-state evaluation](agent-cli-native-state-evaluation.md) contai
 
 ## Cloud and E2B
 
-A dedicated E2B template (`1rjub6rv8z1t6sax5nug`, alias `memoh-agent-cli-storage-test-20260914`) was built without changing production defaults. The gated volume-rebuild mechanism test passed in 21.85 seconds and deleted its temporary sandboxes and volume. That test uses a synthetic payload; it is not evidence of integrated Memoh repair or authenticated CLI performance on E2B. The later integrated Cloud run installed Codex successfully, but native app-server startup on NFS is still blocked by Codex 0.154.0 taking a lock under `CODEX_HOME/tmp/arg0`. The same installed binary initializes with a disposable local Home. This is not fixed by the dependency control-root change; the persistent-Home runtime remains unverified on E2B. Full Cloud acceptance is tracked separately until completed.
+A dedicated E2B template (`1rjub6rv8z1t6sax5nug`, alias `memoh-agent-cli-storage-test-20260914`) was built without changing production defaults. The gated volume-rebuild mechanism test passed in 21.85 seconds and deleted its temporary sandboxes and volume. That test uses a synthetic payload; it is not evidence of integrated Memoh repair or authenticated CLI performance on E2B. The later integrated Cloud run installed Codex successfully, but native app-server startup on NFS is still blocked by Codex 0.154.0 taking a lock under `CODEX_HOME/tmp/arg0`. The same installed binary initializes with a disposable local Home. Moving only a disposable test Home's `tmp/arg0` onto local storage passed that lock, then blocked in a `state_5.sqlite` `fcntl` lock; after 34.75 seconds SQLite runtime initialization failed and initialize remained incomplete. This is not fixed by the dependency control-root change; the retained-Home runtime fails this E2B gate. No production Home, SQLite or NFS mount change was made. See the native-state evaluation for exact-version source evidence. Full Cloud acceptance is tracked separately until completed.
 
 ## Remaining acceptance work
 
+- Resolve the demonstrated native Codex Home lock/SQLite failure on E2B NFS without losing persistent state.
 - Validate authenticated Codex and Claude turns with authorized test credentials, including persistence and resume.
 - Complete Cloud adapter tests and real development API/UI verification.
 - Submit and check the related draft PRs, keeping Human QA unchecked. Current screenshots and sanitized results are versioned with the implementation.
@@ -73,5 +74,7 @@ The seven benchmark protocol tests pass. The full `mise run lint` currently stop
 The first commit hook run hit the unchanged `TestIdleTimeoutToolCallRearmsCurrentWindow` timing test (a 50 ms sleep against an 80 ms deadline) under parallel checks. The isolated test then passed 20 consecutive runs; the complete commit hook then passed without changing that unrelated test.
 
 ## Related contributions
+
+OSS draft PR [#1258](https://github.com/felinics/Memoh/pull/1258) contains the implementation and public screenshot evidence. PR Format passed; the remaining CI checks are tracked on the PR.
 
 Supermarket draft PR [#26](https://github.com/felinics/supermarket/pull/26) has passed both CI checks and contains the 32 recipe updates, generated lock and versioned screenshots from the real Memoh installation flow. It does not deploy the registry.
