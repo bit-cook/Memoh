@@ -131,7 +131,7 @@ Memoh is a commercial project split across two repositories: this OSS repo and a
 The `Human QA` section contains only one status checkbox, `- [ ] Human QA passed`, without an additional warning line:
 
 - **Not yet verified by a human**: leave the checkbox unchecked.
-- **Explicitly confirmed by a human**: check `Human QA passed` and identify the reviewer and confirmation record. CI, automated tests, and agent screenshots do not count as human QA.
+- **Explicitly confirmed by a human**: check `Human QA passed`. Reviewer details and confirmation records are optional. CI, automated tests, and agent screenshots do not count as human QA.
 - **Changes after confirmation**: uncheck the box if a new commit may affect the verified behavior, until the current head is confirmed again. Spelling or comment changes that do not affect behavior do not require another confirmation.
 
 ## Key Development Rules

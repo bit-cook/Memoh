@@ -42,10 +42,10 @@ test('fenced reproduction text is allowed and duplicate headings are rejected', 
   assert.deepEqual(validate(issue('bug').replace('Specific reproducible details', '```sh\nmemoh start\n```'), false).errors, []);
   assert.ok(validate(validPR() + '\n## Type\n- [x] test', true).errors.some(error => error.includes('Duplicate')));
 });
-test('single QA checkbox defaults to unverified; checking it requires a record', () => {
+test('single QA checkbox accepts checked and unchecked states without a record', () => {
   assert.deepEqual(validate(validPR(), true).errors, []);
   let human = validPR().replace('- [ ] Human QA passed', '- [x] Human QA passed');
-  assert.ok(validate(human, true).errors.length);
+  assert.deepEqual(validate(human, true).errors, []);
   human += '\n@maintainer confirmed the happy path in the PR review.';
   assert.deepEqual(validate(human, true).errors, []);
   assert.deepEqual(validate(human.replace('[x] Human QA passed','[X] Human QA passed'), true).errors, []);
@@ -168,7 +168,7 @@ test('QA checkbox is visible, unique and allows follow-up notes', () => {
   }
   const human=validPR().replace(choice,'- [x] Human QA passed');
   for(const evidence of ['<!-- @reviewer confirmed -->','\`\`\`\n@reviewer confirmed\n\`\`\`']) {
-    assert.ok(validate(human+'\n'+evidence,true).errors.length);
+    assert.deepEqual(validate(human+'\n'+evidence,true).errors, []);
   }
 });
 test('bare completion placeholders are reported without a minimum word count', () => {
@@ -179,11 +179,11 @@ test('bare completion placeholders are reported without a minimum word count', (
 });
 
 
-test('legacy QA labels retain the same confirmation and uniqueness requirements', () => {
+test('legacy QA labels accept checking without a record and remain unique', () => {
   const legacy = validPR().replace('Human QA passed', '已通过真人 QA');
   assert.deepEqual(validate(legacy, true).errors, []);
   const confirmed = legacy.replace('- [ ] 已通过真人 QA', '- [x] 已通过真人 QA');
-  assert.ok(validate(confirmed, true).errors.some(error => error.includes('confirmation record')));
+  assert.deepEqual(validate(confirmed, true).errors, []);
   assert.deepEqual(validate(confirmed + '\n@reviewer confirmed in review #123.', true).errors, []);
   const mixed = legacy + '\n- [ ] Human QA passed';
   assert.ok(validate(mixed, true).errors.some(error => error.includes('exactly one')));

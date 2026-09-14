@@ -30,5 +30,5 @@ If screenshots are unavailable or the change has no visible interface, explain w
 
 ## Human QA
 
-<!-- Leave unchecked until a human explicitly confirms. Then check the box and identify the reviewer and confirmation record. -->
+<!-- Leave unchecked until a human explicitly confirms. Checking the box is sufficient; reviewer details and confirmation records are optional. -->
 - [ ] Human QA passed

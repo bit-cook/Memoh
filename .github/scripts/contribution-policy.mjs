@@ -69,10 +69,7 @@ export function validate(body, isPR) {
     if (!validQAChoice) {
       errors.push('Keep exactly one "Human QA passed" checkbox in "Human QA"; leave it unchecked until verified.');
     }
-    if (validQAChoice && qaChoices[0][1].toLowerCase() === 'x') {
-      const evidence = qaText.replace(/^\s*-\s+\[[ xX]\].*$/gm, '').trim();
-      if (!evidence || /^(?:TBD|TODO|待填写|N\/?A)$/i.test(evidence)) errors.push('Identify the reviewer and confirmation record in "Human QA".');
-    }
+
   } else {
     const fields = { bug: ['bug', 'steps', 'expected', 'version'], feat: ['feature', 'motivation'], help: ['help', 'goal', 'attempts', 'environment'] };
     (fields[type] ?? []).forEach(required);

@@ -233,7 +233,7 @@ Empty sections, placeholders (including bare OK/done/passed), missing selections
 
 Upload screenshots as GitHub-accessible attachments. For visible behavior, agents should use browser tools or Computer Use to exercise the change and capture evidence. If capture or upload is unavailable or not applicable, explain why and describe alternative verification. Local file paths are not uploaded evidence.
 
-Human QA uses a single `- [ ] Human QA passed` status checkbox without an additional warning line. Leave it unchecked until a human explicitly confirms, then check it and identify the reviewer and confirmation record. The choice and confirmation must appear in visible body text, not comments or code blocks. Agent tests and screenshots do not replace human QA; automated validation checks the declaration structure without proving that verification occurred. The validator also accepts the previous Chinese checkbox label on existing PRs.
+Human QA uses a single `- [ ] Human QA passed` status checkbox without an additional warning line. Leave it unchecked until a human explicitly confirms, then check it. Reviewer details and confirmation records are optional. The checkbox must appear in visible body text, not comments or code blocks. Agent tests and screenshots do not replace human QA; automated validation checks the declaration structure without proving that verification occurred. The validator also accepts the previous Chinese checkbox label on existing PRs.
 
 ### Workflow Behavior
 
