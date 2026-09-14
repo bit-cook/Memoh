@@ -4,6 +4,7 @@ import type {
   UITurn,
 } from '@/composables/api/useChat.types'
 import {
+  messageIdentityId,
   nextId,
   normalizeAttachment,
   normalizeForwardRef,
@@ -149,33 +150,57 @@ export function createTranscriptHistory(deps: {
   // Render identity (the Vue key) and entity identity (who the turn is) are
   // orthogonal: the render key is born with the on-screen turn and never
   // changes, while the settled twin arrives under the database id. Adoption
-  // matches twins by entity identity and hands the prior's render key to the
-  // incoming twin, so a live → settled handover never remounts the component.
-  // The database id survives on serverId for pagination cursors.
+  // hands the prior's render key to the incoming twin, so a live → settled
+  // handover never remounts the component. The database id survives on
+  // serverId for pagination cursors.
   //
-  // Pairing is positional and each prior is handed out once. A history page
-  // holds at most one turn per (turn_id, role) today — every visible user row
-  // opens its own turn, so a turn is one request and one reply — but no code
-  // enforces that across persistence paths. The previous lookup gave the same
-  // render id to every twin sharing a key, and mergeMessages then collapsed
-  // them into a single turn: the rest vanished with no diagnostic. Consuming
-  // the prior downgrades a broken invariant to an ordering question, which is
-  // visible and recoverable, instead of silent data loss.
+  // Matching runs strongest-first. A row the database has named is the same row
+  // wherever it appears, so its stored id decides before anything else; only
+  // what is left over is paired by (turn_id, role), and only against turns that
+  // have no stored id — the live and optimistic ones whose key a settled twin
+  // is meant to inherit. A page that repeats a (turn_id, role) would otherwise
+  // hand one render key to two different rows: the id-keyed merge collapses
+  // them into one, and a refresh that returns only the second overwrites the
+  // first's content with it.
+  //
+  // No adoption may mint a key twice. That is the loss this exists to prevent,
+  // so a pairing that would collide is skipped and the twin keeps its own id.
   function adoptRenderIdentity(incoming: ChatMessage[]) {
     if (deps.messages.length === 0 || incoming.length === 0) return
-    const byIdentity = new Map<string, ChatMessage[]>()
+    const byStoredId = new Map<string, ChatMessage>()
+    const unnamedByIdentity = new Map<string, ChatMessage[]>()
     for (const existing of deps.messages) {
+      const storedId = existing.settled === true ? messageIdentityId(existing) : ''
+      if (storedId) {
+        if (!byStoredId.has(storedId)) byStoredId.set(storedId, existing)
+        continue
+      }
       const key = turnIdentityKey(existing)
       if (!key) continue
-      const priors = byIdentity.get(key)
-      if (priors) priors.push(existing)
-      else byIdentity.set(key, [existing])
+      const unnamed = unnamedByIdentity.get(key)
+      if (unnamed) unnamed.push(existing)
+      else unnamedByIdentity.set(key, [existing])
     }
+
+    const claimed = new Set<string>()
+    const unmatched: ChatMessage[] = []
     for (const twin of incoming) {
+      const prior = byStoredId.get(messageIdentityId(twin))
+      if (!prior) {
+        unmatched.push(twin)
+        continue
+      }
+      claimed.add(prior.id)
+      if (twin.id === prior.id) continue
+      twin.serverId = twin.serverId ?? twin.id
+      twin.id = prior.id
+    }
+    for (const twin of unmatched) {
       const key = turnIdentityKey(twin)
       if (!key) continue
-      const prior = byIdentity.get(key)?.shift()
-      if (!prior || twin.id === prior.id) continue
+      const prior = unnamedByIdentity.get(key)?.shift()
+      if (!prior || twin.id === prior.id || claimed.has(prior.id)) continue
+      claimed.add(prior.id)
       twin.serverId = twin.serverId ?? twin.id
       twin.id = prior.id
     }

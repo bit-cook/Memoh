@@ -68,9 +68,10 @@ describe('render identity adoption', () => {
     expect(transcript.messages.map(turn => turn.serverId)).toEqual(['m1', 'm2'])
   })
 
-  // A history page holds at most one turn per (turn_id, role) today, and
-  // internal/agent/view/turn_identity_test.go guards that server-side. If a new
-  // persistence path ever breaks it, the client must degrade to an ordering
+  // A history page holds at most one turn per (turn_id, role) today, guarded
+  // server-side over the real persist → paged query → convert chain by
+  // TestPostgresHistoryPageKeepsTurnRoleIdentityUnique. If a new persistence
+  // path ever breaks it, the client must degrade to an ordering
   // question — not drop turns. The old lookup gave every twin sharing a key the
   // same render id, and the id-keyed merge then collapsed them into one.
   it('keeps every turn when history repeats a (turn_id, role)', () => {
@@ -99,6 +100,60 @@ describe('render identity adoption', () => {
     transcript.replaceMessages([
       settledTurn('m1', 'turn-1', 1, 'assistant', '2026-07-27T08:00:01.000Z'),
       settledTurn('m3', 'turn-1', 1, 'assistant', '2026-07-27T08:00:03.000Z'),
+    ], 'session-1')
+
+    const ids = transcript.messages.map(turn => turn.id)
+    expect(transcript.messages).toHaveLength(2)
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+})
+
+// The pairing has to survive the very case it defends against. Consuming each
+// prior once is not enough on its own: the leftover twin keeps its own database
+// id, and if that id is the one a earlier twin just inherited, both end up
+// under the same render key — the merge collapses them again.
+describe('adoption never mints a render key twice', () => {
+  it('matches a repeated (turn_id, role) page by stored id first', () => {
+    const transcript = makeTranscript()
+    transcript.replaceMessages([
+      settledTurn('a3', 'turn-1', 1, 'assistant', '2026-07-27T08:00:03.000Z'),
+    ], 'session-1')
+
+    transcript.mergeMessages([
+      settledTurn('a1', 'turn-1', 1, 'assistant', '2026-07-27T08:00:01.000Z'),
+      settledTurn('a3', 'turn-1', 1, 'assistant', '2026-07-27T08:00:03.000Z'),
+    ], 'session-1')
+
+    const ids = transcript.messages.map(turn => turn.id)
+    expect(transcript.messages).toHaveLength(2)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(ids).toContain('a1')
+    expect(ids).toContain('a3')
+  })
+
+  it('does not overwrite an earlier row when a later refresh returns only one', () => {
+    const transcript = makeTranscript()
+    transcript.replaceMessages([
+      settledTurn('a1', 'turn-1', 1, 'assistant', '2026-07-27T08:00:01.000Z'),
+      settledTurn('a3', 'turn-1', 1, 'assistant', '2026-07-27T08:00:03.000Z'),
+    ], 'session-1')
+
+    transcript.mergeMessages([
+      settledTurn('a3', 'turn-1', 1, 'assistant', '2026-07-27T08:00:03.000Z'),
+    ], 'session-1')
+
+    expect(transcript.messages.map(turn => turn.id)).toEqual(['a1', 'a3'])
+  })
+
+  it('keeps unique keys through replaceMessages as well', () => {
+    const transcript = makeTranscript()
+    transcript.replaceMessages([
+      settledTurn('a3', 'turn-1', 1, 'assistant', '2026-07-27T08:00:03.000Z'),
+    ], 'session-1')
+
+    transcript.replaceMessages([
+      settledTurn('a1', 'turn-1', 1, 'assistant', '2026-07-27T08:00:01.000Z'),
+      settledTurn('a3', 'turn-1', 1, 'assistant', '2026-07-27T08:00:03.000Z'),
     ], 'session-1')
 
     const ids = transcript.messages.map(turn => turn.id)

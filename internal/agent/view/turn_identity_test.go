@@ -11,18 +11,19 @@ import (
 
 // The web transcript pairs a live or optimistic turn with its settled twin by
 // (turn_id, role), one to one: adoptRenderIdentity hands each on-screen render
-// key to exactly one incoming turn. That only works because a history page
-// never holds two turns with the same (turn_id, role) — every visible user row
-// opens its own turn (persistHistoryTurn always calls CreateHistoryTurn for
-// role=user; tail linking is restricted to assistant and tool rows), so a turn
-// is one request and one reply.
+// key to exactly one incoming turn.
 //
-// Nothing in the converter enforces that, and a persistence path that ever
-// files a second visible user row under an existing turn would produce two
-// assistant turns sharing a turn id. This guard fails here, in CI, rather than
-// letting the client drop turns on screen with no diagnostic. A new path that
-// legitimately needs multi-segment turns has to change the client's pairing
-// rule and this test together.
+// These cases are hand-built rows, so they only pin the converter's own
+// grouping: they cannot vouch for what the persistence layer writes, and a new
+// write path that breaks the invariant would leave them passing. The guard that
+// covers the real chain — persist, paged history query, convert — is
+// TestPostgresHistoryPageKeepsTurnRoleIdentityUnique in this package; it runs
+// in the migrations workflow against a live database.
+//
+// What this one is for: the converter decides where a turn ends. Change
+// flushPending's triggers, or what opens a system turn, and the same persisted
+// rows can start producing two turns under one id. That regression is cheap to
+// catch here and does not need a database.
 func TestConvertMessagesToUITurnsKeepsTurnRoleIdentityUnique(t *testing.T) {
 	base := time.Date(2026, 4, 10, 10, 0, 0, 0, time.UTC)
 
