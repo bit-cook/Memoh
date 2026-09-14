@@ -3687,6 +3687,8 @@
     "noDescription": "No description",
     "unnamedSkill": "Unnamed skill",
     "dependenciesHint": "Installed into the bot's workspace and shared with other Apps that need them.",
+    "dependenciesLoadError": "Unable to load dependency details. Please try again.",
+    "dependencyUnavailable": "Dependency details unavailable.",
     "dependencyPending": "Loading…",
     "connectorsHint": "Authorize connectors during installation.",
     "connectorsUnavailableHint": "Connect-It is not configured on this server; these connectors will stay unauthorized.",

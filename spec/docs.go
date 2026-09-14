@@ -17530,6 +17530,32 @@ const docTemplate = `{
                 }
             }
         },
+        "/workspace-dependencies": {
+            "get": {
+                "description": "Reads names, descriptions and verified icon URLs without inspecting or starting a bot workspace.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "containerd"
+                ],
+                "summary": "List published workspace dependency metadata",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handlers.WorkspaceDependencyCatalogResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/apperror.Problem"
+                        }
+                    }
+                }
+            }
+        },
         "/workspace-dependencies/icons/{digest}": {
             "get": {
                 "produces": [
@@ -24852,6 +24878,43 @@ const docTemplate = `{
                 },
                 "storage_bytes": {
                     "type": "integer"
+                }
+            }
+        },
+        "handlers.WorkspaceDependencyCatalogItem": {
+            "type": "object",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "icon_url": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "translations": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/handlers.WorkspaceDependencyTranslation"
+                    }
+                }
+            }
+        },
+        "handlers.WorkspaceDependencyCatalogResponse": {
+            "type": "object",
+            "properties": {
+                "catalog_stale": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/handlers.WorkspaceDependencyCatalogItem"
+                    }
                 }
             }
         },

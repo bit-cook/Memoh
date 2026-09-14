@@ -342,6 +342,7 @@ func (h *ContainerdHandler) Register(e *echo.Echo) {
 	// Workspace dependency routes. Dependencies are installed and removed
 	// through Apps (/bots/:bot_id/packages); these routes inspect and
 	// maintain the copies an App references.
+	e.GET("/workspace-dependencies", h.ListWorkspaceDependencyCatalog)
 	e.GET("/workspace-dependencies/icons/:digest", h.GetWorkspaceDependencyIcon)
 	deps := e.Group("/bots/:bot_id/dependencies")
 	deps.GET("", h.ListWorkspaceDependencies)

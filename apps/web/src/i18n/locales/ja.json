@@ -3681,6 +3681,8 @@
     "noDescription": "説明なし",
     "unnamedSkill": "名前のないスキル",
     "dependenciesHint": "Bot のワークスペースにインストールされ、必要とする他のアプリと共有されます。",
+    "dependenciesLoadError": "依存関係の情報を読み込めませんでした。再試行してください。",
+    "dependencyUnavailable": "この依存関係の情報はありません。",
     "dependencyPending": "読み込み中…",
     "connectorsHint": "インストール中にコネクターを認証できます。",
     "connectorsUnavailableHint": "このサーバーでは Connect-It が設定されていないため、これらのコネクターは未認証のままになります。",

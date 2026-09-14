@@ -94,16 +94,31 @@
             {{ $t('supermarket.dependenciesHint') }}
           </p>
           <SettingsSection>
+            <template
+              v-if="dependenciesQuery.error.value"
+              #actions
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                :loading="dependenciesQuery.isLoading.value"
+                @click="dependenciesQuery.refetch()"
+              >
+                {{ $t('common.retry') }}
+              </Button>
+            </template>
             <SettingsRow
               v-for="dep in dependencyRows"
               :key="dep.id"
             >
               <template #leading>
                 <div class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-background">
-                  <SkillIcon
-                    v-if="dep.summary?.icon"
-                    :icon="dep.summary.icon"
-                  />
+                  <img
+                    v-if="dep.summary && dependencyIconUrl(dep.summary)"
+                    :src="dependencyIconUrl(dep.summary)"
+                    alt=""
+                    class="size-6 object-contain"
+                  >
                   <App
                     v-else
                     class="size-4 text-muted-foreground"
@@ -112,21 +127,12 @@
               </template>
               <template #content>
                 <p class="text-sm font-medium">
-                  {{ dep.summary ? appDisplayName(dep.summary, locale) : dep.id }}
+                  {{ dep.summary ? dependencyName(dep.summary) : dep.id }}
                 </p>
                 <p class="mt-1 text-xs text-muted-foreground">
-                  {{ dep.summary ? appDisplayDescription(dep.summary, locale) : $t('supermarket.dependencyPending') }}
+                  {{ dep.summary ? dependencyDescription(dep.summary) : dependencyFallback }}
                 </p>
               </template>
-              <Button
-                v-if="dep.summary"
-                variant="ghost"
-                size="sm"
-                @click="openApp('memoh', dep.id)"
-              >
-                {{ $t('supermarket.viewDetails') }}
-                <ChevronRight class="size-4" />
-              </Button>
             </SettingsRow>
           </SettingsSection>
         </section>
@@ -235,15 +241,17 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useQuery } from '@pinia/colada'
-import { ArrowLeft, ChevronRight, Package as App, Plug } from 'lucide-vue-next'
+import { ArrowLeft, Package as App, Plug } from 'lucide-vue-next'
 import { Badge, Button, DetailPane, InlineLoadingRow, SettingsRow, SettingsSection, SettingsShell, toast } from '@felinic/ui'
 import {
   getConnectorsCatalog,
+  getWorkspaceDependencies,
   getSupermarketRegistries,
   getSupermarketRegistriesByRegistryIdAppsByAppId,
   getSupermarketRegistriesByRegistryIdAppsByAppIdReleasesByRevision,
   type HandlersSupermarketAppDescriptor,
 } from '@memohai/sdk'
+import { useWorkspaceDependencyText } from '@/composables/useWorkspaceDependencyText'
 import ProviderIcon from '@/components/provider-icon/index.vue'
 import {
   categoryDisplayName,
@@ -305,35 +313,29 @@ const connectorCatalog = computed(() => new Map(
     .map(item => [item.type, item]),
 ))
 
-// Canonical App summaries of the referenced dependencies, loaded lazily.
-const dependencySummaries = ref<Record<string, HandlersSupermarketAppDescriptor | null>>({})
-const dependencyRows = computed(() => (pkg.value?.dependencies ?? []).map(id => ({ id, summary: dependencySummaries.value[id] ?? null })))
-
-async function loadDependencySummaries(ids: string[]) {
-  const results = await Promise.all(ids.map(async (id) => {
-    try {
-      const { data } = await getSupermarketRegistriesByRegistryIdAppsByAppId({
-        path: { registry_id: 'memoh', app_id: id },
-        throwOnError: true,
-      })
-      return [id, data] as const
-    } catch {
-      return [id, null] as const
-    }
-  }))
-  dependencySummaries.value = Object.fromEntries(results)
-}
-
-function openApp(registry: string, id: string) {
-  void router.push({ name: 'supermarket-app-detail', params: { registryId: registry, appId: id }, query: route.query })
-}
+const { dependencyName, dependencyDescription, dependencyIconUrl } = useWorkspaceDependencyText()
+const dependenciesQuery = useQuery({
+  key: () => ['workspace-dependency-catalog'],
+  query: async () => {
+    const { data } = await getWorkspaceDependencies({ throwOnError: true })
+    return data
+  },
+  enabled: () => !!pkg.value?.dependencies.length,
+})
+const dependencyFallback = computed(() => {
+  if (dependenciesQuery.isLoading.value) return t('supermarket.dependencyPending')
+  return t(dependenciesQuery.error.value ? 'supermarket.dependenciesLoadError' : 'supermarket.dependencyUnavailable')
+})
+const dependencyRows = computed(() => {
+  const catalog = new Map((dependenciesQuery.data.value?.items ?? []).map(item => [item.id, item]))
+  return (pkg.value?.dependencies ?? []).map(id => ({ id, summary: catalog.get(id) }))
+})
 
 async function loadApp() {
   if (!registryId.value || !appId.value) return
   const sequence = ++loadSequence
   loading.value = true
   pkg.value = null
-  dependencySummaries.value = {}
   try {
     const appRequest = revision.value
       ? getSupermarketRegistriesByRegistryIdAppsByAppIdReleasesByRevision({
@@ -352,7 +354,6 @@ async function loadApp() {
     pkg.value = data
     registryName.value = registryResponse?.data.data
       ?.find(registry => registry.id === registryId.value)?.name || registryId.value
-    if (data.dependencies?.length) void loadDependencySummaries(data.dependencies)
   } catch (error) {
     if (sequence !== loadSequence) return
     pkg.value = null

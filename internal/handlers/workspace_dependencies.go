@@ -132,6 +132,46 @@ func dependencyTranslations(dep catalog.Dependency) map[string]WorkspaceDependen
 	return result
 }
 
+// WorkspaceDependencyCatalogItem contains published metadata without workspace state.
+type WorkspaceDependencyCatalogItem struct {
+	ID           string                                    `json:"id"`
+	Name         string                                    `json:"name"`
+	Description  string                                    `json:"description"`
+	IconURL      string                                    `json:"icon_url,omitempty"`
+	Translations map[string]WorkspaceDependencyTranslation `json:"translations,omitempty"`
+}
+
+type WorkspaceDependencyCatalogResponse struct {
+	Items        []WorkspaceDependencyCatalogItem `json:"items"`
+	CatalogStale bool                             `json:"catalog_stale"`
+}
+
+// ListWorkspaceDependencyCatalog godoc
+// @Summary List published workspace dependency metadata
+// @Description Reads names, descriptions and verified icon URLs without inspecting or starting a bot workspace.
+// @Tags containerd
+// @Produce json
+// @Success 200 {object} WorkspaceDependencyCatalogResponse
+// @Failure 503 {object} apperror.Problem
+// @Router /workspace-dependencies [get].
+func (h *ContainerdHandler) ListWorkspaceDependencyCatalog(c echo.Context) error {
+	if h.workspaceDeps == nil {
+		return apperror.New(apperror.CodeWorkspaceDependencyCatalogUnavailable, nil)
+	}
+	view, err := h.workspaceDeps.Catalog(c.Request().Context(), false)
+	if err != nil {
+		return workspaceDependencyError(err)
+	}
+	items := make([]WorkspaceDependencyCatalogItem, 0, len(view.Items))
+	for _, dep := range view.Items {
+		items = append(items, WorkspaceDependencyCatalogItem{
+			ID: dep.ID, Name: dep.Name, Description: dep.Description,
+			IconURL: dependencyIconURL(dep), Translations: dependencyTranslations(dep),
+		})
+	}
+	return c.JSON(http.StatusOK, WorkspaceDependencyCatalogResponse{Items: items, CatalogStale: view.Stale})
+}
+
 // WorkspaceDependencyListResponse is the reconciled dependency view of one
 // bot workspace.
 type WorkspaceDependencyListResponse struct {

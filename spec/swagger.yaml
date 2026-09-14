@@ -4982,6 +4982,30 @@ definitions:
       storage_bytes:
         type: integer
     type: object
+  handlers.WorkspaceDependencyCatalogItem:
+    properties:
+      description:
+        type: string
+      icon_url:
+        type: string
+      id:
+        type: string
+      name:
+        type: string
+      translations:
+        additionalProperties:
+          $ref: '#/definitions/handlers.WorkspaceDependencyTranslation'
+        type: object
+    type: object
+  handlers.WorkspaceDependencyCatalogResponse:
+    properties:
+      catalog_stale:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/handlers.WorkspaceDependencyCatalogItem'
+        type: array
+    type: object
   handlers.WorkspaceDependencyInstallRequest:
     properties:
       definition_revision:
@@ -19199,6 +19223,24 @@ paths:
       summary: Get webhook tunnel status
       tags:
       - system
+  /workspace-dependencies:
+    get:
+      description: Reads names, descriptions and verified icon URLs without inspecting
+        or starting a bot workspace.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handlers.WorkspaceDependencyCatalogResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/apperror.Problem'
+      summary: List published workspace dependency metadata
+      tags:
+      - containerd
   /workspace-dependencies/icons/{digest}:
     get:
       parameters:

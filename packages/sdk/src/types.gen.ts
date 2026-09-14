@@ -2788,6 +2788,21 @@ export type HandlersUpdateContainerResourceLimitsRequest = {
     storage_bytes?: number;
 };
 
+export type HandlersWorkspaceDependencyCatalogItem = {
+    description?: string;
+    icon_url?: string;
+    id?: string;
+    name?: string;
+    translations?: {
+        [key: string]: HandlersWorkspaceDependencyTranslation;
+    };
+};
+
+export type HandlersWorkspaceDependencyCatalogResponse = {
+    catalog_stale?: boolean;
+    items?: Array<HandlersWorkspaceDependencyCatalogItem>;
+};
+
 export type HandlersWorkspaceDependencyInstallRequest = {
     definition_revision?: string;
     /**
@@ -18370,6 +18385,31 @@ export type GetWebhookTunnelStatusResponses = {
 };
 
 export type GetWebhookTunnelStatusResponse = GetWebhookTunnelStatusResponses[keyof GetWebhookTunnelStatusResponses];
+
+export type GetWorkspaceDependenciesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/workspace-dependencies';
+};
+
+export type GetWorkspaceDependenciesErrors = {
+    /**
+     * Service Unavailable
+     */
+    503: ApperrorProblem;
+};
+
+export type GetWorkspaceDependenciesError = GetWorkspaceDependenciesErrors[keyof GetWorkspaceDependenciesErrors];
+
+export type GetWorkspaceDependenciesResponses = {
+    /**
+     * OK
+     */
+    200: HandlersWorkspaceDependencyCatalogResponse;
+};
+
+export type GetWorkspaceDependenciesResponse = GetWorkspaceDependenciesResponses[keyof GetWorkspaceDependenciesResponses];
 
 export type GetWorkspaceDependenciesIconsByDigestData = {
     body?: never;

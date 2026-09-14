@@ -1055,3 +1055,36 @@ func TestWorkspaceDependencyBacklogRetainsTerminalEvent(t *testing.T) {
 		t.Fatalf("terminal event lost in backlog: %v", final)
 	}
 }
+
+func TestWorkspaceDependencyCatalogReadsMetadataWithoutWorkspace(t *testing.T) {
+	deps := depsTestCatalog()
+	dep := deps["node"]
+	dep.IconDigest = strings.Repeat("a", 64)
+	deps["node"] = dep
+	svc := &fakeWorkspaceDependencyService{deps: deps, listErr: workspacedeps.ErrWorkspaceMissing}
+	h := newDepsTestHandler("member", svc)
+	e := echo.New()
+	rec := httptest.NewRecorder()
+	if err := h.ListWorkspaceDependencyCatalog(e.NewContext(httptest.NewRequest(http.MethodGet, "/workspace-dependencies", nil), rec)); err != nil {
+		t.Fatal(err)
+	}
+	var response WorkspaceDependencyCatalogResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response.Items) != len(deps) || strings.Join(svc.calls, ",") != "catalog" {
+		t.Fatalf("catalog response = %+v, calls = %v", response, svc.calls)
+	}
+	for _, item := range response.Items {
+		if item.ID == "node" && (item.Name != dep.Name || item.IconURL != "/workspace-dependencies/icons/"+dep.IconDigest) {
+			t.Fatalf("dependency metadata = %+v", item)
+		}
+	}
+}
+
+func TestWorkspaceDependencyCatalogUnavailable(t *testing.T) {
+	h := newDepsTestHandler("member", nil)
+	e := echo.New()
+	err := h.ListWorkspaceDependencyCatalog(e.NewContext(httptest.NewRequest(http.MethodGet, "/workspace-dependencies", nil), httptest.NewRecorder()))
+	requireAppErrorCode(t, err, apperror.CodeWorkspaceDependencyCatalogUnavailable)
+}

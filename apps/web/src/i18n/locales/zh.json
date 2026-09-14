@@ -3687,6 +3687,8 @@
     "noDescription": "暂无描述",
     "unnamedSkill": "未命名 Skill",
     "dependenciesHint": "安装到 Bot 的工作区，并与需要它们的其他应用共享。",
+    "dependenciesLoadError": "依赖信息加载失败，请重试。",
+    "dependencyUnavailable": "暂无此依赖的信息。",
     "dependencyPending": "加载中…",
     "connectorsHint": "安装时即可完成连接器授权。",
     "connectorsUnavailableHint": "服务器未配置 Connect-It，这些连接器将保持未授权状态。",
