@@ -126,3 +126,23 @@ WHERE a.team_id = public.memoh_current_team_id() AND m.team_id = public.memoh_cu
 
 -- name: DeleteMessageAssets :exec
 DELETE FROM bot_history_message_assets WHERE team_id = public.memoh_current_team_id() AND message_id = sqlc.arg(message_id);
+
+-- name: ListRecentStickerAssetsBySession :many
+-- Recent sticker sightings in one session, newest first.
+-- A sticker arrives as an ordinary image asset, so the sticker metadata the
+-- adapter attached is what separates it from the photo next to it. The filter
+-- is the unique id rather than sticker_file_id: the latter is only written
+-- when a preview replaced the sticker, so it would miss every static and
+-- animated sticker. The lookup goes through message assets rather than a
+-- sticker table because the library that owns descriptions lives in the bot's
+-- workspace, not in Postgres: this only answers "which sticker was just seen".
+SELECT a.content_hash, a.mime, a.name, a.metadata, m.created_at
+FROM bot_history_message_assets a
+JOIN bot_history_messages m
+  ON m.id = a.message_id
+ AND m.team_id = public.memoh_current_team_id()
+WHERE a.team_id = public.memoh_current_team_id()
+  AND m.session_id = sqlc.arg(session_id)
+  AND a.metadata ->> 'sticker_unique_id' IS NOT NULL
+ORDER BY m.created_at DESC, a.ordinal ASC
+LIMIT sqlc.arg(max_count);
