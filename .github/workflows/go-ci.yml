@@ -13,6 +13,14 @@ on:
       - "db/pgvector/queries/**/*.sql"
       - "db/pgvector/migrations/**/*.sql"
       - "internal/workspacedeps/catalog/**"
+      # go:embed assets are compiled into Go packages and asserted by Go tests,
+      # so a change to one is a change to Go. Omitting them let a prompt-only PR
+      # skip this workflow entirely and merge a red main.
+      - "internal/agent/runtime/native/prompts/**"
+      - "internal/memory/memllm/prompts/**"
+      - "internal/agent/runtime/codex/protocolgen/schema/**"
+      - "internal/audio/adapter/edge/voices.json"
+      - "internal/i18n/locales/**"
       - ".github/workflows/go-ci.yml"
   pull_request:
     branches: ["main"]
@@ -26,6 +34,14 @@ on:
       - "db/pgvector/queries/**/*.sql"
       - "db/pgvector/migrations/**/*.sql"
       - "internal/workspacedeps/catalog/**"
+      # go:embed assets are compiled into Go packages and asserted by Go tests,
+      # so a change to one is a change to Go. Omitting them let a prompt-only PR
+      # skip this workflow entirely and merge a red main.
+      - "internal/agent/runtime/native/prompts/**"
+      - "internal/memory/memllm/prompts/**"
+      - "internal/agent/runtime/codex/protocolgen/schema/**"
+      - "internal/audio/adapter/edge/voices.json"
+      - "internal/i18n/locales/**"
       - ".github/workflows/go-ci.yml"
   workflow_dispatch:
 
