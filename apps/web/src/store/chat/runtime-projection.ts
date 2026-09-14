@@ -74,11 +74,10 @@ export function runOwnsTurn(
   if (run.request_user_turn?.turn_id.trim() === target) return true
   return (run.steer_turns ?? []).some((steer) => {
     if (steer.turn_id?.trim() === target) return true
-    // A steer that has not committed yet has no durable turn, so the projection
-    // names its bubble and the segment under it after the queue item. Those ids
-    // are minted from this run's own steer list, so the item is the match.
-    const provisional = `${RUNTIME_STEER_TURN_PREFIX}${steer.item_id.trim()}`
-    return target === provisional || target === `${provisional}:assistant`
+    // A steer that has not committed yet has no durable turn, so both its
+    // bubble and the segment under it carry an identity minted from this run's
+    // own queue item. The item is therefore the match.
+    return target === provisionalSteerTurnId(steer.item_id)
   })
 }
 

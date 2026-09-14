@@ -87,10 +87,9 @@ describe('a run owns several turns', () => {
 
     expect(runOwnsTurn(run, 'turn-5')).toBe(true)
     expect(runOwnsTurn(run, 'turn-6')).toBe(true)
-    // A steer with no durable turn yet is named after its queue item, and so is
-    // the assistant segment filed under it.
+    // A steer with no durable turn yet is named after its queue item; both its
+    // bubble and the segment filed under it carry that same identity.
     expect(runOwnsTurn(run, 'queue-steer:item-2')).toBe(true)
-    expect(runOwnsTurn(run, 'queue-steer:item-2:assistant')).toBe(true)
     expect(runOwnsTurn(run, 'turn-9')).toBe(false)
     expect(runOwnsTurn(run, 'queue-steer:item-unknown')).toBe(false)
     expect(runOwnsTurn(null, 'turn-5')).toBe(false)
@@ -104,7 +103,7 @@ describe('a run owns several turns', () => {
     const { transcript } = makeTranscript(run)
     transcript.applyRuntimeTranscript(projectRuntimeTranscript(run))
     expect(transcript.messages.map(turn => turn.turnId)).toEqual([
-      'turn-5', 'turn-5', 'queue-steer:item-1', 'queue-steer:item-1:assistant',
+      'turn-5', 'turn-5', 'queue-steer:item-1', 'queue-steer:item-1',
     ])
 
     transcript.replaceMessages([
@@ -118,7 +117,7 @@ describe('a run owns several turns', () => {
       'user:turn-5',
       'assistant:turn-5',
       'user:queue-steer:item-1',
-      'assistant:queue-steer:item-1:assistant',
+      'assistant:queue-steer:item-1',
     ])
   })
 
@@ -206,10 +205,97 @@ describe('a terminal run view is not a source of new turns', () => {
       settledTurn('m9', 'turn-9', 9, 'user', '2026-07-27T08:00:00.000Z'),
     ], 'session-1')
 
-    const slice = projectRuntimeTranscript({ ...completed(), turn_position: undefined })
-    transcript.applyRuntimeTranscript(slice)
+    // A server from before the field sends no position anywhere, so the window
+    // has nothing to compare against and the frame keeps its old behaviour.
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript({
+      ...completed(),
+      turn_position: undefined,
+      user_turns: [{
+        turn_id: 'turn-1',
+        role: 'user',
+        text: 'old ask',
+        timestamp: '2026-07-20T08:00:00.000Z',
+      }],
+    }))
 
     expect(transcript.messages.map(turn => turn.turnId)).toEqual(['turn-9', 'turn-1', 'turn-1'])
+  })
+
+  // A run owns several turns, so its starting position says nothing about where
+  // its later turns landed. Judging the whole frame by that one number threw
+  // away a steer's freshly committed answer along with the aged-out first half.
+  it('keeps the later turns of a run whose first turn aged out', () => {
+    const { transcript } = makeTranscript(null)
+    const window: UITurn[] = []
+    for (let position = 6; position <= 35; position++) {
+      window.push(settledTurn(`m${position}`, `turn-${position}`, position,
+        'user', `2026-07-27T08:${String(position).padStart(2, '0')}:00.000Z`))
+    }
+    transcript.replaceMessages(window, 'session-1')
+
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript({
+      ...completed(),
+      messages: [
+        { id: 0, type: 'text', content: 'first half' },
+        { id: 1, type: 'text', content: 'latest answer' },
+      ],
+      user_turns: [
+        { turn_id: 'turn-1', turn_position: 1, role: 'user', text: 'ask', timestamp: '2026-07-20T08:00:00.000Z' },
+        { turn_id: 'turn-36', turn_position: 36, role: 'user', text: 'steer', timestamp: '2026-07-27T08:36:00.000Z' },
+      ],
+      steer_turns: [{
+        item_id: 'item-1',
+        status: 'applied',
+        text: 'steer',
+        turn_id: 'turn-36',
+        after_message_id: 0,
+        timestamp: '2026-07-27T08:36:00.000Z',
+      }],
+    }))
+
+    const tail = transcript.messages.slice(-2).map(turn => `${turn.role}:${turn.turnId}`)
+    expect(tail).toEqual(['user:turn-36', 'assistant:turn-36'])
+    // The first half is inside the window the read covered and did not come
+    // back, so history does not have it and the frame must not re-add it.
+    expect(transcript.messages.some(turn => turn.turnId === 'turn-1')).toBe(false)
+  })
+
+  // The window test has to run per turn rather than only when nothing matched:
+  // the later half of the same run can still be on screen while the first half
+  // has aged out.
+  it('drops the aged-out half of a run whose later half is still on screen', () => {
+    const { transcript } = makeTranscript(null)
+    transcript.replaceMessages([
+      settledTurn('m30', 'turn-30', 30, 'user', '2026-07-27T08:30:00.000Z'),
+      settledTurn('m36', 'turn-36', 36, 'user', '2026-07-27T08:36:00.000Z'),
+      settledTurn('m36a', 'turn-36', 36, 'assistant', '2026-07-27T08:36:01.000Z'),
+    ], 'session-1')
+
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript({
+      ...completed(),
+      messages: [
+        { id: 0, type: 'text', content: 'first half' },
+        { id: 1, type: 'text', content: 'second half' },
+      ],
+      user_turns: [
+        { turn_id: 'turn-1', turn_position: 1, role: 'user', text: 'ask', timestamp: '2026-07-20T08:00:00.000Z' },
+        { turn_id: 'turn-36', turn_position: 36, role: 'user', text: 'steer', timestamp: '2026-07-27T08:36:00.000Z' },
+      ],
+      steer_turns: [{
+        item_id: 'item-1',
+        status: 'applied',
+        text: 'steer',
+        turn_id: 'turn-36',
+        after_message_id: 0,
+        timestamp: '2026-07-27T08:36:00.000Z',
+      }],
+    }))
+
+    expect(transcript.messages.map(turn => `${turn.role}:${turn.turnId}`)).toEqual([
+      'user:turn-30',
+      'user:turn-36',
+      'assistant:turn-36',
+    ])
   })
 
   it('lets an active run introduce a turn the transcript has not seen', () => {

@@ -24,7 +24,7 @@ import type { RuntimeTranscriptSlice } from './runtime-projection'
 import { createTranscriptHistory } from './transcript-history'
 import { createTranscriptDecisions } from './transcript-decisions'
 import { createTranscriptQueries } from './transcript-queries'
-import { isStaleSettledRunFrame, markRuntimeTurn, reconcileRuntimeTurns } from './runtime-transcript-merge'
+import { admissibleRuntimeTurns, markRuntimeTurn, reconcileRuntimeTurns } from './runtime-transcript-merge'
 
 export interface TranscriptDeps {
   currentBotId: Ref<string | null>
@@ -525,7 +525,9 @@ export function createTranscriptController({
       if (turn.runtimeRunId === slice.runId || turn.turnId === slice.turnId) return true
       return incomingKeys.has(`${turn.role}\u0000${turn.turnId ?? ''}`)
     })
-    const resolved = reconcileRuntimeTurns(existing, incoming)
+    // Every turn still on screen survives; the window decides the rest.
+    const resolved = admissibleRuntimeTurns(messages, slice, reconcileRuntimeTurns(existing, incoming))
+    if (resolved.length === 0) return true
 
     const operationAnchor = slice.operation?.replace_from_message_id?.trim() ?? ''
     const anchor = operationAnchor
@@ -535,12 +537,9 @@ export function createTranscriptController({
       replaceTailFromTurn(anchor, resolved)
       return true
     }
-    if (operationAnchor && existing.length === 0) {
-      return false
-    }
+    if (operationAnchor && existing.length === 0) return false
 
     if (existing.length === 0) {
-      if (isStaleSettledRunFrame(messages, slice)) return true
       appendToView(...resolved)
       return true
     }

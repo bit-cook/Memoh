@@ -71,21 +71,35 @@ export function reconcileRuntimeTurns(
 // Appending from one re-added a days-old round below the newest turns once its
 // turn had aged out of the loaded window.
 //
-// The test is the run's own position against the settled history on screen, not
-// merely "the run is over": a run that has just finished may legitimately own
-// turns the history read has not caught up with, and that round is the newest
-// thing in the session. A settled turn numbered past the run is proof the
-// database has moved beyond it, so history — which did not include this run's
-// turns — is authoritative and the frame has nothing left to contribute.
-export function isStaleSettledRunFrame(
+// The decision is per turn, not per run. A run owns several turns — an applied
+// steer opens its own (SR-TURN-001) — so the run's starting position says
+// nothing about where its later turns landed, and using it as the test threw
+// away a steer's freshly committed answer along with the aged-out first half.
+//
+// A turn already on screen always stays: the frame is reconciling it, not
+// introducing it. Otherwise the loaded window decides. Positions come from one
+// monotonic per-session counter, so a turn numbered at or below the newest
+// settled turn is one the history read has already passed: it did not come
+// back, so it is not in history, and this frame has nothing to add. A turn
+// numbered past that window, or not numbered at all, is newer than anything
+// the read returned and must still be shown.
+export function admissibleRuntimeTurns<T extends ChatMessage>(
   messages: readonly ChatMessage[],
   slice: RuntimeTranscriptSlice,
-): boolean {
-  const position = slice.turnPosition
-  if (position === undefined || isRuntimeRunActive(slice.status)) return false
-  return messages.some(turn =>
-    turn.settled === true
-    && turn.turnPosition !== undefined
-    && turn.turnPosition > position,
-  )
+  resolved: T[],
+): T[] {
+  if (isRuntimeRunActive(slice.status)) return resolved
+  let newestSettled: number | undefined
+  for (const turn of messages) {
+    if (turn.settled !== true || turn.turnPosition === undefined) continue
+    if (newestSettled === undefined || turn.turnPosition > newestSettled) {
+      newestSettled = turn.turnPosition
+    }
+  }
+  if (newestSettled === undefined) return resolved
+  const window = newestSettled
+  return resolved.filter((turn) => {
+    if (messages.includes(turn)) return true
+    return turn.turnPosition === undefined || turn.turnPosition > window
+  })
 }
