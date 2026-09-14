@@ -57,49 +57,51 @@
          INNER label span (clipped with the text when collapsed); the grid item
          is a bare overflow-hidden wrapper. -->
     <nav class="flex min-w-0 shrink-0 items-center gap-1 pl-3 pr-2 py-1.5">
-      <Tooltip
-        v-for="view in availableViews"
-        :key="view.id"
-      >
-        <TooltipTrigger as-child>
-          <button
-            type="button"
-            class="inline-flex h-8 min-w-0 shrink-0 cursor-pointer items-center justify-start rounded-full px-2 text-muted-foreground outline-none transition-[margin,padding,color,background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[color:var(--sidebar-hover)] hover:text-foreground dark:hover:text-[color:oklch(0.96_0_0)] focus-visible:ring-2 focus-visible:ring-ring data-[expanded=true]:-ml-[3px] data-[active=true]:bg-sidebar-accent data-[expanded=true]:pl-2.5 data-[expanded=true]:pr-3.5 data-[active=true]:text-foreground/90 dark:data-[active=true]:text-[color:oklch(0.96_0_0)]"
-            :data-active="sidebarView === view.id"
-            :data-expanded="sidebarView === view.id && view.id !== 'supermarket'"
-            :aria-label="view.label"
-            :aria-pressed="sidebarView === view.id"
-            @click="store.selectSidebarView(view.id)"
-          >
-            <span class="relative shrink-0">
-              <component
-                :is="view.icon"
-                :stroke-width="1.75"
-                class="size-[18px] shrink-0"
-              />
-              <!-- Unsaved files live on the Files view, so a count here surfaces them
-                   even while the user is in Chat. -->
-              <BadgeCount
-                v-if="view.id === 'files' && dirtyFileCount > 0"
-                :count="dirtyFileCount"
-                class="pointer-events-none absolute -right-1.5 -top-1"
-              />
-            </span>
-            <span
-              v-if="view.id !== 'supermarket'"
-              class="grid min-w-0 transition-[grid-template-columns] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]"
-              :class="sidebarView === view.id ? 'grid-cols-[1fr]' : 'grid-cols-[0fr]'"
+      <TooltipProvider>
+        <Tooltip
+          v-for="view in availableViews"
+          :key="view.id"
+        >
+          <TooltipTrigger as-child>
+            <button
+              type="button"
+              class="inline-flex h-8 min-w-0 shrink-0 cursor-pointer items-center justify-start rounded-full px-2 text-muted-foreground outline-none transition-[margin,padding,color,background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[color:var(--sidebar-hover)] hover:text-foreground dark:hover:text-[color:oklch(0.96_0_0)] focus-visible:ring-2 focus-visible:ring-ring data-[expanded=true]:-ml-[3px] data-[active=true]:bg-sidebar-accent data-[expanded=true]:pl-2.5 data-[expanded=true]:pr-3.5 data-[active=true]:text-foreground/90 dark:data-[active=true]:text-[color:oklch(0.96_0_0)]"
+              :data-active="sidebarView === view.id"
+              :data-expanded="sidebarView === view.id && view.id !== 'supermarket'"
+              :aria-label="view.label"
+              :aria-pressed="sidebarView === view.id"
+              @click="store.selectSidebarView(view.id)"
             >
-              <span class="min-w-0 overflow-hidden">
-                <span class="block whitespace-nowrap pl-2 text-control font-[550]">{{ view.label }}</span>
+              <span class="relative shrink-0">
+                <component
+                  :is="view.icon"
+                  :stroke-width="1.75"
+                  class="size-[18px] shrink-0"
+                />
+                <!-- Unsaved files live on the Files view, so a count here surfaces them
+                     even while the user is in Chat. -->
+                <BadgeCount
+                  v-if="view.id === 'files' && dirtyFileCount > 0"
+                  :count="dirtyFileCount"
+                  class="pointer-events-none absolute -right-1.5 -top-1"
+                />
               </span>
-            </span>
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {{ view.label }}
-        </TooltipContent>
-      </Tooltip>
+              <span
+                v-if="view.id !== 'supermarket'"
+                class="grid min-w-0 transition-[grid-template-columns] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]"
+                :class="sidebarView === view.id ? 'grid-cols-[1fr]' : 'grid-cols-[0fr]'"
+              >
+                <span class="min-w-0 overflow-hidden">
+                  <span class="block whitespace-nowrap pl-2 text-control font-[550]">{{ view.label }}</span>
+                </span>
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {{ view.label }}
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <div class="flex-1" />
 
@@ -188,7 +190,7 @@ import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { Files, MessageCircle, Search, Calendar, Blocks } from 'lucide-vue-next'
-import { BadgeCount, Button, Tooltip, TooltipContent, TooltipTrigger } from '@felinic/ui'
+import { BadgeCount, Button, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@felinic/ui'
 import { useSettingsStore } from '@/store/settings'
 import { useChatStore } from '@/store/chat-list'
 import { useWorkspaceTabsStore, type SidebarView } from '@/store/workspace-tabs'
