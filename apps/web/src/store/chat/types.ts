@@ -124,9 +124,14 @@ export interface ChatUserTurn {
   isSelf: boolean
   invocationId?: string
   turnId?: string
-  // Immutable turn-level sequence from the settled (REST history) path.
-  // Live turns do not carry one until their settled twin arrives.
+  // Immutable turn-level sequence. Both the settled (REST history) path and
+  // live runtime frames carry one; a steer's turn stays unnumbered only until
+  // its step commits.
   turnPosition?: number
+  // True once the turn has been read back from durable history. Distinct from
+  // turnPosition, which a live turn now also carries: pagination needs a turn
+  // the database can address by id, not merely one that knows its place.
+  settled?: boolean
   runtimeRunId?: string
   runtimeContinuation?: boolean
   // Set by createOptimisticUserTurn / createOptimisticAssistantTurn and
@@ -150,6 +155,7 @@ export interface ChatAssistantTurn {
   invocationId?: string
   turnId?: string
   turnPosition?: number
+  settled?: boolean
   runtimeRunId?: string
   runtimeContinuation?: boolean
   // See ChatUserTurn.__optimistic.
@@ -167,6 +173,7 @@ export interface ChatSystemTurn {
   streaming: boolean
   turnId?: string
   turnPosition?: number
+  settled?: boolean
 }
 
 export type ChatMessage = ChatUserTurn | ChatAssistantTurn | ChatSystemTurn

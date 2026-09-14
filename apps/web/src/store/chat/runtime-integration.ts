@@ -210,6 +210,7 @@ export function createRuntimeIntegration(deps: RuntimeIntegrationDeps) {
           event.invocation_id,
           turnId,
           event.run_id,
+          event.turn_position,
         )
       }
       if (accepted?.abortRequested) {

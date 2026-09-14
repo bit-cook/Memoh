@@ -126,8 +126,14 @@ export function createTranscriptHistory(deps: {
     }
   }
 
+  // Every caller of this plural form is reading durable history (the message
+  // page, a locate window, an older page). Marking here — rather than inside
+  // normalizeTurn, which the runtime projection also uses — is what keeps
+  // "came from the database" a fact about the source, not a guess about the
+  // turn's shape.
   function normalizeTurns(items: UITurn[], _targetSessionId?: string) {
     const normalized = items.map(normalizeTurn)
+    for (const turn of normalized) turn.settled = true
     reconcileBackgroundTasksInMessages(normalized)
     return normalized
   }

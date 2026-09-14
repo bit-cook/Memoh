@@ -18,6 +18,11 @@ export function markRuntimeTurn(
   )
   if (originalUser || !turn.turnId || (turn.role === 'assistant' && !nestedAssistantSegment)) {
     turn.turnId = slice.turnId
+    // The turn was just refiled under the run's request turn, so the run's slot
+    // is the right fallback for a segment that has no number of its own. A turn
+    // that arrived numbered keeps that number: the frame carries the database
+    // row's position, which outranks anything derived here.
+    turn.turnPosition ??= slice.turnPosition
   }
   turn.runtimeRunId = slice.runId
   if (turn.role === 'user' && slice.continuation) turn.runtimeContinuation = true

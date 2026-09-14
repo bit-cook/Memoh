@@ -200,7 +200,7 @@ func (m *Manager) reserveRecoveredWaitingDecision(ctx context.Context, run ledge
 		snapshot.UpdatedAt = now
 		if snapshot.CurrentRunView == nil || snapshot.CurrentRunView.RunID != handle.RunID {
 			snapshot.CurrentRunView = &CurrentRunView{
-				RunID: handle.RunID, TurnID: run.TurnID,
+				RunID: handle.RunID, TurnID: run.TurnID, TurnPosition: run.TurnPosition,
 				InvocationID: run.InvocationID,
 				StartedAt:    run.CreatedAt, Messages: []chatview.UIMessage{},
 			}
@@ -208,6 +208,7 @@ func (m *Manager) reserveRecoveredWaitingDecision(ctx context.Context, run ledge
 		view := snapshot.CurrentRunView
 		view.RunID = handle.RunID
 		view.TurnID = run.TurnID
+		view.TurnPosition = run.TurnPosition
 		view.Generation = handle.Generation
 		view.FencingToken = handle.FencingToken
 		view.Status = RunStatusWaitingDecision

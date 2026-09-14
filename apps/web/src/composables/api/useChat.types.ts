@@ -341,9 +341,10 @@ export interface UISkillActivation {
 
 export interface UIUserTurn {
   turn_id: string
-  // Immutable turn-level sequence reserved at admission. Present on the
-  // settled (REST history) path; live runtime turns learn their identity
-  // from run_accepted instead.
+  // Immutable turn-level sequence reserved at admission. Present on both the
+  // settled (REST history) path and live runtime frames: the runtime stamps
+  // the position it allocated onto the run's request turn, and a steer's turn
+  // arrives already numbered from history once its step commits.
   turn_position?: number
   role: 'user'
   text: string
@@ -395,6 +396,10 @@ export interface UIStreamRunAcceptedEvent {
   invocation_id: string
   session_id: string
   turn_id: string
+  // The sequence admission drew for turn_id. Carried with the id so a locally
+  // rendered turn is ordered by the same key the settled page will use, rather
+  // than by when it happened to arrive.
+  turn_position?: number
   // A replay reserved no new observable position; its subscription snapshot is
   // authoritative, so duplicate acceptances may omit the cursor.
   epoch?: string
@@ -455,6 +460,10 @@ export interface RuntimeCurrentRunView {
   configuration_only?: boolean
   run_id: string
   turn_id: string
+  // Immutable sequence of turn_id, allocated at admission. Present on every
+  // live frame so a running turn orders against settled history by position
+  // instead of falling back to timestamps.
+  turn_position?: number
   // The originating send's client-issued id, echoed so live frames can be
   // matched to the local optimistic turn by reading, not by timing inference.
   invocation_id?: string

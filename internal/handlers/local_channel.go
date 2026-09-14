@@ -944,6 +944,10 @@ type wsOutboundEvent struct {
 	// is shown the same one (SR-OBS-003), so it is what lets the client that sent
 	// the turn and one that only watches agree on which turn a run is executing.
 	TurnID string `json:"turn_id,omitempty"`
+	// TurnPosition is the sequence admission drew for TurnID. The client orders
+	// its optimistic turn by it instead of by arrival time, which is what keeps
+	// a locally rendered turn in the same place the settled page will put it.
+	TurnPosition int64 `json:"turn_position,omitempty"`
 	// Epoch and Seq are the session's authoritative position at the moment the
 	// run became observable. They use the same names as the subscription frames
 	// so a client orders acceptance against those frames with one comparison
@@ -1247,7 +1251,10 @@ func sendWSAgentError(writer *wsWriter, ref wsTurnRef, streamEvent native.Stream
 // executes, and where in the session's stream it became observable.
 type wsRunAcceptance struct {
 	TurnID string
-	Cursor sessionruntime.Cursor
+	// TurnPosition travels with TurnID because the pair is only usable whole:
+	// a name without a place still leaves the client guessing at order.
+	TurnPosition int64
+	Cursor       sessionruntime.Cursor
 	// Duplicate marks an acceptance that named a run the invocation had already
 	// started, so a redelivered send attaches to that turn instead of expecting
 	// a second one.
@@ -1264,6 +1271,7 @@ func sendWSRunAccepted(writer *wsWriter, ref wsTurnRef, accepted wsRunAcceptance
 		InvocationID: ref.InvocationID,
 		SessionID:    ref.SessionID,
 		TurnID:       accepted.TurnID,
+		TurnPosition: accepted.TurnPosition,
 		Epoch:        accepted.Cursor.Epoch,
 		Seq:          accepted.Cursor.Seq,
 		Duplicate:    accepted.Duplicate,
@@ -1537,14 +1545,14 @@ func (h *LocalChannelHandler) admitWSTurn(ctx context.Context, writer *wsWriter,
 		// The run exists and its turn is already named, but this call reserved
 		// nothing, so there is no cursor to report: where the session stands now
 		// is what a subscription's snapshot answers.
-		sendWSRunAccepted(writer, ref.withRun(admission.RunID), wsRunAcceptance{TurnID: admission.TurnID, Duplicate: true})
+		sendWSRunAccepted(writer, ref.withRun(admission.RunID), wsRunAcceptance{TurnID: admission.TurnID, TurnPosition: admission.TurnPosition, Duplicate: true})
 		return wsRunAdmission{RunID: admission.RunID}, true
 	}
 	return wsRunAdmission{
 		RunID:        admission.RunID,
 		TurnID:       admission.TurnID,
 		TurnPosition: &admission.TurnPosition,
-		Accepted:     wsRunAcceptance{TurnID: admission.TurnID, Cursor: admission.Cursor},
+		Accepted:     wsRunAcceptance{TurnID: admission.TurnID, TurnPosition: admission.TurnPosition, Cursor: admission.Cursor},
 		Handle:       admission.Handle,
 		Execute:      true,
 	}, true

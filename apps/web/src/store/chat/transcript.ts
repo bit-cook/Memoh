@@ -253,13 +253,13 @@ export function createTranscriptController({
     return fetchMessages(botId, targetSessionId, { limit: PAGE_SIZE })
   }
 
-  // The oldest turn the database has actually numbered. turnPosition is that
-  // signal exactly: the visible-history view cannot return a row without one,
-  // and a live turn carries none until its settled twin arrives. Paging from
-  // messages[0] instead would hand the server a render identity whenever a
-  // live turn sits at the head of an otherwise unsettled transcript.
+  // The oldest turn the database has actually returned. `settled` is that
+  // signal exactly: it is set only by the history normalizer, so it marks a
+  // turn the server can address by id. turnPosition is deliberately NOT the
+  // test — live runtime turns now carry a position too, and paging from one
+  // would hand the server a render identity as a cursor.
   function oldestSettledTurn(): ChatMessage | undefined {
-    return messages.find(turn => turn.turnPosition !== undefined)
+    return messages.find(turn => turn.settled === true)
   }
 
   async function loadOlderMessages(): Promise<number> {
@@ -470,7 +470,7 @@ export function createTranscriptController({
     }
   }
 
-  function bindRuntimeTurn(invocationId: string, turnId: string, runId: string) {
+  function bindRuntimeTurn(invocationId: string, turnId: string, runId: string, turnPosition?: number) {
     const invocation = invocationId.trim()
     const turn = turnId.trim()
     const run = runId.trim()
@@ -491,6 +491,9 @@ export function createTranscriptController({
       if (message.role === 'system' || message.invocationId !== invocation) continue
       message.turnId = turn
       message.runtimeRunId = run
+      // Numbering the optimistic pair here is what lets a sort that mixes it
+      // with settled turns place it correctly before its own twin lands.
+      if (turnPosition !== undefined) message.turnPosition = turnPosition
     }
   }
 
@@ -502,7 +505,7 @@ export function createTranscriptController({
     // local send: bind the optimistic pair before merging so the merge below
     // finds it by turnId. The frame itself is the pairing — correct no matter
     // how it interleaves with run_accepted, with no grace window to guess in.
-    if (slice.invocationId) bindRuntimeTurn(slice.invocationId, slice.turnId, slice.runId)
+    if (slice.invocationId) bindRuntimeTurn(slice.invocationId, slice.turnId, slice.runId, slice.turnPosition)
     let firstUser = true
     const incoming = slice.turns
       .map(normalizeTurn)

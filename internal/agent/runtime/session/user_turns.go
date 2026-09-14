@@ -147,6 +147,9 @@ func (m *Manager) PublishQueueUserTurns(ctx context.Context, handle RunHandle, u
 		if !changed {
 			return snapshot, false, nil
 		}
+		// A persisted turn arrives numbered by the history projection; this only
+		// covers the run's own request turn if it reached the view unnumbered.
+		stampRunTurnPosition(run)
 		snapshot.Seq++
 		snapshot.UpdatedAt = now
 		run.UpdatedAt = now

@@ -260,6 +260,12 @@ type CurrentRunView struct {
 	// subscriber to agree on the run's turn, and a subscriber that only learns
 	// the run id cannot line the run up against persisted history.
 	TurnID string `json:"turn_id" validate:"required" format:"uuid"`
+	// TurnPosition is the immutable turn-level sequence admission drew for
+	// TurnID from bot_sessions.next_turn_position. It rides the live view for
+	// the same reason TurnID does: a subscriber that learns only the turn's name
+	// still cannot order it against persisted history, and SR-TURN-001 forbids
+	// falling back to timestamps to decide where a turn belongs.
+	TurnPosition int64 `json:"turn_position,omitempty"`
 	// InvocationID is the caller-supplied intent identity recorded at admission
 	// (session_runs.invocation_id). It rides the live view so the client that
 	// originated the send can match projection frames to its optimistic turn by

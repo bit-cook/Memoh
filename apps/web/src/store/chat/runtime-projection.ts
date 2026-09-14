@@ -13,6 +13,10 @@ import { RUNTIME_STEER_TURN_PREFIX } from './types'
 export interface RuntimeTranscriptSlice {
   runId: string
   turnId: string
+  // The sequence admission drew for turnId. Undefined only for frames from a
+  // server that predates the field; those turns stay unnumbered and fall back
+  // to the timestamp ordering, exactly as before.
+  turnPosition?: number
   // The originating send's client-issued id, echoed back by the server. Empty
   // for frames from before this field existed or from the rare pre-ledger run;
   // the transcript falls back to turnId-only matching for those.
@@ -116,6 +120,7 @@ function emptyTranscript(): RuntimeTranscriptSlice {
   return {
     runId: '',
     turnId: '',
+    turnPosition: undefined,
     invocationId: '',
     continuation: false,
     status: null,
@@ -138,6 +143,17 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
   const turnId = run.turn_id.trim()
   const turns: UITurn[] = []
   const userTurns = userTurnsForRun(run)
+  // A run spans several turns once a steer opens one (SR-TURN-001), so a
+  // segment is numbered by the turn it is filed under, not by the run. The
+  // run's own position covers its request turn; a steer's turn arrives
+  // numbered from history, and stays unnumbered until that commit lands.
+  const positionOf = (segmentTurnId: string): number | undefined => {
+    const id = segmentTurnId.trim()
+    if (!id) return undefined
+    const owner = userTurns.find(turn => turn.turn_id.trim() === id)
+    if (owner?.turn_position !== undefined) return owner.turn_position
+    return id === turnId ? run.turn_position : undefined
+  }
   const active = isRuntimeRunActive(run.status)
   const steerTurns = [...(run.steer_turns ?? [])]
     .filter(steer => steer.status === 'applied' || active)
@@ -150,6 +166,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
     turns.push({
       ...userTurn,
       turn_id: userTurnId,
+      turn_position: userTurn.turn_position ?? positionOf(userTurnId),
       id: `runtime:${userTurnId}:user`,
     })
   }
@@ -187,7 +204,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
       }
       const segment = assistantMessages.slice(segmentStart, segmentEnd)
       if (segment.length > 0) {
-        turns.push(runtimeAssistantTurn(segmentTurnId, segmentTimestamp, segment))
+        turns.push(runtimeAssistantTurn(segmentTurnId, segmentTimestamp, segment, positionOf(segmentTurnId)))
       }
       const durable = steer.turn_id
         ? userTurns.find(turn => turn.turn_id.trim() === steer.turn_id?.trim())
@@ -201,6 +218,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
           timestamp: steer.timestamp,
         }),
         turn_id: steerTurnId,
+        turn_position: durable?.turn_position,
         id: `runtime:${RUNTIME_STEER_TURN_PREFIX}${steer.item_id}:user`,
       })
       segmentStart = segmentEnd
@@ -221,12 +239,13 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
     const finalSegment: UIMessage[] = assistantMessages.slice(segmentStart)
     if (runtimeStatus) finalSegment.push(runtimeStatus)
     if (active || finalSegment.length > 0 || turns.every(turn => turn.role !== 'assistant')) {
-      turns.push(runtimeAssistantTurn(segmentTurnId, segmentTimestamp, finalSegment))
+      turns.push(runtimeAssistantTurn(segmentTurnId, segmentTimestamp, finalSegment, positionOf(segmentTurnId)))
     }
   }
   return {
     runId: run.run_id,
     turnId,
+    turnPosition: run.turn_position,
     invocationId: run.invocation_id?.trim() ?? '',
     continuation: false,
     status: run.status,
@@ -236,9 +255,15 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
   }
 }
 
-function runtimeAssistantTurn(turnId: string, timestamp: string, messages: UIMessage[]): UITurn {
+function runtimeAssistantTurn(
+  turnId: string,
+  timestamp: string,
+  messages: UIMessage[],
+  turnPosition?: number,
+): UITurn {
   return {
     turn_id: turnId,
+    turn_position: turnPosition,
     role: 'assistant',
     id: `runtime:${turnId}:assistant`,
     timestamp,

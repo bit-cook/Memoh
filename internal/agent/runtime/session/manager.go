@@ -949,6 +949,10 @@ type runStart struct {
 	// run view so every subscriber can line the run up against history, not just
 	// the caller that admitted it.
 	turnID string
+	// turnPosition is the sequence admission drew alongside turnID. It travels
+	// with the id because the two are only usable together: a subscriber that
+	// knows the turn's name but not its place cannot order it.
+	turnPosition int64
 	// invocationID is the caller's intent identity, threaded from admission into
 	// the published run view; see CurrentRunView.InvocationID.
 	invocationID    string
@@ -1094,6 +1098,7 @@ func (m *Manager) startRun(ctx context.Context, start runStart) (RunHandle, Curs
 		snapshot.CurrentRunView = &CurrentRunView{
 			RunID:               runID,
 			TurnID:              start.turnID,
+			TurnPosition:        start.turnPosition,
 			InvocationID:        start.invocationID,
 			ConfigurationOnly:   start.configurationOnly,
 			Generation:          runGeneration,
@@ -1232,6 +1237,11 @@ func (m *Manager) startRun(ctx context.Context, start runStart) (RunHandle, Curs
 		case admission.Operation != nil && admission.Operation.ReplacementUserTurn != nil:
 			run.UserTurns = []chatview.UITurn{*admission.Operation.ReplacementUserTurn}
 		}
+		// The runtime allocated this turn's position, so it is the one that can
+		// name it. An admission builder only knows what the caller submitted;
+		// leaving the request turn unnumbered would push the client back onto
+		// the timestamp ordering SR-TURN-001 rules out.
+		stampRunTurnPosition(run)
 		run.UpdatedAt = now
 		return snapshot, true, nil
 	}, func(snapshot Snapshot) RuntimeDelta {
@@ -2088,6 +2098,7 @@ func (m *Manager) hydrateSnapshotFromLedger(ctx context.Context, snapshot Snapsh
 	snapshot.CurrentRunView = &CurrentRunView{
 		RunID:        run.RunID,
 		TurnID:       run.TurnID,
+		TurnPosition: run.TurnPosition,
 		InvocationID: run.InvocationID,
 		Generation:   run.LiveGeneration,
 		FencingToken: run.FencingToken,

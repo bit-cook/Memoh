@@ -264,6 +264,31 @@ func normalizeRequestUserTurn(turn *chatview.UITurn) (*chatview.UITurn, error) {
 	return &clone, nil
 }
 
+// stampRunTurnPosition numbers the run's own request turn from the position
+// admission drew. Turns persisted later (an applied steer opens its own
+// canonical turn per SR-TURN-001) arrive from the history projection already
+// numbered, so this only fills the one turn the runtime allocated itself and
+// never overwrites a position the database decided.
+func stampRunTurnPosition(run *CurrentRunView) {
+	if run == nil || run.TurnPosition <= 0 {
+		return
+	}
+	runTurnID := strings.TrimSpace(run.TurnID)
+	if runTurnID == "" {
+		return
+	}
+	for i := range run.UserTurns {
+		if run.UserTurns[i].TurnPosition != nil {
+			continue
+		}
+		if strings.TrimSpace(run.UserTurns[i].TurnID) != runTurnID {
+			continue
+		}
+		position := run.TurnPosition
+		run.UserTurns[i].TurnPosition = &position
+	}
+}
+
 func leaseRenewInterval(ttl time.Duration) time.Duration {
 	interval := ttl / 3
 	if interval <= 0 {
