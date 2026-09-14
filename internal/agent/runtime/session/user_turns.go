@@ -161,8 +161,12 @@ func (m *Manager) PublishQueueUserTurns(ctx context.Context, handle RunHandle, u
 		if !changed {
 			return snapshot, false, nil
 		}
-		// A persisted turn arrives numbered by the history projection; this only
-		// covers the run's own request turn if it reached the view unnumbered.
+		// A persisted turn normally arrives numbered: the insert returns its
+		// turn position and the history projection carries it through. The one
+		// path that loses it is a user message with attachments, which is
+		// written in two steps (row first, turn linked after) and returns a
+		// Message the link never wrote back into. Restore the run's own turn
+		// from the slot admission drew, so an upsert cannot un-number it.
 		stampRunTurnPosition(run)
 		snapshot.Seq++
 		snapshot.UpdatedAt = now

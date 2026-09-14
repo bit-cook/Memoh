@@ -303,9 +303,9 @@ type CurrentRunView struct {
 }
 
 type SteerTurnView struct {
-	ItemID         string    `json:"item_id" validate:"required" format:"uuid"`
-	Status         string    `json:"status" validate:"required" enums:"claimed,applied"`
-	Text           string    `json:"text" validate:"required"`
+	ItemID string `json:"item_id" validate:"required" format:"uuid"`
+	Status string `json:"status" validate:"required" enums:"claimed,applied"`
+	Text   string `json:"text" validate:"required"`
 	// TurnID and TurnPosition are drawn when the steer is claimed, not when its
 	// step commits: a subscriber that only learns the queue item id cannot line
 	// the input up against history, which left the live bubble and the settled

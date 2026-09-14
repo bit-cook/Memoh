@@ -49,9 +49,9 @@ func TestStampSteerTurnFilesTheInjectedInputUnderTheClaimedSlot(t *testing.T) {
 func TestStampSteerTurnIsInertWithoutAClaim(t *testing.T) {
 	slot := messagepkg.TurnSlot{TurnID: "turn-steer", Position: 42}
 	for name, coordinator := range map[string]*queueStepCoordinator{
-		"no claim":  {pendingSteerTurn: &slot},
-		"no slot":   {pendingSteer: &sessionruntime.SteerClaimRef{ItemID: "item-1"}},
-		"no queue":  nil,
+		"no claim": {pendingSteerTurn: &slot},
+		"no slot":  {pendingSteer: &sessionruntime.SteerClaimRef{ItemID: "item-1"}},
+		"no queue": nil,
 		"empty slot": {
 			pendingSteer:     &sessionruntime.SteerClaimRef{ItemID: "item-1"},
 			pendingSteerTurn: &messagepkg.TurnSlot{TurnID: "  ", Position: 1},
