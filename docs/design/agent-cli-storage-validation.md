@@ -56,16 +56,35 @@ Installation operation fields, the desired targets and authorization-event count
 
 The [Codex native-state evaluation](agent-cli-native-state-evaluation.md) contains the completed directory and state-loss experiments. Moving all native SQLite state to ephemeral storage lost goal state after rootfs replacement. Therefore this implementation retains the persistent Codex Home and ordinary `auth.json`; it does not enable ephemeral `sqlite_home` globally.
 
+## Default OSS store verification
+
+OSS default-store verification passed with one entrypoint repair. A disposable Bot in an isolated Server, PostgreSQL database and containerd namespace used `dependency_store_root = ""`. The real UI reviewed and confirmed uv 0.12.12 and frozen definition `c08c6b3cd8ad226a7652c1f67ac42eb24dc65aeab75f2245c99cdcc8b65f4667`. Its managed payload was installed under `/data/.memoh/deps/uv/installs/`, and the real managed launcher returned `uv 0.12.12 (aarch64-unknown-linux-gnu)`.
+
+A real preserve-data delete/recreate replaced the root filesystem. The payload installation ID, path, executable hash, exact version, desired revision and original authorization audit remained unchanged, and the managed launcher still executed successfully. This was not a zero-operation rebuild: the existing containerd archive omits symlinks, so the ready handler restored `current` through one trusted entrypoint repair. It reused the existing payload and did not run the download recipe. Data restoration completes before workspace startup; no readiness-before-restore race was observed.
+
+The fresh fixture account used the normal authenticated `PUT /users/me` onboarding preference contract after the Bot was created by API. Its user ID matched the Bot owner; no model or Agent credentials were added. Existing 18080 settings, Bots and credentials were unchanged. The screenshots show confirmation, completed installation and the fresh post-rebuild UI. This is agent verification, not human QA or E2B performance evidence.
+
+See the [default-store evidence](../evidence/agent-cli-storage/default-store-runtime-evidence.md) and its structured runtime results.
+
+After verification, the isolated Server on 18100, Web on 18102, proxy and Bot task were stopped. The fixture database, namespace metadata, snapshot and data were retained for review. The original development Server on 18080 remained healthy. The default-store screenshots therefore document the completed run; port 18102 is no longer serving it.
+
 ## Cloud and E2B
 
-A dedicated E2B template (`1rjub6rv8z1t6sax5nug`, alias `memoh-agent-cli-storage-test-20260914`) was built without changing production defaults. The gated volume-rebuild mechanism test passed in 21.85 seconds and deleted its temporary sandboxes and volume. That test uses a synthetic payload; it is not evidence of integrated Memoh repair or authenticated CLI performance on E2B. The later integrated Cloud run installed Codex successfully, but native app-server startup on NFS is still blocked by Codex 0.154.0 taking a lock under `CODEX_HOME/tmp/arg0`. The same installed binary initializes with a disposable local Home. Moving only a disposable test Home's `tmp/arg0` onto local storage passed that lock, then blocked in a `state_5.sqlite` `fcntl` lock; after 34.75 seconds SQLite runtime initialization failed and initialize remained incomplete. This is not fixed by the dependency control-root change; the retained-Home runtime fails this E2B gate. No production Home, SQLite or NFS mount change was made. See the native-state evaluation for exact-version source evidence. Full Cloud acceptance is tracked separately until completed.
+The final dedicated E2B template (`6iq72gy5qp8lziulxgb1`, alias `memoh-agent-cli-control-v2-test-20260914`) creates local kernel-control storage during boot. The real-provider volume/rebuild/lock test passed in 21.58 seconds as UID 1000 and confirmed deletion of its temporary sandboxes and volume. This mechanism test uses synthetic payloads; integrated CLI results are recorded separately below. Production defaults were not changed.
+
+The isolated Cloud development stack at `http://localhost:27100` used normal BFF login, dedicated databases, a QA Team/Bot and the local Supermarket. Actual Codex `0.154.0` installation placed its payload on local storage and persisted the approved target; recipe execution to persisted desired state took about 19.2 seconds in this sample, including six seconds reported by npm. Pause/resume retained the sandbox and synthetic Home fixture hashes. A real 1 MiB filesystem capacity failure preserved the existing CLI, approved version/recipe and Home. The failed reinstall advanced the concurrency generation as intended.
+
+Deleting the real sandbox while retaining its volume removed the payload. A QA-only closed npm proxy produced a download failure and a 60-second repair backoff. After removing that test configuration, Retry recovery restored the exact frozen Codex target into a new installation with unchanged desired revision and Home hashes. The fresh Apps page showed Installed.
+
+The Cloud implementation was merged with its current `submodule/memoh` baseline, then the Server was rebuilt and restarted. A new real sidebar flow reviewed and installed Claude Code `2.1.270`, retained the originating Bot, and returned to the same chat with the Installed list refreshed. Both managed CLIs returned their exact versions from the final running source. The final merged checks passed 139 Web tests, SDK type checking, the Web build, scoped ESLint, real PostgreSQL dependency/Team-RLS tests, the complete handlers suite, and five real Linux adapter/lifecycle tests without skips. Cloud screenshots and sanitized logs remain in the private Cloud repository, linked from PRs #352 and #354.
+
+Native app-server startup with the persistent NFS Home remains blocked: Codex 0.154.0 first hangs on a lock under `CODEX_HOME/tmp/arg0`. The same installed binary initializes with a disposable local Home. Moving only a disposable test Home's `tmp/arg0` onto local storage passes that lock, then blocks in a `state_5.sqlite` `fcntl` lock; after 34.75 seconds SQLite runtime initialization fails and initialize remains incomplete. The dependency control-root change does not fix this native runtime gate. No production Home, SQLite or NFS mount change was made. See the native-state evaluation for exact-version source evidence. Successful version commands and synthetic Home hashes do not establish authenticated turns or resume.
 
 ## Remaining acceptance work
 
 - Resolve the demonstrated native Codex Home lock/SQLite failure on E2B NFS without losing persistent state.
 - Validate authenticated Codex and Claude turns with authorized test credentials, including persistence and resume.
-- Complete Cloud adapter tests and real development API/UI verification.
-- Submit and check the related draft PRs, keeping Human QA unchecked. Current screenshots and sanitized results are versioned with the implementation.
+- Finish checking the final draft PR heads, keeping Human QA unchecked. All four related draft PRs have been submitted; current screenshots and sanitized results are versioned with the implementation.
 
 ## Repository checks
 
@@ -81,8 +100,10 @@ Real Linux tests with a root PID 1 and UID 1000, plus separate root runs, passed
 
 ## Related contributions
 
-OSS draft PR [#1258](https://github.com/felinics/Memoh/pull/1258) contains the implementation and public screenshot evidence. PR Format passed; the remaining CI checks are tracked on the PR.
+OSS draft PR [#1258](https://github.com/felinics/Memoh/pull/1258) contains the implementation and public screenshot evidence. At code commit `46eee328605d420510ea9ebdaf00a2a77a4ef842`, Go tests, lint, migrations, runtime checks and platform builds passed, as did PR Format. The publish job was intentionally skipped. Subsequent evidence-only commit checks are tracked on the PR.
 
 Cloud outer draft PR [#352](https://github.com/felinics/Memoh-Cloud/pull/352) contains template/configuration changes and the real Cloud installation, capacity failure, rebuild/backoff/retry and NFS Home failure evidence. It does not switch production templates.
+
+Cloud inner draft PR [#354](https://github.com/felinics/Memoh-Cloud/pull/354), targeting `submodule/memoh`, contains the provider-neutral dependency implementation, Team/RLS migration, final merged checks and fresh sidebar installation evidence. The outer PR does not point its gitlink at the unmerged feature branch. CI for the inner PR is tracked separately from the passing local checks.
 
 Supermarket draft PR [#26](https://github.com/felinics/supermarket/pull/26) has passed both CI checks and contains the 32 recipe updates, generated lock and versioned screenshots from the real Memoh installation flow. It does not deploy the registry.

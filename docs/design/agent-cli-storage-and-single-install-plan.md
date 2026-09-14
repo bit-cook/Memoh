@@ -542,19 +542,19 @@ P1/P2 的最终上线必须包含相互依赖的事务协议；不能先删除�
 
 ## 17. 最终验收清单
 
-2026-09-14 实施进度：勾选项已有对应源码与测试证据；完整运行结果及尚未完成的认证、Cloud、CI 验收见[验证记录](agent-cli-storage-validation.md)。
+2026-09-15 实施进度：勾选项已有对应源码与测试证据；OSS 默认/本地 store、Cloud 真实 API/UI 和 E2B 恢复已验证，四个草稿 PR 已提交。完整运行结果及尚未完成的认证、NFS Home 和最终 PR 检查见[验证记录](agent-cli-storage-validation.md)。
 
 - [x] 没有依赖 Rollback 的公开路由、SDK、动作、菜单、对话框、previous_version 响应和长期历史负载维护。
 - [x] 更新失败原安装仍可用；同版本重装不会原地破坏正在使用的目录。
 - [x] state、receipt、数据库提交与清理的崩溃边界均可恢复；不确定操作不会重复执行。
 - [x] 终态只有一个当前安装；已登记旧负载在合格完整 Workspace 重启窗口清理，证据不足时保留 pending；缓存有独立限制，活跃进程不被 GC 破坏。
-- [ ] 默认 OSS 和显式本地 store 两种配置均可运行；旧安装与旧冻结 recipe 功能兼容。
+- [x] 默认 OSS 和显式本地 store 两种配置均可运行；旧安装与旧冻结 recipe 功能兼容。默认布局的归档重建保留原负载，省略的 `current` 软链由一次入口修复恢复，不重新下载。
 - [x] 自动恢复只执行可信授权的准确目标；toolkit fallback 不覆盖期望目标；查询无安装副作用。
 - [x] Remove/Update/App 引用变化使旧 repair 无效；多个 Server 不会并发恢复同一目标。
 - [x] 新表迁移/RLS、definition cache 保留、SQL/OpenAPI/SDK、i18n 与文档均完整。
 - [ ] Codex Home/auth 和 Claude Home/登录/settings/plugins 的持久性未改变；rootfs 重建后真实 turn 可用。
 - [x] 原生 SQLite/log 配置实验已完成；未经证明的状态迁移未启用，启动性能缺口按实记录。
-- [ ] E2B 安装目标、pause/resume、recreate repair、异常网络和根盘压力有可复查证据。
+- [x] E2B 安装目标、pause/resume、recreate repair、异常网络和根盘压力有可复查证据；持久 Home 的原生 Codex 启动另列为未通过项。
 - [ ] 本地真实 UI、当前版本截图、运行时证据和必要 CI 通过；Human QA 状态准确。
 
 ## 18. 参考依据

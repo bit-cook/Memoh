@@ -14,3 +14,7 @@ The screenshots establish the management flow, not authenticated model calls or 
 Sanitized [runtime outcomes](runtime-results.json) and [47 HTTP contract outcomes](http-results.json) record the backend checks alongside the screenshots.
 
 After the Linux non-root epoch fix, the bridge was rebuilt and the live same-version replacement/stop/start flow was repeated on 2026-09-15. [Fresh UI](codex-epoch-fix-verified.jpg) and [sanitized runtime results](epoch-fix-runtime-results.json) show the current installed version, old-process continuity and cleanup only after full restart. Separate real root/UID 1000 Linux race suites passed without skips.
+
+The isolated default-store run at `http://localhost:18102` verified uv under `/data`: [confirmation](default-store-uv-confirmation.jpg), [installed path](default-store-uv-installed.jpg), and [after rootfs reconstruction](default-store-uv-after-rebuild.jpg). [Details](default-store-runtime-evidence.md) and [runtime outcomes](default-store-runtime-results.json) distinguish unchanged payloads from the single entrypoint repair required because the existing archive omits symlinks.
+
+The isolated 18100/18102 processes and Bot task were stopped after verification. Their fixture data was retained; the original 18080/18082 development environment was preserved.
