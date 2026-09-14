@@ -30,7 +30,7 @@
     </header>
 
     <!-- Horizontal nav + search: the active tab is a pill with
-         icon + label, the others collapse to icon-only. Supermarket stays icon-only. These tabs are plain
+         icon + label, the others collapse to icon-only. These tabs are plain
          <button>s, NOT <Button>: the cva ships size paddings/gaps (and wraps the
          slot in a display:contents span) that fight the exact geometry we need.
          ANCHORED ON THE ICON: the icon never moves between states. Hovering an inactive tab shows a circle centered on the icon;
@@ -65,9 +65,8 @@
           <TooltipTrigger as-child>
             <button
               type="button"
-              class="inline-flex h-8 min-w-0 shrink-0 cursor-pointer items-center justify-start rounded-full px-2 text-muted-foreground outline-none transition-[margin,padding,color,background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[color:var(--sidebar-hover)] hover:text-foreground dark:hover:text-[color:oklch(0.96_0_0)] focus-visible:ring-2 focus-visible:ring-ring data-[expanded=true]:-ml-[3px] data-[active=true]:bg-sidebar-accent data-[expanded=true]:pl-2.5 data-[expanded=true]:pr-3.5 data-[active=true]:text-foreground/90 dark:data-[active=true]:text-[color:oklch(0.96_0_0)]"
+              class="inline-flex h-8 min-w-0 shrink-0 cursor-pointer items-center justify-start rounded-full px-2 text-muted-foreground outline-none transition-[margin,padding,color,background-color] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-[color:var(--sidebar-hover)] hover:text-foreground dark:hover:text-[color:oklch(0.96_0_0)] focus-visible:ring-2 focus-visible:ring-ring data-[active=true]:-ml-[3px] data-[active=true]:bg-sidebar-accent data-[active=true]:pl-2.5 data-[active=true]:pr-3.5 data-[active=true]:text-foreground/90 dark:data-[active=true]:text-[color:oklch(0.96_0_0)]"
               :data-active="sidebarView === view.id"
-              :data-expanded="sidebarView === view.id && view.id !== 'supermarket'"
               :aria-label="view.label"
               :aria-pressed="sidebarView === view.id"
               @click="store.selectSidebarView(view.id)"
@@ -87,7 +86,6 @@
                 />
               </span>
               <span
-                v-if="view.id !== 'supermarket'"
                 class="grid min-w-0 transition-[grid-template-columns] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)]"
                 :class="sidebarView === view.id ? 'grid-cols-[1fr]' : 'grid-cols-[0fr]'"
               >
@@ -221,8 +219,8 @@ const settingsStore = useSettingsStore()
 const chatStore = useChatStore()
 const { currentBotId, bots } = storeToRefs(chatStore)
 
-// 为最长的 Schedule 标签、其余图标和搜索按钮保留空间，并跟随界面字号放大。
-const minWidth = computed(() => Math.max(304, 19 * settingsStore.uiFontSizePx))
+// 为展开的导航标签、其余图标和搜索按钮保留空间，并跟随界面字号放大。
+const minWidth = computed(() => Math.max(352, 22 * settingsStore.uiFontSizePx))
 const MAX_WIDTH = 480
 // 旧的持久化宽度也须遵守新下限，收起位移和拖拽起点使用同一实际宽度。
 const effectiveWidth = computed(() => Math.min(MAX_WIDTH, Math.max(minWidth.value, sidebarWidth.value)))
