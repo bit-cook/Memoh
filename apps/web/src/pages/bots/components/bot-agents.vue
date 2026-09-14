@@ -55,7 +55,6 @@
           v-for="agent in agents"
           :key="agent.id"
           :label="botAgentName(agent)"
-          :description="providerLabel(agent)"
         >
           <template #leading>
             <span class="flex size-9 items-center justify-center">
@@ -74,15 +73,6 @@
               <Spinner class="size-3" />
               {{ t('bots.agent.dependencyChecking') }}
             </span>
-
-            <Badge
-              v-if="agentDependency(agent)"
-              variant="outline"
-              size="sm"
-              font="mono"
-            >
-              {{ agentDependency(agent)?.dependencyId }}
-            </Badge>
 
             <Badge
               v-if="agent.enabled !== false && agentNeedsConfig(agent)"
@@ -203,7 +193,7 @@
 </template>
 
 <script setup lang="ts">
-import { externalAgentDisplayName, normalizeAgentID } from '@/utils/external-agent'
+import { normalizeAgentID } from '@/utils/external-agent'
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -409,12 +399,6 @@ watch(agents, (list) => {
 function profileFor(agent: BotagentsBotAgent): AcpprofilePublicProfile | null {
   const provider = botAgentProvider(agent)
   return profiles.value.find(profile => normalizeAgentID(profile.id) === provider) ?? null
-}
-
-function providerLabel(agent: BotagentsBotAgent): string {
-  const profile = profileFor(agent)
-  const provider = botAgentProvider(agent)
-  return profile?.display_name?.trim() || externalAgentDisplayName(provider, provider)
 }
 
 function agentForm(profile: AcpprofilePublicProfile): ACPAgentForm {

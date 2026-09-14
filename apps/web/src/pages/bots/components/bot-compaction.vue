@@ -3,8 +3,8 @@ import { ref, reactive, computed, watch, onDeactivated, onMounted, onBeforeUnmou
 import { useI18n } from 'vue-i18n'
 import { ConfirmPopover, InlineLoadingRow, SectionGroup, SettingsRow, SettingsSection, toast } from '@felinic/ui'
 import {
-  Button, Badge, Dialog, DialogBody, DialogDescription, DialogHeader, DialogPanel, DialogTitle,
-  Empty, EmptyDescription, EmptyHeader, EmptyTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, Input, Label,
+  Button, Badge, Dialog, DialogBody, DialogHeader, DialogPanel, DialogTitle,
+  Empty, EmptyDescription, EmptyHeader, EmptyTitle, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Switch, Input,
   Pagination, PaginationContent, PaginationEllipsis,
   PaginationFirst, PaginationItem, PaginationLast,
   PaginationNext, PaginationPrevious,
@@ -28,7 +28,7 @@ import { useAutosaveQueue, type AutosaveJob } from '@/composables/use-autosave-q
 import type { Ref } from 'vue'
 
 const logsOpen = ref(false)
-onDeactivated(() => { logsOpen.value = false; advancedOpen.value = false })
+onDeactivated(() => { logsOpen.value = false })
 
 const props = defineProps<{
   botId: string
@@ -110,8 +110,6 @@ watch(settings, (val: SettingsSettings | undefined) => {
     synced[key] = next[key] as never
   }
 }, { immediate: true })
-
-const advancedOpen = ref(false)
 
 // Threshold draft: commits on blur/Enter; non-integer or negative reverts.
 const thresholdDraft = ref(String(form.compaction_threshold))
@@ -353,12 +351,22 @@ onBeforeUnmount(() => {
         <template v-if="form.compaction_enabled">
           <SettingsRow stack="sm">
             <template #content>
-              <Label for="compaction-threshold">
+              <label
+                for="compaction-threshold"
+                class="text-control font-medium text-foreground"
+              >
                 {{ $t('bots.settings.compactionThreshold') }}
-              </Label>
+              </label>
+              <p
+                id="compaction-threshold-description"
+                class="mt-0.5 text-body text-muted-foreground"
+              >
+                {{ $t('bots.settings.compactionThresholdDescription') }}
+              </p>
             </template>
             <Input
               id="compaction-threshold"
+              aria-describedby="compaction-threshold-description"
               :model-value="thresholdDraft"
               type="number"
               :min="0"
@@ -378,9 +386,12 @@ onBeforeUnmount(() => {
             stack="sm"
           >
             <template #content>
-              <Label for="compaction-target-percent">
+              <label
+                for="compaction-target-percent"
+                class="text-control font-medium text-foreground"
+              >
                 {{ $t('bots.settings.compactionTargetPercent') }}
-              </Label>
+              </label>
               <p
                 id="compaction-target-percent-description"
                 class="mt-0.5 text-body text-muted-foreground"
@@ -419,15 +430,19 @@ onBeforeUnmount(() => {
         </template>
         <SettingsRow
           v-if="form.compaction_enabled"
+          stack="sm"
           :label="$t('bots.settings.compactionModel')"
+          :description="$t('bots.settings.compactionModelDescription')"
         >
-          <Button
-            variant="outline"
-            size="sm"
-            @click="advancedOpen = true"
-          >
-            {{ $t('common.edit') }}
-          </Button>
+          <ModelSelect
+            v-model="form.compaction_model_id"
+            :models="compactionModels"
+            :providers="providers"
+            model-type="chat"
+            :placeholder="$t('bots.settings.compactionModelPlaceholder')"
+            :none-label="$t('bots.settings.compactionModelPlaceholder')"
+            class="w-full sm:w-56"
+          />
         </SettingsRow>
         <SettingsRow :label="$t('bots.compaction.title')">
           <Button
@@ -670,28 +685,4 @@ onBeforeUnmount(() => {
       </Dialog>
     </div>
   </SectionGroup>
-
-  <!-- Advanced model override dialog (workbench form). Edits the autosaved
-       form directly: picking a model (or None, which clears the override)
-       saves immediately, so closing the dialog never loses or applies
-       anything by itself. -->
-  <Dialog v-model:open="advancedOpen">
-    <DialogPanel width="lg">
-      <DialogHeader>
-        <DialogTitle>{{ $t('bots.settings.compactionModel') }}</DialogTitle>
-        <DialogDescription>{{ $t('bots.settings.compactionModelDescription') }}</DialogDescription>
-      </DialogHeader>
-      <DialogBody>
-        <ModelSelect
-          v-model="form.compaction_model_id"
-          :models="compactionModels"
-          :providers="providers"
-          model-type="chat"
-          :placeholder="$t('bots.settings.compactionModelPlaceholder')"
-          :none-label="$t('bots.settings.compactionModelPlaceholder')"
-          class="w-full"
-        />
-      </DialogBody>
-    </DialogPanel>
-  </Dialog>
 </template>
