@@ -2,6 +2,7 @@ package native
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	sdk "github.com/felinics/twilight/sdk"
 	"github.com/google/jsonschema-go/jsonschema"
 
+	contextfrag "github.com/felinics/memoh/internal/agent/context/fragment"
 	agenttools "github.com/felinics/memoh/internal/agent/tool"
 )
 
@@ -282,5 +284,64 @@ func TestSteerPreservesToolsAndEarlierInput(t *testing.T) {
 	}
 	if calls.Load() != 4 || executions.Load() != 2 || users != 1 || secondUsers != 1 || results != 2 || !immediateInput.Load() {
 		t.Fatalf("calls=%d tools=%d steer inputs=%d,%d results=%d immediate=%v", calls.Load(), executions.Load(), users, secondUsers, results, immediateInput.Load())
+	}
+}
+
+// A claimed steer is named before its row exists (SR-TURN-001), and the step
+// that consumes it files its user row under that name by taking the last
+// unnamed user row it carries. That only works while prepareQueuedSteer stays
+// the outermost captured PrepareStep wrapper: every other injector of user rows
+// — read_media's image-only row here, mid-turn platform injects via InjectCh —
+// runs inside it and must append ahead of the steer. Reordering the wrappers at
+// agent.go would silently file the steer's turn onto somebody else's row, so
+// pin the ordering here rather than in the persistence layer that relies on it.
+func TestQueuedSteerIsAppendedAfterEveryOtherPreparedMessage(t *testing.T) {
+	t.Parallel()
+
+	imageBase64 := base64.StdEncoding.EncodeToString([]byte("\x89PNG\r\n\x1a\n\x00payload"))
+	wrapped, readMedia := decorateReadMediaTools(&sdk.Model{ID: "mock-model"}, []sdk.Tool{{
+		Name: agenttools.ReadMediaToolName().String(),
+		Execute: func(_ *sdk.ToolExecContext, _ any) (any, error) {
+			return agenttools.ReadMediaToolOutput{
+				Public:         agenttools.ReadMediaToolResult{OK: true, Path: "/data/image.png", Mime: "image/png"},
+				ImageBase64:    imageBase64,
+				ImageMediaType: "image/png",
+			}, nil
+		},
+	}})
+	if readMedia == nil || len(wrapped) != 1 {
+		t.Fatalf("decorateReadMediaTools did not wrap read tool: state=%v tools=%d", readMedia, len(wrapped))
+	}
+	if _, err := wrapped[0].Execute(&sdk.ToolExecContext{
+		Context:    context.Background(),
+		ToolCallID: "call-1",
+		ToolName:   agenttools.ReadMediaToolName().String(),
+	}, map[string]any{"path": "/data/image.png"}); err != nil {
+		t.Fatalf("wrapped read execute returned error: %v", err)
+	}
+
+	steer := []sdk.Message{sdk.UserMessage("steer text")}
+	cfg := RunConfig{NextModelInputs: &steer, ContextMutations: contextfrag.NewMutationLedger()}
+	prepare := prepareQueuedSteer(readMedia.prepareStep, cfg)
+
+	params := &sdk.GenerateParams{Messages: []sdk.Message{sdk.UserMessage("original query")}}
+	before := len(params.Messages)
+	prepared := params
+	if override := prepare(params); override != nil {
+		prepared = override
+	}
+
+	appended := prepared.Messages[before:]
+	if len(appended) != 2 {
+		t.Fatalf("prepared block = %d messages, want the read_media row and the steer", len(appended))
+	}
+	if appended[0].Role != sdk.MessageRoleUser || textOfMessage(appended[0]) != "" {
+		t.Fatalf("prepared[0] = %s %q, want read_media's image-only user row",
+			appended[0].Role, textOfMessage(appended[0]))
+	}
+	last := appended[len(appended)-1]
+	if last.Role != sdk.MessageRoleUser || textOfMessage(last) != "steer text" {
+		t.Fatalf("last prepared message = %s %q, want the steer injection",
+			last.Role, textOfMessage(last))
 	}
 }

@@ -19,28 +19,34 @@ func TestStampSteerTurnFilesTheInjectedInputUnderTheClaimedSlot(t *testing.T) {
 		pendingSteerTurn: &slot,
 	}}
 
+	// The order a steered step really carries, per
+	// TestQueuedSteerIsAppendedAfterEveryOtherPreparedMessage: PrepareStep's
+	// other injectors run inside prepareQueuedSteer and append first, then the
+	// steer, then the assistant and tool rows the provider produced.
 	inputs := []messagepkg.PersistInput{
-		// The run's request turn, already named by admission.
+		// A row admission already named must never be re-stamped.
 		{Role: "user", TurnID: "turn-request", TurnPosition: int64Ptr(7)},
-		// The injected steer: the one user row nobody has named.
+		// The image-only row read_media appends after reading media. It has no
+		// text, so persistence never names it, and it precedes the steer.
+		{Role: "user"},
+		// The injected steer: the last user row nobody has named.
 		{Role: "user"},
 		{Role: "assistant"},
-		// A tool decoration appends its own user row after execution.
-		{Role: "user"},
+		{Role: "tool"},
 	}
 	committer.stampSteerTurn(inputs)
 
 	if inputs[0].TurnID != "turn-request" || *inputs[0].TurnPosition != 7 {
 		t.Fatalf("admission's turn was overwritten: %#v", inputs[0])
 	}
-	if inputs[1].TurnID != slot.TurnID {
-		t.Fatalf("steer input turn id = %q, want %q", inputs[1].TurnID, slot.TurnID)
+	if inputs[1].TurnID != "" || inputs[1].TurnPosition != nil {
+		t.Fatalf("read_media's image row took the steer's turn: %#v", inputs[1])
 	}
-	if inputs[1].TurnPosition == nil || *inputs[1].TurnPosition != slot.Position {
-		t.Fatalf("steer input turn position = %v, want %d", inputs[1].TurnPosition, slot.Position)
+	if inputs[2].TurnID != slot.TurnID {
+		t.Fatalf("steer input turn id = %q, want %q", inputs[2].TurnID, slot.TurnID)
 	}
-	if inputs[3].TurnID != "" {
-		t.Fatalf("a later synthetic user row claimed the steer's turn: %#v", inputs[3])
+	if inputs[2].TurnPosition == nil || *inputs[2].TurnPosition != slot.Position {
+		t.Fatalf("steer input turn position = %v, want %d", inputs[2].TurnPosition, slot.Position)
 	}
 }
 

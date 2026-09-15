@@ -267,11 +267,15 @@ func (c *agentStepCommitter) persist(ctx context.Context, stepIndex int, step *s
 
 // stampSteerTurn files this step's injected steer input under the turn drawn
 // when the input was claimed, instead of letting persistence mint a second name
-// for it. The row is identified structurally rather than by text: a step that
-// carries a claimed steer has exactly one user row admission did not already
-// name, and the injection is prepended to the provider request, so the
-// synthetic user rows a tool can append (screenshots, background pings) always
-// come after it.
+// for it. The row is identified by position rather than by text, and the
+// position to take is the last one: the steer is the final user row a step can
+// carry. PrepareStep's other user-row injectors — the image-only row read_media
+// appends after reading media, and mid-turn platform injects — are wrapped
+// inside prepareQueuedSteer, so their rows are appended ahead of the steer, and
+// sdk.StepResult.Messages holds only the assistant and tool rows the provider
+// produced. So scan from the end and take the last user row nobody named.
+// native.TestQueuedSteerIsAppendedAfterEveryOtherPreparedMessage pins the
+// ordering this depends on.
 func (c *agentStepCommitter) stampSteerTurn(inputs []messagepkg.PersistInput) {
 	if c == nil || c.queueStep == nil {
 		return
@@ -280,7 +284,7 @@ func (c *agentStepCommitter) stampSteerTurn(inputs []messagepkg.PersistInput) {
 	if slot == nil || strings.TrimSpace(slot.TurnID) == "" {
 		return
 	}
-	for i := range inputs {
+	for i := len(inputs) - 1; i >= 0; i-- {
 		if !strings.EqualFold(strings.TrimSpace(inputs[i].Role), "user") {
 			continue
 		}
