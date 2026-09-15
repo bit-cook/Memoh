@@ -275,7 +275,13 @@ func TestAgentGenerateReadMediaInjectsImageIntoNextStep(t *testing.T) {
 		Identity: SessionContext{
 			BotID: "bot-1",
 		},
-		OnStepCommitted: func(_ context.Context, _ int, step *sdk.StepResult) error {
+		OnStepCommitted: func(ctx context.Context, index int, step *sdk.StepResult) error {
+			if index == 1 {
+				origins := InternalFeedbackIndexes(ctx)
+				if len(origins) != 1 || origins[0] != 0 {
+					t.Fatalf("feedback origins = %v", origins)
+				}
+			}
 			committed = append(committed, step)
 			return nil
 		},
@@ -290,6 +296,9 @@ func TestAgentGenerateReadMediaInjectsImageIntoNextStep(t *testing.T) {
 		t.Fatalf("expected persisted step + injected history, got %d messages", len(result.Messages))
 	}
 	assertInjectedReadMediaMessage(t, result.Messages[2], expectedDataURL, "image/png")
+	if len(result.InternalFeedbackIndexes) != 1 || result.InternalFeedbackIndexes[0] != 2 {
+		t.Fatalf("terminal feedback origins = %v", result.InternalFeedbackIndexes)
+	}
 	if len(committed) != 2 || len(committed[1].Messages) != 2 {
 		t.Fatalf("committed steps = %#v, want injected message plus final assistant", committed)
 	}

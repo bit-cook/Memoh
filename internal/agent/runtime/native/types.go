@@ -260,6 +260,8 @@ type RunConfig struct {
 
 // GenerateResult holds the result of a non-streaming agent invocation.
 type GenerateResult struct {
+	InternalFeedbackIndexes []int
+
 	Messages    []sdk.Message
 	Text        string
 	Attachments []FileAttachment

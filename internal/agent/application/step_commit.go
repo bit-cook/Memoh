@@ -139,7 +139,7 @@ func (c *agentStepCommitter) persist(ctx context.Context, stepIndex int, step *s
 		return ownershipErr
 	}
 	ctx = persistCtx
-	messages := sdkMessagesToModelMessages(step.Messages)
+	messages := sdkMessagesWithOrigins(step.Messages, native.InternalFeedbackIndexes(ctx))
 	timingState := "completed"
 	if interrupted {
 		timingState = "interrupted"
@@ -245,7 +245,7 @@ func (c *agentStepCommitter) persist(ctx context.Context, stepIndex int, step *s
 	}
 	c.nextStep++
 	for _, message := range persisted {
-		if strings.EqualFold(strings.TrimSpace(message.Role), "user") {
+		if strings.EqualFold(strings.TrimSpace(message.Role), "user") && !messagepkg.IsInternalFeedback(message.Metadata) {
 			c.turnRequestMessageID = message.ID
 		}
 	}
@@ -285,7 +285,7 @@ func (c *agentStepCommitter) stampSteerTurn(inputs []messagepkg.PersistInput) {
 		return
 	}
 	for i := len(inputs) - 1; i >= 0; i-- {
-		if !strings.EqualFold(strings.TrimSpace(inputs[i].Role), "user") {
+		if !strings.EqualFold(strings.TrimSpace(inputs[i].Role), "user") || messagepkg.IsInternalFeedback(inputs[i].Metadata) {
 			continue
 		}
 		if strings.TrimSpace(inputs[i].TurnID) != "" {

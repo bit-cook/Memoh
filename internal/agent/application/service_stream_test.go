@@ -305,6 +305,7 @@ func TestPersistPartialResultDoesNotStoreUserOnlyFailure(t *testing.T) {
 		false,
 		true,
 		"",
+		nil,
 	)
 
 	if len(messages.persisted) != 0 {
@@ -490,6 +491,7 @@ func TestPersistPartialResultStoresTimeoutWithoutSnapshot(t *testing.T) {
 		true,
 		false,
 		apperror.CodeAgentResponseTimeout,
+		nil,
 	)
 	if len(persisted) == 0 || len(messages.persisted) != 2 {
 		t.Fatalf("expected timeout without snapshot to persist a turn failure, got %#v", messages.persisted)

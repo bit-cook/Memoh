@@ -335,7 +335,7 @@ func (s *DBService) PersistRound(ctx context.Context, inputs []PersistInput, opt
 				if err != nil {
 					return err
 				}
-				if strings.EqualFold(strings.TrimSpace(input.Role), "user") && !input.SkipHistoryTurn {
+				if strings.EqualFold(strings.TrimSpace(input.Role), "user") && !input.SkipHistoryTurn && !IsInternalFeedback(input.Metadata) {
 					turnRequestMessageID = message.ID
 				}
 				persisted = append(persisted, message)
@@ -559,6 +559,9 @@ func (s *DBService) preparePersistMessage(ctx context.Context, input PersistInpu
 		if err != nil {
 			return preparedPersistMessage{}, fmt.Errorf("invalid turn request message id: %w", err)
 		}
+		if IsInternalFeedback(input.Metadata) && !pgTurnRequestMessageID.Valid {
+			return preparedPersistMessage{}, errors.New("internal feedback requires a turn request message")
+		}
 		prepared.turnRequestMessageID = pgTurnRequestMessageID
 	}
 
@@ -626,7 +629,7 @@ func (s *DBService) persist(ctx context.Context, input PersistInput) (Message, e
 
 	result := toMessageFromCreate(row)
 	if !input.SkipHistoryTurn {
-		if err := s.persistHistoryTurn(ctx, prepared.botID, prepared.sessionID, row.ID, input.Role, pgTurnRequestMessageID); err != nil {
+		if err := s.persistHistoryTurn(ctx, prepared.botID, prepared.sessionID, row.ID, historyBindingRole(input.Role, input.Metadata), pgTurnRequestMessageID); err != nil {
 			s.cleanupPersistedMessage(ctx, row.ID)
 			return Message{}, err
 		}
@@ -668,7 +671,16 @@ func persistDirectHistoryMessage(
 	requestMessageID pgtype.UUID,
 	turn turnIdentity,
 ) (Message, pgtype.UUID, bool, error) {
-	switch strings.ToLower(strings.TrimSpace(role)) {
+	bindingRole := strings.ToLower(strings.TrimSpace(role))
+	if bindingRole == "user" && IsInternalFeedback(metadata) {
+		if !requestMessageID.Valid {
+			return Message{}, pgtype.UUID{}, true, errors.New("internal feedback requires a turn request message")
+		}
+		// Use the existing turn-binding writer while keeping createArg.Role
+		// unchanged for faithful replay of the model input.
+		bindingRole = MessageSourceInternalFeedback
+	}
+	switch bindingRole {
 	case "user":
 		messageID := newPGUUID()
 		// A run admitted through session_runs already drew this turn's id and
@@ -705,7 +717,7 @@ func persistDirectHistoryMessage(
 			return Message{}, pgtype.UUID{}, true, err
 		}
 		return toMessageFromCreateWithHistoryTurn(row, createArg, metadata), messageID, true, nil
-	case "assistant", "tool":
+	case "assistant", "tool", MessageSourceInternalFeedback:
 		if !requestMessageID.Valid {
 			return Message{}, pgtype.UUID{}, false, nil
 		}
@@ -886,7 +898,7 @@ func (s *DBService) persistHistoryTurn(ctx context.Context, botID pgtype.UUID, s
 		}); err != nil {
 			return fmt.Errorf("link orphan assistant message to history turn: %w", err)
 		}
-	case "tool":
+	case "tool", MessageSourceInternalFeedback:
 		if requestMessageID.Valid {
 			if err := lockHistoryTurnAppendByRequest(ctx, writer, sessionID, requestMessageID); err != nil {
 				return fmt.Errorf("lock requested history turn append: %w", err)

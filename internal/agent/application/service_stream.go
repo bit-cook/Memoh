@@ -23,13 +23,14 @@ type WSStreamEvent = json.RawMessage
 // interrupted-path fallback so that real partial messages get saved instead
 // of a synthetic placeholder.
 type terminalSnapshot struct {
-	sdkMessages     []sdk.Message
-	usage           json.RawMessage
-	reasoningTiming []messagepkg.ReasoningTimingSegment
-	deferredToolID  string
-	aborted         bool
-	visibleOutput   bool
-	failureCode     apperror.Code
+	sdkMessages             []sdk.Message
+	internalFeedbackIndexes []int
+	usage                   json.RawMessage
+	reasoningTiming         []messagepkg.ReasoningTimingSegment
+	deferredToolID          string
+	aborted                 bool
+	visibleOutput           bool
+	failureCode             apperror.Code
 }
 
 func snapshotFailureCode(idleFired bool, cause error) apperror.Code {
@@ -144,10 +145,11 @@ func agentAbortCause(ctx context.Context) error {
 // has no usable messages.
 func extractTerminalSnapshot(data []byte) (terminalSnapshot, bool) {
 	var envelope struct {
-		Type       string          `json:"type"`
-		Messages   json.RawMessage `json:"messages"`
-		Usage      json.RawMessage `json:"usage,omitempty"`
-		ApprovalID string          `json:"approvalId,omitempty"`
+		InternalFeedbackIndexes []int           `json:"internal_feedback_indexes"`
+		Type                    string          `json:"type"`
+		Messages                json.RawMessage `json:"messages"`
+		Usage                   json.RawMessage `json:"usage,omitempty"`
+		ApprovalID              string          `json:"approvalId,omitempty"`
 	}
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return terminalSnapshot{}, false
@@ -160,10 +162,11 @@ func extractTerminalSnapshot(data []byte) (terminalSnapshot, bool) {
 		return terminalSnapshot{}, false
 	}
 	return terminalSnapshot{
-		sdkMessages:    sdkMsgs,
-		usage:          envelope.Usage,
-		deferredToolID: strings.TrimSpace(envelope.ApprovalID),
-		aborted:        envelope.Type == string(native.EventAgentAbort),
+		sdkMessages:             sdkMsgs,
+		internalFeedbackIndexes: envelope.InternalFeedbackIndexes,
+		usage:                   envelope.Usage,
+		deferredToolID:          strings.TrimSpace(envelope.ApprovalID),
+		aborted:                 envelope.Type == string(native.EventAgentAbort),
 	}, true
 }
 
@@ -456,7 +459,7 @@ func (s *Service) StreamChat(ctx context.Context, req ChatRequest) (<-chan Strea
 					slog.String("chat_id", streamReq.ChatID),
 				)
 			case hasSnapshot:
-				_ = s.persistPartialResult(streamCtx, streamReq, rc, lastSnapshot.sdkMessages, lastSnapshot.reasoningTiming, toolCallCount, idleCancel.DidFire(), hasVisibleOutput, lastSnapshot.failureCode)
+				_ = s.persistPartialResult(streamCtx, streamReq, rc, lastSnapshot.sdkMessages, lastSnapshot.reasoningTiming, toolCallCount, idleCancel.DidFire(), hasVisibleOutput, lastSnapshot.failureCode, lastSnapshot.internalFeedbackIndexes)
 			default:
 				if code := snapshotFailureCode(idleCancel.DidFire(), lifecycleCause); code != "" {
 					if _, storeErr := s.persistTurnFailure(context.WithoutCancel(streamCtx), streamReq, rc, code); storeErr != nil {
@@ -788,7 +791,7 @@ func (s *Service) streamChatWSResultWithHooks(
 				slog.String("chat_id", req.ChatID),
 			)
 		case hasSnapshot:
-			persistedMessages = s.persistPartialResult(ctx, req, rc, lastSnapshot.sdkMessages, lastSnapshot.reasoningTiming, toolCallCount, idleCancel.DidFire(), hasVisibleOutput, lastSnapshot.failureCode)
+			persistedMessages = s.persistPartialResult(ctx, req, rc, lastSnapshot.sdkMessages, lastSnapshot.reasoningTiming, toolCallCount, idleCancel.DidFire(), hasVisibleOutput, lastSnapshot.failureCode, lastSnapshot.internalFeedbackIndexes)
 		default:
 			if code := snapshotFailureCode(idleCancel.DidFire(), lifecycleCause); code != "" {
 				persisted, storeErr := s.persistTurnFailure(context.WithoutCancel(ctx), req, rc, code)
@@ -853,7 +856,7 @@ func (s *Service) persistTerminalSnapshot(ctx context.Context, req ChatRequest, 
 }
 
 func (s *Service) persistTerminalSnapshotResult(ctx context.Context, req ChatRequest, rc resolvedContext, snap terminalSnapshot) ([]messagepkg.Message, error) {
-	outputMessages := sdkMessagesToModelMessages(snap.sdkMessages)
+	outputMessages := sdkMessagesWithOrigins(snap.sdkMessages, snap.internalFeedbackIndexes)
 	if snap.failureCode != "" && (!snap.visibleOutput || !hasPersistableAssistantOutput(outputMessages)) {
 		return s.persistTurnFailure(ctx, req, rc, snap.failureCode)
 	}
@@ -934,6 +937,7 @@ func (s *Service) persistPartialResult(
 	wasIdleTimeout bool,
 	hasVisibleOutput bool,
 	failureCode apperror.Code,
+	feedbackIndexes []int,
 ) []messagepkg.Message {
 	persistCtx := context.WithoutCancel(ctx)
 	if failureCode == "" && wasIdleTimeout {
@@ -946,11 +950,12 @@ func (s *Service) persistPartialResult(
 		// a real result, preserving the assistant ↔ tool pairing required by
 		// downstream provider serializers (especially Anthropic).
 		persisted, err := s.persistTerminalSnapshotResult(persistCtx, req, rc, terminalSnapshot{
-			sdkMessages:     partialMessages,
-			reasoningTiming: reasoningTiming,
-			aborted:         !hasVisibleOutput,
-			visibleOutput:   hasVisibleOutput,
-			failureCode:     failureCode,
+			sdkMessages:             partialMessages,
+			internalFeedbackIndexes: feedbackIndexes,
+			reasoningTiming:         reasoningTiming,
+			aborted:                 !hasVisibleOutput,
+			visibleOutput:           hasVisibleOutput,
+			failureCode:             failureCode,
 		})
 		if err == nil {
 			s.logger.Info("persisted partial agent result",

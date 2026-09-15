@@ -362,7 +362,7 @@ func (s *Service) consumeTriggeredStreamWithIdle(ctx context.Context, events <-c
 	// seen earlier (already logged); the trigger result mirrors the Generate
 	// era's contract: final assistant text plus usage for the schedule log.
 	text := ""
-	if modelMsgs := sdkMessagesToModelMessages(lastSnapshot.sdkMessages); len(modelMsgs) > 0 {
+	if modelMsgs := sdkMessagesWithOrigins(lastSnapshot.sdkMessages, lastSnapshot.internalFeedbackIndexes); len(modelMsgs) > 0 {
 		if idx := lastAssistantMessageIndex(modelMsgs); idx >= 0 {
 			text = strings.TrimSpace(modelMsgs[idx].TextContent())
 		}

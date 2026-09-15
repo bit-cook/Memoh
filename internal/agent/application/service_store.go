@@ -317,24 +317,14 @@ func (s *Service) buildPersistInputs(ctx context.Context, req ChatRequest, messa
 		// synthetic mid-turn message that must not claim the turn's identity.
 		turnID := ""
 		var turnPosition *int64
-		if msg.Role == "user" {
+		isInternalFeedback := msg.Source == turnpkg.MessageSourceInternalFeedback
+		if msg.Role == "user" && !isInternalFeedback {
 			messageSenderChannelIdentityID = senderChannelIdentityID
 			messageSenderUserID = senderUserID
 
-			// Only the user message whose text matches req.Query is the
-			// "real" turn-leading query from the user. Other user-role
-			// messages in this round are synthetic — typically:
-			//   1. Mid-turn IM platform injects (the user typed again
-			//      while the bot was working).
-			//   2. The image-only user message that the read-media tool
-			//      decoration appends after a successful image read so
-			//      that the next LLM step can see the image.
-			// For (2) the message has no text content; for both (1) and
-			// (2), splatting req.RawQuery / req.ExternalMessageID /
-			// req.EventID across them was wrong: it forced the UI to
-			// display the original query text on a synthetic image-only
-			// turn (the read-tool case), and falsely linked unrelated
-			// messages to the same inbound IM event.
+			// Apply the inbound event and display metadata only to its original
+			// query; steered user messages retain their own text. Internal model
+			// feedback bypasses this user-message path based on its source.
 			ownText := strings.TrimSpace(msg.TextContent())
 			isOriginalSkillActivation := req.UserMessageKind == UserMessageKindSkillActivation &&
 				strings.TrimSpace(req.Query) == "" &&
@@ -366,13 +356,9 @@ func (s *Service) buildPersistInputs(ctx context.Context, req ChatRequest, messa
 				assets = chatAttachmentsToAssetRefs(req.Attachments)
 				persistMeta = mergeMetadata(meta, buildInteractionMetadata(req))
 			} else {
-				// Use the message's own text as display text. For the
-				// read-media image-only injection this is empty, so
-				// DisplayContent stays empty and ConvertMessagesToUITurns
-				// drops the turn entirely (no text + no assets).
 				displayText = ownText
 			}
-		} else if strings.TrimSpace(req.ExternalMessageID) != "" {
+		} else if !isInternalFeedback && strings.TrimSpace(req.ExternalMessageID) != "" {
 			sourceReplyToMessageID = req.ExternalMessageID
 		}
 		if i == lastAssistantIdx && len(outboundAssets) > 0 {
@@ -382,6 +368,10 @@ func (s *Service) buildPersistInputs(ctx context.Context, req ChatRequest, messa
 			persistMeta = mergeMetadata(persistMeta, map[string]any{
 				messagepkg.ToolCallDiffsMetadataKey: toolCallDiffs,
 			})
+		}
+		if isInternalFeedback {
+			persistMeta = mergeMetadata(persistMeta, map[string]any{messagepkg.MessageSourceMetadataKey: messagepkg.MessageSourceInternalFeedback})
+			displayText = ""
 		}
 		if extraMeta := opts.MessageMetadataByIndex[i]; len(extraMeta) > 0 {
 			persistMeta = mergeMetadata(persistMeta, extraMeta)
@@ -463,7 +453,7 @@ func (s *Service) persistMessageInputs(ctx context.Context, inputs []messagepkg.
 			s.logger.Warn("persist message failed", slog.Any("error", err))
 			continue
 		}
-		if strings.EqualFold(strings.TrimSpace(input.Role), "user") && !input.SkipHistoryTurn {
+		if strings.EqualFold(strings.TrimSpace(input.Role), "user") && !input.SkipHistoryTurn && !messagepkg.IsInternalFeedback(input.Metadata) {
 			turnRequestMessageID = persistedMessage.ID
 		}
 		persisted = append(persisted, persistedMessage)

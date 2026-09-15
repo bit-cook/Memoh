@@ -75,6 +75,7 @@ type readMediaDecorationState struct {
 type readMediaInjection struct {
 	afterStep    int
 	messageIndex int
+	durableIndex int
 	message      sdk.Message
 	admitted     bool
 }
@@ -126,25 +127,32 @@ func (s *readMediaDecorationState) prepareStep(params *sdk.GenerateParams) *sdk.
 }
 
 func (s *readMediaDecorationState) mergeMessages(steps []sdk.StepResult, fallback []sdk.Message, interruptedDurableStep int) []sdk.Message {
+	messages, _ := s.mergeMessagesWithOrigins(steps, fallback, interruptedDurableStep)
+	return messages
+}
+
+func (s *readMediaDecorationState) mergeMessagesWithOrigins(steps []sdk.StepResult, fallback []sdk.Message, interruptedDurableStep int) ([]sdk.Message, []int) {
 	if s == nil {
-		return fallback
+		return fallback, nil
 	}
 	s.mu.Lock()
 	injections := append([]readMediaInjection(nil), s.injections...)
 	s.mu.Unlock()
 	if len(injections) == 0 {
-		return fallback
+		return fallback, nil
 	}
 	if len(steps) == 0 {
-		return fallback
+		return fallback, nil
 	}
 
+	var feedbackIndexes []int
 	merged := make([]sdk.Message, 0, len(fallback)+len(injections))
 	injectionIndex := 0
 	for stepIndex, step := range steps {
 		merged = append(merged, step.Messages...)
 		for injectionIndex < len(injections) && injections[injectionIndex].afterStep == stepIndex {
 			if shouldMergeReadMediaInjection(injections[injectionIndex], len(steps), interruptedDurableStep) {
+				feedbackIndexes = append(feedbackIndexes, len(merged))
 				merged = append(merged, injections[injectionIndex].message)
 			}
 			injectionIndex++
@@ -152,11 +160,12 @@ func (s *readMediaDecorationState) mergeMessages(steps []sdk.StepResult, fallbac
 	}
 	for injectionIndex < len(injections) {
 		if shouldMergeReadMediaInjection(injections[injectionIndex], len(steps), interruptedDurableStep) {
+			feedbackIndexes = append(feedbackIndexes, len(merged))
 			merged = append(merged, injections[injectionIndex].message)
 		}
 		injectionIndex++
 	}
-	return merged
+	return merged, feedbackIndexes
 }
 
 func shouldMergeReadMediaInjection(injection readMediaInjection, completedStepCount, interruptedDurableStep int) bool {
@@ -176,7 +185,14 @@ func (s *readMediaDecorationState) reconcilePreparedMessages(step int, admission
 		if s.injections[i].afterStep+1 != step {
 			continue
 		}
-		s.injections[i].admitted = preparedAdmissionsContainIndex(admissions, s.injections[i].messageIndex)
+		s.injections[i].admitted = false
+		for ordinal, admission := range admissions {
+			if admission.index == s.injections[i].messageIndex {
+				s.injections[i].admitted = true
+				s.injections[i].durableIndex = ordinal
+				break
+			}
+		}
 	}
 }
 

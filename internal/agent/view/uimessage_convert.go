@@ -22,6 +22,7 @@ var (
 	uiTaskNotificationRe         = regexp.MustCompile(`(?s)<task-notification>\s*(.*?)\s*</task-notification>`)
 	uiMetadataParseKeys          = [][]byte{
 		[]byte(`"agent_turn_id"`),
+		[]byte(`"message_source"`),
 		[]byte(`"forward"`),
 		[]byte(`"model_requested_skills"`),
 		[]byte(`"platform"`),
@@ -235,6 +236,10 @@ func ConvertMessagesToUITurns(messages []messagepkg.Message) []UITurn {
 
 	for i := range messages {
 		raw := messages[i]
+		ensurePersistedMetadata(&raw)
+		if raw.Role == "user" && messagepkg.IsInternalFeedback(raw.Metadata) {
+			continue
+		}
 		rawTurnID := strings.TrimSpace(raw.TurnID)
 		if rawTurnID == "" {
 			continue

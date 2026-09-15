@@ -166,8 +166,12 @@ type InjectMessage struct {
 	Applied         func()
 }
 
+// MessageSourceInternalFeedback is runtime-generated input, never a new user turn.
+const MessageSourceInternalFeedback = "internal_feedback"
+
 // ModelMessage is the canonical message format exchanged at the turn boundary.
 type ModelMessage struct {
+	Source     string          `json:"-"`
 	Role       string          `json:"role"`
 	Content    json.RawMessage `json:"content,omitempty"`
 	Usage      json.RawMessage `json:"-"`

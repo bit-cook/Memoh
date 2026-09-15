@@ -845,7 +845,7 @@ func (s *Service) Chat(ctx context.Context, req ChatRequest) (ChatResponse, erro
 		return ChatResponse{}, err
 	}
 
-	outputMessages := sdkMessagesToModelMessages(result.Messages)
+	outputMessages := sdkMessagesWithOrigins(result.Messages, result.InternalFeedbackIndexes)
 	storeReq := req
 	if stepCommitter != nil {
 		inputTokens := 0

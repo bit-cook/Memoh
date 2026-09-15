@@ -49,6 +49,8 @@ const (
 // StreamEvent is emitted by an agent runtime during streaming. The JSON
 // shape is the wire format WebSocket clients consume; do not change tags.
 type StreamEvent struct {
+	InternalFeedbackIndexes []int `json:"internal_feedback_indexes,omitempty"`
+
 	Type           StreamEventType  `json:"type"`
 	Delta          string           `json:"delta,omitempty"`
 	ToolName       string           `json:"toolName,omitempty"`

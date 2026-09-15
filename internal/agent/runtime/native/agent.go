@@ -499,7 +499,7 @@ func (a *Agent) runStream(ctx context.Context, cfg RunConfig, ch chan<- StreamEv
 	emittedStep := 0
 	onStepCommitted := func(ctx context.Context, stepIndex int, step *sdk.StepResult) error {
 		if cfg.OnStepCommitted != nil {
-			if err := cfg.OnStepCommitted(ctx, cfg.StepIndexOffset+stepIndex, committedStepMessages.decorate(stepIndex, step, toolExecutionMetadata)); err != nil {
+			if err := cfg.OnStepCommitted(readMediaState.withMessageOrigins(ctx, stepIndex), cfg.StepIndexOffset+stepIndex, committedStepMessages.decorate(stepIndex, step, toolExecutionMetadata)); err != nil {
 				return err
 			}
 		}
@@ -560,6 +560,7 @@ func (a *Agent) runStream(ctx context.Context, cfg RunConfig, ch chan<- StreamEv
 	var allText strings.Builder
 	var interruptedStep interruptedStepCapture
 	var interruptedMessages []sdk.Message
+	var interruptedFeedbackIndexes []int
 	interruptedDurableStep := -1
 	stepNumber := 0
 
@@ -842,7 +843,7 @@ func (a *Agent) runStream(ctx context.Context, cfg RunConfig, ch chan<- StreamEv
 		}
 		index := cfg.StepIndexOffset + nextDurableStep
 		sendEvent(ctx, ch, StreamEvent{Type: EventStepEnd, StepNumber: index})
-		if err := cfg.OnSteer(ctx, index, step); err == nil {
+		if err := cfg.OnSteer(readMediaState.withMessageOrigins(ctx, nextDurableStep), index, step); err == nil {
 			messages := append(steerContinuationMessages(cfg, streamResult.Steps, committedStepMessages), steerCheckpointMessages(checkpointMessages)...)
 			cfg = appendSteerContinuation(cfg, messages, nextDurableStep+1)
 			if cfg.ContinueAfterFinal != nil {
@@ -878,12 +879,13 @@ func (a *Agent) runStream(ctx context.Context, cfg RunConfig, ch chan<- StreamEv
 		stepIndex := nextDurableStep
 		if step := interruptedStep.snapshot(stepIndex); step != nil {
 			step = committedStepMessages.decorate(stepIndex, step, toolExecutionMetadata)
-			if err := cfg.OnStepInterrupted(ctx, cfg.StepIndexOffset+stepIndex, step); err != nil {
+			if err := cfg.OnStepInterrupted(readMediaState.withMessageOrigins(ctx, stepIndex), cfg.StepIndexOffset+stepIndex, step); err != nil {
 				// An owner that lost its lease, or a run another writer already
 				// finalized, is an expected outcome of racing an abort.
 				a.logger.Warn("persist interrupted model step failed", slog.Any("error", err))
 			} else {
 				interruptedMessages = step.Messages
+				interruptedFeedbackIndexes = InternalFeedbackIndexes(readMediaState.withMessageOrigins(ctx, stepIndex))
 				interruptedDurableStep = stepIndex
 			}
 		}
@@ -894,11 +896,12 @@ func (a *Agent) runStream(ctx context.Context, cfg RunConfig, ch chan<- StreamEv
 	}
 
 	var finalMessages []sdk.Message
+	var feedbackIndexes []int
 	var totalUsage sdk.Usage
 	if streamClosed {
 		finalMessages = streamResult.Messages
 		if readMediaState != nil {
-			finalMessages = readMediaState.mergeMessages(streamResult.Steps, finalMessages, interruptedDurableStep)
+			finalMessages, feedbackIndexes = readMediaState.mergeMessagesWithOrigins(streamResult.Steps, finalMessages, interruptedDurableStep)
 		}
 		if streamResult.DeferredToolApproval != nil {
 			finalMessages = annotateDeferredApproval(finalMessages, *streamResult.DeferredToolApproval)
@@ -906,12 +909,16 @@ func (a *Agent) runStream(ctx context.Context, cfg RunConfig, ch chan<- StreamEv
 		finalMessages = toolExecutionMetadata.annotate(finalMessages)
 		totalUsage = aggregateStepUsage(streamResult.Steps)
 	}
+	for _, index := range interruptedFeedbackIndexes {
+		feedbackIndexes = append(feedbackIndexes, len(finalMessages)+index)
+	}
 	finalMessages = append(finalMessages, interruptedMessages...)
 	usageJSON, _ := json.Marshal(totalUsage)
 
 	termEvent := StreamEvent{
-		Messages: mustMarshal(finalMessages),
-		Usage:    usageJSON,
+		InternalFeedbackIndexes: feedbackIndexes,
+		Messages:                mustMarshal(finalMessages),
+		Usage:                   usageJSON,
 	}
 	if streamClosed && streamResult.DeferredToolApproval != nil {
 		termEvent.ApprovalID = streamResult.DeferredToolApproval.ApprovalID
@@ -1162,7 +1169,7 @@ func (a *Agent) runGenerate(ctx context.Context, cfg RunConfig) (result *Generat
 	)
 	if cfg.OnStepCommitted != nil {
 		opts = append(opts, sdk.WithOnStepCommitted(func(ctx context.Context, stepIndex int, step *sdk.StepResult) error {
-			return cfg.OnStepCommitted(ctx, cfg.StepIndexOffset+stepIndex, committedStepMessages.decorate(stepIndex, step, toolExecutionMetadata))
+			return cfg.OnStepCommitted(readMediaState.withMessageOrigins(ctx, stepIndex), cfg.StepIndexOffset+stepIndex, committedStepMessages.decorate(stepIndex, step, toolExecutionMetadata))
 		}))
 	}
 
@@ -1206,8 +1213,9 @@ func (a *Agent) runGenerate(ctx context.Context, cfg RunConfig) (result *Generat
 	}
 
 	finalMessages := genResult.Messages
+	var feedbackIndexes []int
 	if readMediaState != nil {
-		finalMessages = readMediaState.mergeMessages(genResult.Steps, finalMessages, -1)
+		finalMessages, feedbackIndexes = readMediaState.mergeMessagesWithOrigins(genResult.Steps, finalMessages, -1)
 	}
 	finalMessages = toolExecutionMetadata.annotate(finalMessages)
 	if cfg.ContinueAfterFinal != nil && cfg.ContinueAfterFinal.Swap(false) && len(genResult.Steps) > 0 {
@@ -1216,17 +1224,22 @@ func (a *Agent) runGenerate(ctx context.Context, cfg RunConfig) (result *Generat
 		if nextErr != nil {
 			return nil, nextErr
 		}
+		for _, index := range next.InternalFeedbackIndexes {
+			feedbackIndexes = append(feedbackIndexes, len(finalMessages)+index)
+		}
+		next.InternalFeedbackIndexes = feedbackIndexes
 		next.Messages = append(finalMessages, next.Messages...)
 		next.Text = strings.TrimSpace(strings.Join([]string{genResult.Text, next.Text}, "\n"))
 		return next, nil
 	}
 	return &GenerateResult{
-		Messages:    finalMessages,
-		Text:        genResult.Text,
-		Attachments: attachments,
-		Reactions:   reactions,
-		Speeches:    speeches,
-		Usage:       &genResult.Usage,
+		InternalFeedbackIndexes: feedbackIndexes,
+		Messages:                finalMessages,
+		Text:                    genResult.Text,
+		Attachments:             attachments,
+		Reactions:               reactions,
+		Speeches:                speeches,
+		Usage:                   &genResult.Usage,
 	}, nil
 }
 
