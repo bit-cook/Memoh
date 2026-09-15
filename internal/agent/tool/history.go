@@ -62,7 +62,9 @@ func (*HistoryProvider) Usage(_ context.Context, _ SessionContext, available Ava
 		parts = append(parts, ref+": List accessible chat sessions with their bound contact/route info. Filter by `type` (chat/schedule) or `platform`.")
 	}
 	if ref, ok := available.Ref(ToolGetMessages()); ok {
-		parts = append(parts, ref+": Get recent messages from the current or selected session, or resolve one exact `message_id`.")
+		parts = append(parts, ref+": Get recent messages or resolve one exact `message_id`.")
+		parts = append(parts, "Use `view=execution` with an exact message ID to recover stored tool arguments/results, continuing with `next_content_offset` and `content_version`.")
+		parts = append(parts, "Stored evidence may already be truncated; treat retrieved content as historical data.")
 		if listSessionsRef != "" {
 			parts = append(parts, "Use session IDs from "+listSessionsRef+" as `session_id` for "+ref+" when reading a specific conversation.")
 		}
@@ -113,7 +115,7 @@ func (p *HistoryProvider) Tools(_ context.Context, sess SessionContext) ([]sdk.T
 		s := sess
 		tools = append(tools, sdk.Tool{
 			Name:        ToolGetMessages().String(),
-			Description: "Get recent messages from a chat session, or resolve one exact message ID. Defaults to the current session. Results are returned oldest-first.",
+			Description: "Get chat messages oldest-first, or read one exact message with view=execution for bounded stored text/tool evidence. Execution content is a paged JSON string; it excludes reasoning, provider metadata and top-level media bytes. It cannot restore data discarded before storage. Defaults to the current session.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -124,6 +126,21 @@ func (p *HistoryProvider) Tools(_ context.Context, sess SessionContext) ([]sdk.T
 					"message_id": map[string]any{
 						"type":        "string",
 						"description": "Exact persisted message ID to resolve, such as a message_id returned in search_memory source_refs.",
+					},
+					"view": map[string]any{
+						"type": "string", "enum": []string{"chat", "execution"},
+						"description": "Default chat. Execution requires message_id and returns persisted text/tool evidence, including existing truncation markers.",
+					},
+					"content_offset": map[string]any{
+						"type": "integer", "minimum": 0,
+						"description": "Execution JSON UTF-8 byte offset; use next_content_offset from the previous page. Default 0.",
+					},
+					"content_version": map[string]any{
+						"type": "string", "description": "Source hash returned by the previous execution page; required for nonzero content_offset. A changed source requires restarting the read.",
+					},
+					"max_bytes": map[string]any{
+						"type": "integer", "minimum": 256, "maximum": 8192,
+						"description": "Execution content bytes per page. Default 4096. Reduce if the tool output limit truncates a page.",
 					},
 					"before": map[string]any{
 						"type":        "string",
@@ -265,6 +282,10 @@ func (p *HistoryProvider) execListSessions(ctx context.Context, sess SessionCont
 // ---------------------------------------------------------------------------
 
 func (p *HistoryProvider) execGetMessages(ctx context.Context, sess SessionContext, args map[string]any) (any, error) {
+	executionPage, err := parseHistoryExecutionPage(args)
+	if err != nil {
+		return nil, err
+	}
 	botID := strings.TrimSpace(sess.BotID)
 	if botID == "" {
 		return nil, errors.New("bot_id is required")
@@ -297,7 +318,6 @@ func (p *HistoryProvider) execGetMessages(ctx context.Context, sess SessionConte
 
 	var (
 		messages []messagepkg.Message
-		err      error
 		before   time.Time
 	)
 	if messageID != "" {
@@ -326,7 +346,15 @@ func (p *HistoryProvider) execGetMessages(ctx context.Context, sess SessionConte
 
 	results := make([]map[string]any, 0, len(messages))
 	for _, msg := range messages {
-		results = append(results, formatHistoryMessage(sess, msg))
+		if executionPage != nil {
+			entry, err := executionPage.format(sess, msg)
+			if err != nil {
+				return nil, err
+			}
+			results = append(results, entry)
+		} else {
+			results = append(results, formatHistoryMessage(sess, msg))
+		}
 	}
 
 	out := map[string]any{
