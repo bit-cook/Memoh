@@ -22,6 +22,12 @@ export interface RuntimeTranscriptSlice {
   // the transcript falls back to turnId-only matching for those.
   invocationId: string
   continuation?: boolean
+  // Turn ids in this frame that came from the queue's steer inputs. Callers
+  // used to recognise a steer by its `queue-steer:` turn id; naming a steer at
+  // claim time is precisely what removes that shape, so the frame names its
+  // steers rather than leaving them to be read off an id. Optional like the
+  // fields above: a frame without the key simply carries no steer.
+  steerTurnIds?: string[]
   status: RuntimeCurrentRunView['status'] | null
   operation: RuntimeRunOperation | null
   turns: UITurn[]
@@ -158,6 +164,7 @@ function emptyTranscript(): RuntimeTranscriptSlice {
     turnPosition: undefined,
     invocationId: '',
     continuation: false,
+    steerTurnIds: [],
     status: null,
     operation: null,
     turns: [],
@@ -184,6 +191,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
     return (run.steer_turns ?? []).find(steer => steer.turn_id?.trim() === id)?.turn_position
   }
   const active = isRuntimeRunActive(run.status)
+  const steerTurnIds: string[] = []
   const steerTurns = [...(run.steer_turns ?? [])]
     .filter(steer => steer.status === 'applied' || active)
     .sort((left, right) => left.after_message_id - right.after_message_id
@@ -246,6 +254,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
         : undefined
       const steerTurnId = durableTurnId || provisionalSteerTurnId(steer.item_id)
       const steerTurnPosition = durable?.turn_position ?? steer.turn_position
+      steerTurnIds.push(steerTurnId)
       turns.push({
         ...(durable ?? {
           turn_id: steerTurnId,
@@ -286,6 +295,7 @@ function transcriptForRun(run: RuntimeCurrentRunView | null): RuntimeTranscriptS
     turnPosition: run.turn_position,
     invocationId: run.invocation_id?.trim() ?? '',
     continuation: false,
+    steerTurnIds,
     status: run.status,
     operation: run.operation ? { ...run.operation } : null,
     turns,

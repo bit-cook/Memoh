@@ -44,6 +44,9 @@ export function markRuntimeTurn(
   slice: RuntimeTranscriptSlice,
   originalUser: boolean,
 ): RuntimeChatTurn {
+  // Read before the refile below can rewrite turnId onto the run's request
+  // turn: what makes this a steer is the frame listing it, not its id.
+  const steered = Boolean(turn.turnId) && (slice.steerTurnIds ?? []).includes(turn.turnId!)
   // An assistant segment keeps its own turn identity when it is provisional
   // (steer prefix) or nested under a user turn the same frame carries: that
   // is the durable turn history files the post-steer output under. Any other
@@ -61,6 +64,7 @@ export function markRuntimeTurn(
     turn.turnPosition ??= slice.turnPosition
   }
   turn.runtimeRunId = slice.runId
+  if (turn.role === 'user' && steered) turn.runtimeSteer = true
   if (turn.role === 'user' && slice.continuation) turn.runtimeContinuation = true
   turn.__optimistic = false
   if (turn.role === 'assistant') turn.streaming = slice.streaming

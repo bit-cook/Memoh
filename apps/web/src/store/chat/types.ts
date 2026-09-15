@@ -134,6 +134,9 @@ export interface ChatUserTurn {
   settled?: boolean
   runtimeRunId?: string
   runtimeContinuation?: boolean
+  // Set from the frame's steer turn ids, not read off the turn id's shape: a
+  // steer is named at claim time now, so it carries an ordinary turn id.
+  runtimeSteer?: boolean
   // Set by createOptimisticUserTurn / createOptimisticAssistantTurn and
   // cleared as soon as the server twin replaces the optimistic row in
   // mergeMessages. mergeMessages keys off this flag to decide which side of
@@ -158,6 +161,8 @@ export interface ChatAssistantTurn {
   settled?: boolean
   runtimeRunId?: string
   runtimeContinuation?: boolean
+  // See ChatUserTurn.runtimeSteer.
+  runtimeSteer?: boolean
   // See ChatUserTurn.__optimistic.
   __optimistic?: boolean
 }
@@ -179,6 +184,20 @@ export interface ChatSystemTurn {
 export type ChatMessage = ChatUserTurn | ChatAssistantTurn | ChatSystemTurn
 
 /**
+ * A user turn the queue steered into a run that was already running.
+ *
+ * The marker is set from the frame's steer turn ids. Testing the turn id for
+ * the `queue-steer:` prefix only ever worked while a steer had no durable name;
+ * once the server names one at claim time it carries an ordinary turn id, and
+ * every caller keyed on the prefix silently stopped matching.
+ */
+export function isRuntimeSteerUserTurn(
+  message: { role: string, runtimeSteer?: boolean },
+): boolean {
+  return message.role === 'user' && message.runtimeSteer === true
+}
+
+/**
  * A user turn admitted from a durable follow-up continuation run.
  *
  * Runtime continuation turns are intentionally distinct from queue steer
@@ -191,13 +210,14 @@ export function isRuntimeContinuationUserTurn(
     turnId?: string
     runtimeRunId?: string
     runtimeContinuation?: boolean
+    runtimeSteer?: boolean
   },
 ): boolean {
   return message.role === 'user'
     && Boolean(message.runtimeRunId?.trim())
     && message.runtimeContinuation === true
     && Boolean(message.turnId?.trim())
-    && !isRuntimeSteerTurnId(message.turnId)
+    && !isRuntimeSteerUserTurn(message)
 }
 
 export type SendMessageStage = 'startup' | 'stream'

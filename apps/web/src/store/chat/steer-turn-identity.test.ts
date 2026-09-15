@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import type { RuntimeCurrentRunView, UITurn } from '@/composables/api/useChat.types'
 import { createBackgroundTaskTracker } from './background-tasks'
 import { isRuntimeRunStreaming, projectRuntimeTranscript, runOwnsTurn } from './runtime-projection'
+import { isRuntimeSteerUserTurn } from './types'
 import { createTranscriptController } from './transcript'
 
 vi.mock('@/store/user', () => ({
@@ -112,5 +113,23 @@ describe('a steer is named when it is claimed', () => {
       ['user', 'queue-steer:item-1', undefined],
       ['assistant', 'queue-steer:item-1', undefined],
     ])
+  })
+})
+
+// Naming a steer at claim time removes the `queue-steer:` shape its turn id
+// used to have, and scroll anchoring recognised a steer by exactly that shape
+// (useQueueTurnAnchors) — so the anchor stopped firing with nothing to catch
+// it. Drive the real producer: a hand-built slice would have kept passing.
+describe('a named steer is still recognisable as a queue input', () => {
+  it.each([
+    ['named at claim time', { turn_id: 'turn-6', turn_position: 6 }],
+    ['unnamed by an older server', {}],
+  ])('marks the steer user turn (%s)', (_label, steer) => {
+    const run = runWithSteer(steer)
+    const transcript = makeTranscript(run)
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript(run))
+
+    const users = transcript.messages.filter(turn => turn.role === 'user')
+    expect(users.map(turn => isRuntimeSteerUserTurn(turn))).toEqual([false, true])
   })
 })

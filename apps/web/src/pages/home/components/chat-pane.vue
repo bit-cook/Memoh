@@ -1244,7 +1244,7 @@ import ChatAttachmentCard from './chat-attachment-card.vue'
 import { useChatScroll } from '../composables/useChatScroll'
 import { useComposerPlacementMotion } from '../composables/useComposerPlacementMotion'
 import { useQueueTurnAnchors } from '../composables/useQueueTurnAnchors'
-import { isRuntimeContinuationUserTurn, isRuntimeSteerTurnId } from '@/store/chat/types'
+import { isRuntimeContinuationUserTurn, isRuntimeSteerUserTurn } from '@/store/chat/types'
 import BgTaskPill from './bg-task-pill.vue'
 import ForkSourceDivider from './fork-source-divider.vue'
 import ChatForkDialog from './chat-fork-dialog.vue'
@@ -1939,7 +1939,7 @@ const queueRefreshKey = computed(() => {
   for (let index = messages.value.length - 1; index >= 0; index -= 1) {
     const message = messages.value[index]!
     if (message.role !== 'user') continue
-    if (isRuntimeSteerTurnId(message.turnId) || isRuntimeContinuationUserTurn(message)) {
+    if (isRuntimeSteerUserTurn(message) || isRuntimeContinuationUserTurn(message)) {
       latestQueueTurn = `${message.id}\u0000${message.turnId ?? ''}`
       break
     }
