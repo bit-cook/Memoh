@@ -99,7 +99,10 @@ func TestHistoryProviderGetMessagesBeforeUsesRequestedSession(t *testing.T) {
 		},
 	}
 	provider := NewHistoryProvider(nil, fakeHistorySessionLister{
-		sessions: []session.Thread{{ID: "session-other", BotID: "bot-1", CreatedByUserID: "user-1"}},
+		sessions: []session.Thread{
+			{ID: "session-current", BotID: "bot-1", CreatedByUserID: "user-1"},
+			{ID: "session-other", BotID: "bot-1", CreatedByUserID: "user-1"},
+		},
 	}, reader, nil)
 
 	got, err := provider.execGetMessages(context.Background(), SessionContext{
@@ -225,11 +228,11 @@ func TestHistoryProviderListSessionsFiltersOtherUsersAndRoutes(t *testing.T) {
 		t.Fatalf("execListSessions() error = %v", err)
 	}
 	items := got.(map[string]any)["sessions"].([]map[string]any)
-	if len(items) != 3 {
-		t.Fatalf("visible sessions = %v, want current, same route, and same user", items)
+	if len(items) != 2 {
+		t.Fatalf("visible sessions = %v, want current and same route", items)
 	}
 	for _, item := range items {
-		if item["session_id"] == "session-bob" {
+		if item["session_id"] == "session-bob" || item["session_id"] == "session-same-user" {
 			t.Fatalf("inaccessible session leaked: %v", item)
 		}
 	}

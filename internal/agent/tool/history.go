@@ -287,10 +287,8 @@ func (p *HistoryProvider) execGetMessages(ctx context.Context, sess SessionConte
 	if sessionID == "" {
 		return nil, errors.New("session_id is required when there is no current session")
 	}
-	if sessionID != "" && sessionID != strings.TrimSpace(sess.SessionID) {
-		if err := p.ensureSessionVisible(ctx, sess, sessionID); err != nil {
-			return nil, err
-		}
+	if err := p.ensureSessionVisible(ctx, sess, sessionID); err != nil {
+		return nil, err
 	}
 	messageID := strings.TrimSpace(StringArg(args, "message_id"))
 	if messageID != "" && strings.TrimSpace(StringArg(args, "before")) != "" {
