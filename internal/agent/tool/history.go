@@ -10,13 +10,10 @@ import (
 
 	sdk "github.com/felinics/twilight/sdk"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/felinics/memoh/internal/agent/turn"
 	messagepkg "github.com/felinics/memoh/internal/chat/message"
 	session "github.com/felinics/memoh/internal/chat/thread"
-	dbpkg "github.com/felinics/memoh/internal/db"
-	"github.com/felinics/memoh/internal/db/postgres/sqlc"
 	dbstore "github.com/felinics/memoh/internal/db/store"
 )
 
@@ -163,7 +160,7 @@ func (p *HistoryProvider) Tools(_ context.Context, sess SessionContext) ([]sdk.T
 		s := sess
 		tools = append(tools, sdk.Tool{
 			Name:        ToolSearchMessages().String(),
-			Description: "Search message history across sessions accessible from the current user or channel route. Supports filtering by time range, keyword, session, contact, and role. All parameters are optional. If start_time is not provided, only the last 7 days are searched.",
+			Description: "Search message history across sessions accessible from the current user or channel route. Supports filtering by time range, keyword, session, contact, and role. An explicit session_id searches all retained history unless start_time is supplied. Without session_id, the default window is the last 7 days. Results are newest-first; pass next_cursor as cursor with the same filters to continue.",
 			Parameters: map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -177,11 +174,15 @@ func (p *HistoryProvider) Tools(_ context.Context, sess SessionContext) ([]sdk.T
 					},
 					"keyword": map[string]any{
 						"type":        "string",
-						"description": "Search keyword — matches against the text content of messages (case-insensitive).",
+						"description": "Literal case-insensitive keyword in visible text and persisted tool names, inputs, or results. Reasoning and provider metadata are excluded.",
 					},
 					"session_id": map[string]any{
 						"type":        "string",
 						"description": "Filter by session ID.",
+					},
+					"cursor": map[string]any{
+						"type":        "string",
+						"description": "Opaque next_cursor from the preceding page. Keep search filters unchanged; deleted cursor messages do not prevent continuation.",
 					},
 					"contact_id": map[string]any{
 						"type":        "string",
@@ -190,7 +191,7 @@ func (p *HistoryProvider) Tools(_ context.Context, sess SessionContext) ([]sdk.T
 					"role": map[string]any{
 						"type":        "string",
 						"description": "Filter by message role.",
-						"enum":        []string{"user", "assistant"},
+						"enum":        []string{"user", "assistant", "tool"},
 					},
 					"limit": map[string]any{
 						"type":        "integer",
@@ -382,119 +383,6 @@ func (p *HistoryProvider) ensureSessionVisible(ctx context.Context, sess Session
 		return nil
 	}
 	return errors.New("session_id is not accessible from the current context")
-}
-
-// ---------------------------------------------------------------------------
-// search_messages
-// ---------------------------------------------------------------------------
-
-func (p *HistoryProvider) execSearchMessages(ctx context.Context, sess SessionContext, args map[string]any) (any, error) {
-	botID := strings.TrimSpace(sess.BotID)
-	if botID == "" {
-		return nil, errors.New("bot_id is required")
-	}
-
-	pgBotID, err := dbpkg.ParseUUID(botID)
-	if err != nil {
-		return nil, errors.New("invalid bot_id")
-	}
-
-	limit := int32(50)
-	if v, ok, _ := IntArg(args, "limit"); ok && v > 0 && v <= 200 {
-		limit = int32(v) //nolint:gosec // bounds-checked above
-	}
-
-	_, allowed, err := visibleHistorySessions(ctx, p.sessions, sess)
-	if err != nil {
-		return nil, err
-	}
-	allowedSessionIDs := make([]pgtype.UUID, 0, len(allowed))
-	for sessionID := range allowed {
-		parsed, parseErr := dbpkg.ParseUUID(sessionID)
-		if parseErr == nil {
-			allowedSessionIDs = append(allowedSessionIDs, parsed)
-		}
-	}
-	if len(allowedSessionIDs) == 0 {
-		return map[string]any{
-			"ok": true, "bot_id": botID, "count": 0, "messages": []map[string]any{},
-		}, nil
-	}
-
-	params := sqlc.SearchMessagesParams{
-		BotID:      pgBotID,
-		SessionIds: allowedSessionIDs,
-		MaxCount:   limit,
-	}
-
-	if v := StringArg(args, "session_id"); v != "" {
-		if !historySessionVisible(allowed, v) {
-			return nil, errors.New("session_id is not accessible from the current context")
-		}
-		parsed, parseErr := dbpkg.ParseUUID(v)
-		if parseErr != nil {
-			return nil, errors.New("invalid session_id")
-		}
-		params.SessionID = parsed
-	}
-	if v := StringArg(args, "contact_id"); v != "" {
-		params.ContactID = dbpkg.ParseUUIDOrEmpty(v)
-	}
-	if v := StringArg(args, "role"); v != "" {
-		params.Role = pgtype.Text{String: v, Valid: true}
-	}
-	if v := StringArg(args, "keyword"); v != "" {
-		params.Keyword = pgtype.Text{String: v, Valid: true}
-	}
-	if v := StringArg(args, "start_time"); v != "" {
-		if t, parseErr := parseFlexibleTime(v); parseErr == nil {
-			params.StartTime = pgtype.Timestamptz{Time: t, Valid: true}
-		}
-	} else {
-		defaultLookback := time.Now().UTC().AddDate(0, 0, -defaultMaxLookbackDays)
-		params.StartTime = pgtype.Timestamptz{Time: defaultLookback, Valid: true}
-	}
-	if v := StringArg(args, "end_time"); v != "" {
-		if t, parseErr := parseFlexibleTime(v); parseErr == nil {
-			params.EndTime = pgtype.Timestamptz{Time: t, Valid: true}
-		}
-	}
-
-	rows, err := p.queries.SearchMessages(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-
-	messages := make([]map[string]any, 0, len(rows))
-	for _, row := range rows {
-		text := extractTextContent(row.Content)
-
-		entry := map[string]any{
-			"id":         row.ID.String(),
-			"session_id": row.SessionID.String(),
-			"role":       row.Role,
-			"text":       text,
-			"created_at": sess.FormatTime(row.CreatedAt.Time),
-		}
-		if dbpkg.TextToString(row.Platform) != "" {
-			entry["platform"] = dbpkg.TextToString(row.Platform)
-		}
-		if dbpkg.TextToString(row.SenderDisplayName) != "" {
-			entry["sender"] = dbpkg.TextToString(row.SenderDisplayName)
-		}
-		if row.SenderChannelIdentityID.Valid {
-			entry["contact_id"] = row.SenderChannelIdentityID.String()
-		}
-
-		messages = append(messages, entry)
-	}
-
-	return map[string]any{
-		"ok":       true,
-		"bot_id":   botID,
-		"count":    len(messages),
-		"messages": messages,
-	}, nil
 }
 
 func formatHistoryMessage(sess SessionContext, msg messagepkg.Message) map[string]any {
