@@ -325,6 +325,33 @@ describe('runtime frames preserve interleaved history', () => {
     ])
   })
 
+  // A local turn the server has not named yet will be numbered after everything
+  // that already is, so a numbered runtime turn belongs ahead of it. Skipping
+  // unnumbered entries while searching sent the run's own streaming reply below
+  // a pending local bubble.
+  it('places a numbered runtime turn ahead of an unnamed local turn', () => {
+    const { transcript } = makeTranscript()
+    transcript.replaceMessages([
+      settledTurn('m1', 'turn-1', 1, 'user', '2026-07-27T07:00:00.000Z'),
+    ], 'session-1')
+    transcript.appendToView(
+      transcript.createOptimisticUserTurn('not named yet', undefined, 'invocation-other'),
+    )
+    // Read back through the reactive array so the identity check compares the
+    // same proxy the transcript holds.
+    const pending = transcript.messages.at(-1)
+
+    transcript.applyRuntimeTranscript(projectRuntimeTranscript(runView()))
+
+    expect(transcript.messages.map(turn => turn.turnId ?? 'unnamed')).toEqual([
+      'turn-1',
+      'turn-5',
+      'turn-5',
+      'unnamed',
+    ])
+    expect(transcript.messages.at(-1)).toBe(pending)
+  })
+
   it('keeps the existing anchor for older servers without positions', () => {
     const { transcript } = makeTranscript()
     const run = runView({ turn_position: undefined })

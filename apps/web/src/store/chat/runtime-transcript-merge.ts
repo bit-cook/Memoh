@@ -16,8 +16,14 @@ export function insertRuntimeTurns(
     let index: number
     if (turn.turnPosition !== undefined) {
       const position = turn.turnPosition
+      // A turn with no position sorts after every numbered turn: positions come
+      // from one monotonic per-session counter, so whatever numbers it later
+      // will number it past this one. Treating it as an opaque skip instead let
+      // a numbered turn land behind an unnumbered tail — the run's streaming
+      // reply rendered below a local turn the server had not named yet — and
+      // disagreed with sortChatMessages, which already orders them this way.
       index = messages.findIndex((other, i) =>
-        i >= cursor && other.turnPosition !== undefined && other.turnPosition > position,
+        i >= cursor && (other.turnPosition === undefined || other.turnPosition > position),
       )
       if (index < 0) index = messages.length
     } else if (isRuntimeSteerTurnId(turn.turnId)) {
