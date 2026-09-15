@@ -48,6 +48,11 @@ func (f *fakeHistoryMessageReader) GetByIDBySession(_ context.Context, sessionID
 	return f.exactMessage, f.exactErr
 }
 
+func (f *fakeHistoryMessageReader) ListBeforeMessageBySession(_ context.Context, sessionID, _ string, _ int32) ([]messagepkg.Message, error) {
+	f.beforeSessionID = sessionID
+	return f.beforeMessages, nil
+}
+
 func TestHistoryProviderGetMessagesDefaultsToCurrentSession(t *testing.T) {
 	t.Parallel()
 

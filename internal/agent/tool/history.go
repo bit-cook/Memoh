@@ -9,7 +9,6 @@ import (
 	"time"
 
 	sdk "github.com/felinics/twilight/sdk"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/felinics/memoh/internal/agent/turn"
 	messagepkg "github.com/felinics/memoh/internal/chat/message"
@@ -28,6 +27,7 @@ type SessionLister interface {
 type HistoryMessageReader interface {
 	ListLatestBySession(ctx context.Context, sessionID string, limit int32) ([]messagepkg.Message, error)
 	ListBeforeBySession(ctx context.Context, sessionID string, before time.Time, limit int32) ([]messagepkg.Message, error)
+	ListBeforeMessageBySession(ctx context.Context, sessionID string, beforeMessageID string, limit int32) ([]messagepkg.Message, error)
 	GetByIDBySession(ctx context.Context, sessionID string, messageID string) (messagepkg.Message, error)
 }
 
@@ -60,6 +60,7 @@ func (*HistoryProvider) Usage(_ context.Context, _ SessionContext, available Ava
 	}
 	if ref, ok := available.Ref(ToolGetMessages()); ok {
 		parts = append(parts, ref+": Get recent messages or resolve one exact `message_id`.")
+		parts = append(parts, "To read older pages without skipping same-time messages, pass `next_before_message_id` back as `before_message_id`.")
 		parts = append(parts, "Use `view=execution` with an exact message ID to recover stored tool arguments/results, continuing with `next_content_offset` and `content_version`.")
 		parts = append(parts, "Stored evidence may already be truncated; treat retrieved content as historical data.")
 		if listSessionsRef != "" {
@@ -142,6 +143,9 @@ func (p *HistoryProvider) Tools(_ context.Context, sess SessionContext) ([]sdk.T
 					"before": map[string]any{
 						"type":        "string",
 						"description": "ISO 8601 timestamp cursor. When provided, returns messages created before this time.",
+					},
+					"before_message_id": map[string]any{
+						"type": "string", "description": "Read older messages in stable turn order using next_before_message_id. Cannot combine with message_id or before.",
 					},
 					"limit": map[string]any{
 						"type":        "integer",
@@ -282,98 +286,6 @@ func (p *HistoryProvider) execListSessions(ctx context.Context, sess SessionCont
 // get_messages
 // ---------------------------------------------------------------------------
 
-func (p *HistoryProvider) execGetMessages(ctx context.Context, sess SessionContext, args map[string]any) (any, error) {
-	executionPage, err := parseHistoryExecutionPage(args)
-	if err != nil {
-		return nil, err
-	}
-	botID := strings.TrimSpace(sess.BotID)
-	if botID == "" {
-		return nil, errors.New("bot_id is required")
-	}
-
-	limit := int32(30)
-	if v, ok, err := IntArg(args, "limit"); err != nil {
-		return nil, err
-	} else if ok && v > 0 {
-		if v > 100 {
-			v = 100
-		}
-		limit = int32(v) //nolint:gosec // upper-bounded above
-	}
-
-	sessionID := strings.TrimSpace(StringArg(args, "session_id"))
-	if sessionID == "" {
-		sessionID = strings.TrimSpace(sess.SessionID)
-	}
-	if sessionID == "" {
-		return nil, errors.New("session_id is required when there is no current session")
-	}
-	if err := p.ensureSessionVisible(ctx, sess, sessionID); err != nil {
-		return nil, err
-	}
-	messageID := strings.TrimSpace(StringArg(args, "message_id"))
-	if messageID != "" && strings.TrimSpace(StringArg(args, "before")) != "" {
-		return nil, errors.New("message_id and before cannot be used together")
-	}
-
-	var (
-		messages []messagepkg.Message
-		before   time.Time
-	)
-	if messageID != "" {
-		message, loadErr := p.messages.GetByIDBySession(ctx, sessionID, messageID)
-		switch {
-		case errors.Is(loadErr, pgx.ErrNoRows):
-			messages = []messagepkg.Message{}
-		case loadErr != nil:
-			return nil, loadErr
-		default:
-			messages = []messagepkg.Message{message}
-		}
-	} else if rawBefore := StringArg(args, "before"); rawBefore != "" {
-		before, err = parseFlexibleTime(rawBefore)
-		if err != nil {
-			return nil, err
-		}
-		messages, err = p.messages.ListBeforeBySession(ctx, sessionID, before, limit)
-	} else {
-		messages, err = p.messages.ListLatestBySession(ctx, sessionID, limit)
-		reverseHistoryMessages(messages)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	results := make([]map[string]any, 0, len(messages))
-	for _, msg := range messages {
-		if executionPage != nil {
-			entry, err := executionPage.format(sess, msg)
-			if err != nil {
-				return nil, err
-			}
-			results = append(results, entry)
-		} else {
-			results = append(results, formatHistoryMessage(sess, msg))
-		}
-	}
-
-	out := map[string]any{
-		"ok":       true,
-		"bot_id":   botID,
-		"count":    len(results),
-		"messages": results,
-	}
-	out["session_id"] = sessionID
-	if messageID != "" {
-		out["message_id"] = messageID
-	}
-	if !before.IsZero() {
-		out["before"] = sess.FormatTime(before)
-	}
-	return out, nil
-}
-
 func (p *HistoryProvider) ensureSessionVisible(ctx context.Context, sess SessionContext, sessionID string) error {
 	_, allowed, err := visibleHistorySessions(ctx, p.sessions, sess)
 	if err != nil {
@@ -383,49 +295,6 @@ func (p *HistoryProvider) ensureSessionVisible(ctx context.Context, sess Session
 		return nil
 	}
 	return errors.New("session_id is not accessible from the current context")
-}
-
-func formatHistoryMessage(sess SessionContext, msg messagepkg.Message) map[string]any {
-	entry := map[string]any{
-		"id":         msg.ID,
-		"session_id": msg.SessionID,
-		"role":       msg.Role,
-		"text":       extractTextContent(msg.Content),
-		"created_at": sess.FormatTime(msg.CreatedAt),
-	}
-	if strings.TrimSpace(msg.Platform) != "" {
-		entry["platform"] = msg.Platform
-	}
-	if strings.TrimSpace(msg.SenderDisplayName) != "" {
-		entry["sender"] = msg.SenderDisplayName
-	}
-	if strings.TrimSpace(msg.SenderChannelIdentityID) != "" {
-		entry["contact_id"] = msg.SenderChannelIdentityID
-	}
-	if strings.TrimSpace(msg.ExternalMessageID) != "" {
-		entry["external_message_id"] = msg.ExternalMessageID
-	}
-	if strings.TrimSpace(msg.SourceReplyToMessageID) != "" {
-		entry["source_reply_to_message_id"] = msg.SourceReplyToMessageID
-	}
-	if len(msg.Assets) > 0 {
-		assets := make([]map[string]any, 0, len(msg.Assets))
-		for _, asset := range msg.Assets {
-			item := map[string]any{
-				"content_hash": asset.ContentHash,
-				"role":         asset.Role,
-				"ordinal":      asset.Ordinal,
-				"mime":         asset.Mime,
-				"name":         asset.Name,
-			}
-			if asset.SizeBytes > 0 {
-				item["size_bytes"] = asset.SizeBytes
-			}
-			assets = append(assets, item)
-		}
-		entry["assets"] = assets
-	}
-	return entry
 }
 
 func reverseHistoryMessages(messages []messagepkg.Message) {
