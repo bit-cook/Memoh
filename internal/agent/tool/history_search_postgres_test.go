@@ -70,6 +70,7 @@ func TestHistorySearchPostgresExecutionEvidenceAndVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 	persistSearchFixture(t, service, "assistant", `{"role":"assistant","content":[{"type":"reasoning","text":"private_reasoning"},{"type":"tool-call","toolCallId":"native_call","toolName":"native_lookup","input":{"code":"native_input"},"providerMetadata":{"private":"private_provider"}}]}`)
+	persistSearchFixture(t, service, "assistant", `{"role":"assistant","content":[{"type":"tool-call","toolCallId":"args_call","toolName":"args_lookup","args":{"code":"legacy_args_input"}}]}`)
 	persistSearchFixture(t, service, "tool", `{"role":"tool","content":[{"type":"tool-result","toolCallId":"native_call","toolName":"native_lookup","result":{"value":"native_result"},"isError":true}]}`)
 	persistSearchFixture(t, service, "assistant", `{"role":"assistant","content":"","tool_calls":[{"id":"legacy_call","type":"function","function":{"name":"legacy_lookup","arguments":"{\"code\":\"legacy_input\"}"}}]}`)
 	persistSearchFixture(t, service, "tool", `{"role":"tool","content":[{"type":"tool-result","toolCallId":"legacy_call","output":{"type":"error-text","value":"legacy_result"}}]}`)
@@ -81,7 +82,7 @@ func TestHistorySearchPostgresExecutionEvidenceAndVisibility(t *testing.T) {
 	persistSearchFixture(t, service, "tool", `{"role":"tool","tool_call_id":"opaque_call","content":[{"type":"reasoning","text":"opaque_reasoning_data"}]}`)
 
 	persistSearchFixture(t, service, "user", `[{"type":"text","text":"array_literal_100%"}]`)
-	for _, keyword := range []string{"old_unique", "native_lookup", "native_input", "native_result", "legacy_lookup", "legacy_input", "legacy_result", "legacy_object_result", "legacy_object_call", "legacy_object_name", "123456789", "bare_result", "legacy_array_result", "hybrid_result", "opaque_reasoning_data", "array_literal_100%"} {
+	for _, keyword := range []string{"old_unique", "native_lookup", "native_input", "legacy_args_input", "native_result", "legacy_lookup", "legacy_input", "legacy_result", "legacy_object_result", "legacy_object_call", "legacy_object_name", "123456789", "bare_result", "legacy_array_result", "hybrid_result", "opaque_reasoning_data", "array_literal_100%"} {
 		out, err := executeHistorySearch(t, provider, map[string]any{"session_id": searchTestSessionID, "keyword": keyword})
 		if err != nil {
 			t.Fatalf("%s: %v", keyword, err)

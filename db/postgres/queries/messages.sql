@@ -2798,7 +2798,7 @@ WITH projected AS NOT MATERIALIZED (
         SELECT string_agg(
           CASE elem->>'type'
             WHEN 'text' THEN elem->>'text'
-            WHEN 'tool-call' THEN concat_ws(' ', elem->>'toolName', elem->>'toolCallId', elem->>'input')
+            WHEN 'tool-call' THEN concat_ws(' ', elem->>'toolName', elem->>'toolCallId', elem->>'input', elem->>'args')
             WHEN 'tool-result' THEN concat_ws(' ', elem->>'toolName', elem->>'toolCallId', elem->>'result', elem->>'output')
             ELSE ''
           END, ' ' ORDER BY ordinal
