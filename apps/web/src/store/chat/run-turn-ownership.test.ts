@@ -307,7 +307,10 @@ describe('a terminal run view is not a source of new turns', () => {
 
     transcript.applyRuntimeTranscript(projectRuntimeTranscript(run))
 
-    expect(transcript.messages.map(turn => turn.turnId)).toEqual(['turn-9', 'turn-5', 'turn-5'])
+    // The run holds position 5, so turn-9 was numbered while it was already
+    // streaming: the run's turns belong ahead of it. This asserted the tail
+    // append that insertRuntimeTurns replaced with per-turn placement.
+    expect(transcript.messages.map(turn => turn.turnId)).toEqual(['turn-5', 'turn-5', 'turn-9'])
   })
 })
 
