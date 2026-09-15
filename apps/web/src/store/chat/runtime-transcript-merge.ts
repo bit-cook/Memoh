@@ -113,10 +113,17 @@ export function reconcileRuntimeTurns(
 // away a steer's freshly committed answer along with the aged-out first half.
 //
 // A turn already on screen always stays: the frame is reconciling it, not
-// introducing it. Otherwise the loaded window decides. Positions come from one
-// monotonic per-session counter, so a turn numbered at or below the newest
-// settled turn is one the history read has already passed: it did not come
-// back, so it is not in history, and this frame has nothing to add. A turn
+// introducing it. So does a turn whose id the page already shows under another
+// role — the frame is completing that turn, not re-introducing a round. A run
+// that failed never persisted its error, so history returns the question alone
+// and the frame is the only place the failure reason exists; judging it by
+// position alone left a reopened failed session showing the question and no
+// reason for it.
+//
+// Otherwise the loaded window decides. Positions come from one monotonic
+// per-session counter, so a turn numbered at or below the newest settled turn
+// is one the history read has already passed: it did not come back, and no
+// turn on screen is waiting for it, so this frame has nothing to add. A turn
 // numbered past that window, or not numbered at all, is newer than anything
 // the read returned and must still be shown.
 export function admissibleRuntimeTurns<T extends ChatMessage>(
@@ -133,9 +140,16 @@ export function admissibleRuntimeTurns<T extends ChatMessage>(
     }
   }
   if (newestSettled === undefined) return resolved
+  const onScreenTurnIds = new Set<string>()
+  for (const turn of messages) {
+    const turnId = turn.turnId?.trim()
+    if (turnId) onScreenTurnIds.add(turnId)
+  }
   const window = newestSettled
   return resolved.filter((turn) => {
     if (messages.includes(turn)) return true
+    const turnId = turn.turnId?.trim()
+    if (turnId && onScreenTurnIds.has(turnId)) return true
     return turn.turnPosition === undefined || turn.turnPosition > window
   })
 }
