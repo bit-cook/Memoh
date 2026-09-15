@@ -134,7 +134,7 @@ func (p *HistoryProvider) Tools(_ context.Context, sess SessionContext) ([]sdk.T
 						"description": "Execution JSON UTF-8 byte offset; use next_content_offset from the previous page. Default 0.",
 					},
 					"content_version": map[string]any{
-						"type": "string", "description": "Source hash returned by the previous execution page; required for nonzero content_offset. A changed source requires restarting the read.",
+						"type": "string", "description": "Source and projection hash from the previous execution page; required for nonzero content_offset. Changed evidence requires restarting the read.",
 					},
 					"max_bytes": map[string]any{
 						"type": "integer", "minimum": 256, "maximum": 8192,

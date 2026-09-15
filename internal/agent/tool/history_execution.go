@@ -70,14 +70,17 @@ func parseHistoryExecutionPage(args map[string]any) (*historyExecutionPage, erro
 }
 
 func (page historyExecutionPage) format(sess SessionContext, msg messagepkg.Message) (map[string]any, error) {
-	digest := sha256.Sum256(msg.Content)
-	version := hex.EncodeToString(digest[:])
-	if page.version != "" && page.version != version {
-		return nil, errors.New("content_version changed; restart the execution read at content_offset=0 without content_version")
-	}
 	content, err := historyExecutionContent(msg)
 	if err != nil {
 		return nil, errors.New("persisted execution content is unavailable")
+	}
+	digest := sha256.New()
+	digest.Write(msg.Content)
+	digest.Write([]byte{0})
+	digest.Write(content)
+	version := hex.EncodeToString(digest.Sum(nil))
+	if page.version != "" && page.version != version {
+		return nil, errors.New("content_version changed; restart the execution read at content_offset=0 without content_version")
 	}
 	if page.offset > len(content) || (page.offset < len(content) && !utf8.RuneStart(content[page.offset])) {
 		return nil, errors.New("content_offset must be a UTF-8 byte boundary within the execution content")

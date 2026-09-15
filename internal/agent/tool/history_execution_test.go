@@ -122,3 +122,17 @@ func TestHistoryExecutionPreservesLegacyEvidence(t *testing.T) {
 		})
 	}
 }
+
+func TestHistoryExecutionContinuationBindsRenderedProjection(t *testing.T) {
+	t.Parallel()
+	content, _ := json.Marshal(map[string]any{"role": "assistant", "content": strings.Repeat("evidence", 100)})
+	reader := &fakeHistoryMessageReader{exactMessage: messagepkg.Message{ID: "source", Role: "assistant", Content: content}}
+	args := map[string]any{"message_id": "source", "view": "execution", "max_bytes": 256}
+	out, err := callHistoryRead(t, reader, args)
+	require.NoError(t, err)
+	row := out["messages"].([]map[string]any)[0]
+	args["content_offset"], args["content_version"] = row["next_content_offset"], row["content_version"]
+	reader.exactMessage.Role = "user"
+	_, err = callHistoryRead(t, reader, args)
+	require.Error(t, err, "continuation must reject changed projected bytes even when stored content is unchanged")
+}
