@@ -2,8 +2,9 @@ package native
 
 import (
 	"context"
-	sdk "github.com/felinics/twilight/sdk"
 	"testing"
+
+	sdk "github.com/felinics/twilight/sdk"
 )
 
 func TestReadMediaOriginFollowsAdmittedPosition(t *testing.T) {

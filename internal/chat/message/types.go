@@ -275,8 +275,10 @@ type Service interface {
 
 // Message origin is independent of the LLM role. Internal feedback is stored
 // as user input for model replay but stays in the current conversation turn.
-const MessageSourceMetadataKey = "message_source"
-const MessageSourceInternalFeedback = "internal_feedback"
+const (
+	MessageSourceMetadataKey      = "message_source"
+	MessageSourceInternalFeedback = "internal_feedback"
+)
 
 func IsInternalFeedback(metadata map[string]any) bool {
 	return metadata[MessageSourceMetadataKey] == MessageSourceInternalFeedback

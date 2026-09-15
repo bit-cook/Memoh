@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
+
 	dbsqlc "github.com/felinics/memoh/internal/db/postgres/sqlc"
 	postgresstore "github.com/felinics/memoh/internal/db/postgres/store"
 	"github.com/felinics/memoh/internal/runtimefence"
-	"github.com/google/uuid"
 )
 
 // Internal image feedback must not split one admitted run into new user turns.

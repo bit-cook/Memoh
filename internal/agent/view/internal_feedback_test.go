@@ -2,8 +2,9 @@ package view
 
 import (
 	"encoding/json"
-	messagepkg "github.com/felinics/memoh/internal/chat/message"
 	"testing"
+
+	messagepkg "github.com/felinics/memoh/internal/chat/message"
 )
 
 func TestInternalFeedbackDoesNotRenderOrSplitAnswer(t *testing.T) {

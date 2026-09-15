@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	messagepkg "github.com/felinics/memoh/internal/chat/message"
 	sdk "github.com/felinics/twilight/sdk"
+
+	messagepkg "github.com/felinics/memoh/internal/chat/message"
 )
 
 func TestInternalFeedbackPersistenceSource(t *testing.T) {
