@@ -192,3 +192,45 @@ func TestHistorySearchPostgresPreviewFindsLateMatch(t *testing.T) {
 		t.Fatalf("bad preview: %v", rows)
 	}
 }
+
+func TestHistorySearchPostgresMalformedLegacyIDsExcludeReasoning(t *testing.T) {
+	provider, service, _ := historySearchPostgres(t)
+	persistSearchFixture(t, service, "user", `{"role":"user","content":"inspect"}`)
+	for _, rawID := range []string{`null`, `""`, `17`, `{}`, `" \t\n\r\f\u000b"`} {
+		t.Run(rawID, func(t *testing.T) {
+			msg := persistSearchFixture(t, service, "tool", `{"role":"tool","tool_call_id":`+rawID+`,"content":[{"type":"reasoning","text":"malformed_private_reasoning"}]}`)
+			out, err := executeHistoryRead(t, provider, map[string]any{"message_id": msg.ID, "view": "execution"})
+			if err == nil {
+				encoded, _ := json.Marshal(out)
+				if strings.Contains(string(encoded), "malformed_private_reasoning") {
+					t.Error("invalid legacy ID exposed reasoning in the execution view")
+				}
+			}
+		})
+	}
+	out, err := executeHistorySearch(t, provider, map[string]any{"session_id": searchTestSessionID, "keyword": "malformed_private_reasoning"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.(map[string]any)["count"] != 0 {
+		t.Fatalf("invalid legacy IDs exposed reasoning in search: %v", out)
+	}
+	for _, id := range []string{"opaque-call", "\u00a0"} {
+		content, _ := json.Marshal(map[string]any{
+			"role": "tool", "tool_call_id": id,
+			"content": []map[string]any{{"type": "reasoning", "text": "opaque_result_data"}},
+		})
+		msg := persistSearchFixture(t, service, "tool", string(content))
+		out, err := executeHistoryRead(t, provider, map[string]any{"message_id": msg.ID, "view": "execution"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(out["messages"].([]map[string]any)[0]["content"].(string), "opaque_result_data") {
+			t.Fatal("opaque legacy tool result data was lost")
+		}
+	}
+	out, err = executeHistorySearch(t, provider, map[string]any{"session_id": searchTestSessionID, "keyword": "opaque_result_data"})
+	if err != nil || out.(map[string]any)["count"] != 2 {
+		t.Fatalf("opaque legacy tool results were lost in search: %v %v", out, err)
+	}
+}

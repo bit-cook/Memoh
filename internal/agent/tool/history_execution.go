@@ -110,7 +110,7 @@ func historyExecutionContent(source messagepkg.Message) ([]byte, error) {
 		return nil, errors.New("invalid stored message")
 	}
 	msg := historyfrag.DecodeStoredModelMessage(nil, source.ID, source.Role, source.Content)
-	legacyResult := msg.Role == "tool" && msg.ToolCallID != ""
+	legacyResult := msg.Role == "tool" && strings.Trim(msg.ToolCallID, " \t\n\r\f\v") != ""
 	var plain string
 	if len(msg.Content) > 0 && json.Unmarshal(msg.Content, &plain) != nil {
 		var rawParts []json.RawMessage
