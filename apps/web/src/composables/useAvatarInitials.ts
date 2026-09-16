@@ -1,9 +1,13 @@
 import { computed } from 'vue'
 
-const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+const graphemes = typeof Intl.Segmenter === 'function'
+  ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+  : undefined
 
 // Keep surrogate pairs, modifiers and joined emoji together.
 export function firstAvatarCharacter(text: string): string {
+  // Older browsers retain a complete code point, without grapheme grouping.
+  if (!graphemes) return text[Symbol.iterator]().next().value ?? ''
   return graphemes.segment(text)[Symbol.iterator]().next().value?.segment ?? ''
 }
 
