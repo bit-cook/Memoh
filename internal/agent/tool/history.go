@@ -210,7 +210,7 @@ func (p *HistoryProvider) Tools(_ context.Context, sess SessionContext) ([]sdk.T
 		})
 	}
 
-	return tools, nil
+	return withOptionalHistoryArguments(tools), nil
 }
 
 // ---------------------------------------------------------------------------
