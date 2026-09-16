@@ -198,10 +198,12 @@ const sectionLabelClass = 'text-xs font-[550] tracking-[-0.02em] text-muted-fore
 const folderRowLabelClass = 'text-control text-foreground'
 
 // 组头 trailing 动作的显现类:pointer-events-none 让隐形时不可点(对齐
-// session-item.vue 的既有范式);menu trigger 额外带 data-[state=open]——
+// session-item.vue 的既有范式);隐藏与不可点都只在能 hover 的设备上生效
+// (can-hover),触屏上按钮常驻——否则手机端 group-hover 永不成立,
+// 新建文件夹 / 行内菜单 / 新会话三个入口全部点不到;menu trigger 额外带 data-[state=open]——
 // reka 菜单打开时页面 pointer-events 被关,组头 hover 失效,trigger 靠
 // 自己的 data-[state=open] 保持显现(见 group-header.vue 头注释)。
-const rowActionRevealClass = 'opacity-0 pointer-events-none group-hover/group-header:pointer-events-auto group-hover/group-header:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100'
+const rowActionRevealClass = 'can-hover:opacity-0 can-hover:pointer-events-none group-hover/group-header:pointer-events-auto group-hover/group-header:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 data-[state=open]:pointer-events-auto data-[state=open]:opacity-100'
 
 const sessionDialogs = ref<InstanceType<typeof SessionDialogs> | null>(null)
 

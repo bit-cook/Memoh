@@ -50,9 +50,11 @@ const compactClass = 'h-[26px]' /* ui-allow-px: pins the old TextButton section 
 const hoverFillClass = 'transition-colors hover:bg-[color:var(--sidebar-hover)]' /* ui-allow-style: sidebar rows are a deliberately local row system — same hover token as session-item.vue */
 
 // chevron 与 trailing 动作的显现逻辑:hover,或行内元素被键盘聚焦
-// (focus-visible)时。刻意不用 focus-within——鼠标点击后焦点留在行内,
+// (focus-visible)时。隐藏只在能 hover 的设备上生效(can-hover,见
+// style.css):触屏没有 hover,Tailwind 会把 group-hover 规则整个编译掉,
+// 不加这层门控 chevron 在手机上就永久不可见。刻意不用 focus-within——鼠标点击后焦点留在行内,
 // focus-within 会一直成立,chevron 和按钮就变成永久显现。
-const revealClass = 'opacity-0 group-hover/group-header:opacity-100 group-focus-visible/group-header:opacity-100'
+const revealClass = 'can-hover:opacity-0 group-hover/group-header:opacity-100 group-focus-visible/group-header:opacity-100'
 
 withDefaults(defineProps<{
   label: string

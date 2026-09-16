@@ -30,6 +30,18 @@
  * tames "too big", both per-CJK-glyph and language-agnostic. */
 @import "./styles/misans-vf.css";
 
+/* `can-hover:` — applies only on devices that can actually hover (mouse /
+ * trackpad). Tailwind v4 already wraps `hover:`/`group-hover:` in
+ * `@media (hover: hover)`, so a "hidden until hovered" affordance written as
+ * `opacity-0 group-hover:opacity-100` never reveals on touch: the hover rule
+ * is compiled out and the control is permanently invisible (and, with
+ * pointer-events-none, unreachable). Gate the HIDING half with this variant
+ * so touch devices render such controls always-on while hover devices keep
+ * the reveal-on-hover behaviour unchanged. Keyed on input capability rather
+ * than viewport width on purpose: a wide tablet or touch laptop has the same
+ * problem, and `md:` would miss it. */
+@custom-variant can-hover (@media (hover: hover));
+
 /* Explicit `@source` paths (relative to this CSS file) — Tailwind v4's
  * auto-detection anchors on the Vite project root, so when a consumer
  * (e.g. @memohai/desktop) imports this stylesheet from a different root,
