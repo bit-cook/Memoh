@@ -6345,11 +6345,11 @@ WITH projected AS NOT MATERIALIZED (
           END
         ) WITH ORDINALITY AS parts(elem, ordinal)
       ),
-      (
+      CASE WHEN jsonb_typeof(m.content->'tool_calls') = 'array' THEN (
         SELECT string_agg(concat_ws(' ', call->>'id', call->'function'->>'name', call->'function'->>'arguments'), ' ' ORDER BY ordinal)
-        FROM jsonb_array_elements(CASE WHEN jsonb_typeof(m.content->'tool_calls') = 'array' THEN m.content->'tool_calls' ELSE '[]'::jsonb END)
+        FROM jsonb_array_elements(m.content->'tool_calls')
           WITH ORDINALITY AS calls(call, ordinal)
-      ),
+      ) END,
       m.content->>'tool_call_id', m.content->>'name'
     )::text AS search_text
   FROM bot_visible_history_messages m
