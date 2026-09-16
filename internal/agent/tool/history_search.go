@@ -137,6 +137,9 @@ func (p *HistoryProvider) execSearchMessages(ctx context.Context, sess SessionCo
 	if params.SessionID.Valid && !historySessionVisible(allowed, params.SessionID.String()) {
 		return nil, errors.New("session_id is not accessible from the current context")
 	}
+	if params.SessionID.Valid {
+		allowed = map[string]struct{}{params.SessionID.String(): {}}
+	}
 	ids := make([]string, 0, len(allowed))
 	for id := range allowed {
 		ids = append(ids, id)

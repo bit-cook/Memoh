@@ -12,10 +12,34 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	thread "github.com/felinics/memoh/internal/chat/thread"
 	dbpkg "github.com/felinics/memoh/internal/db"
 	"github.com/felinics/memoh/internal/db/postgres/sqlc"
 	dbstore "github.com/felinics/memoh/internal/db/store"
 )
+
+func TestHistorySearchExplicitCursorIgnoresUnrelatedSessionChanges(t *testing.T) {
+	q := &historySearchQueries{rows: []sqlc.SearchMessagesRow{
+		{ID: dbpkg.ParseUUIDOrEmpty(uuid.NewString()), SessionID: dbpkg.ParseUUIDOrEmpty(searchTestSessionID), CreatedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true}},
+		{ID: dbpkg.ParseUUIDOrEmpty(uuid.NewString()), SessionID: dbpkg.ParseUUIDOrEmpty(searchTestSessionID), CreatedAt: pgtype.Timestamptz{Time: time.Now().Add(-time.Second), Valid: true}},
+	}}
+	current := thread.Thread{ID: searchTestSessionID, CreatedByUserID: "owner"}
+	provider := NewHistoryProvider(nil, fakeHistorySessionLister{sessions: []thread.Thread{current}}, nil, q)
+	args := map[string]any{"session_id": searchTestSessionID, "limit": 1}
+	first, err := executeHistorySearch(t, provider, args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args["cursor"] = first.(map[string]any)["next_cursor"]
+	provider.sessions = fakeHistorySessionLister{sessions: []thread.Thread{current, {ID: uuid.NewString(), CreatedByUserID: "owner"}}}
+	if _, err := executeHistorySearch(t, provider, args); err != nil {
+		t.Fatalf("unrelated accessible session invalidated an explicit-session cursor: %v", err)
+	}
+	provider.sessions = fakeHistorySessionLister{}
+	if _, err := executeHistorySearch(t, provider, args); err == nil {
+		t.Fatal("removing the selected session must still revoke cursor access")
+	}
+}
 
 const (
 	searchTestBotID     = "00000000-0000-0000-0000-000000098101"
