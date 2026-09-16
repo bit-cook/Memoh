@@ -166,6 +166,7 @@ import {
 } from '@felinic/ui'
 import { Check, ChevronsUpDown, GripVertical, Plus, Settings2 } from 'lucide-vue-next'
 import { useChatStore } from '@/store/chat-list'
+import { firstAvatarCharacter } from '@/composables/useAvatarInitials'
 import { usePinnedBots } from '@/composables/usePinnedBots'
 
 const router = useRouter()
@@ -210,7 +211,7 @@ function initialsOf(bot: BotsBot): string {
     .split(/[\s_-]+/)
     .filter(Boolean)
     .slice(0, 2)
-    .map(word => word[0])
+    .map(firstAvatarCharacter)
     .join('')
     .toUpperCase()
   return initials || 'B'
