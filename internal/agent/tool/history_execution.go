@@ -118,11 +118,12 @@ func historyExecutionContent(source messagepkg.Message) ([]byte, error) {
 			var single struct {
 				Type string `json:"type"`
 			}
-			if json.Unmarshal(msg.Content, &single) == nil && single.Type == "tool-result" {
+			switch {
+			case json.Unmarshal(msg.Content, &single) == nil && single.Type == "tool-result":
 				rawParts = []json.RawMessage{msg.Content}
-			} else if legacyResult {
+			case legacyResult:
 				return json.Marshal(msg)
-			} else {
+			default:
 				return nil, err
 			}
 		}
