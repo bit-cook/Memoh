@@ -25,6 +25,8 @@ func (p *HistoryProvider) execGetMessages(ctx context.Context, sess SessionConte
 	limit := int32(30)
 	if v, ok, err := IntArg(args, "limit"); err != nil {
 		return nil, err
+	} else if raw, isFloat := args["limit"].(float64); isFloat && raw != float64(v) {
+		return nil, errors.New("limit must be an integer")
 	} else if ok && v > 0 {
 		if v > 100 {
 			v = 100

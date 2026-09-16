@@ -232,7 +232,11 @@ func (p *HistoryProvider) execListSessions(ctx context.Context, sess SessionCont
 	platformFilter := strings.ToLower(strings.TrimSpace(StringArg(args, "platform")))
 
 	limit := 50
-	if v, ok, _ := IntArg(args, "limit"); ok && v > 0 {
+	if v, ok, err := IntArg(args, "limit"); err != nil {
+		return nil, err
+	} else if raw, isFloat := args["limit"].(float64); isFloat && raw != float64(v) {
+		return nil, errors.New("limit must be an integer")
+	} else if ok && v > 0 {
 		limit = v
 	}
 

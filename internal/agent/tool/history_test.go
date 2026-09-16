@@ -15,6 +15,16 @@ type fakeHistorySessionLister struct {
 	sessions []session.Thread
 }
 
+func TestHistoryListSessionsRejectsMalformedLimits(t *testing.T) {
+	t.Parallel()
+	provider := NewHistoryProvider(nil, fakeHistorySessionLister{}, nil, nil)
+	for _, limit := range []any{"garbage", true, 1.5, -0.5} {
+		if _, err := provider.execListSessions(context.Background(), SessionContext{BotID: "bot-1"}, map[string]any{"limit": limit}); err == nil {
+			t.Errorf("accepted malformed limit %v", limit)
+		}
+	}
+}
+
 func (f fakeHistorySessionLister) ListByBot(_ context.Context, _ string) ([]session.Thread, error) {
 	return f.sessions, nil
 }

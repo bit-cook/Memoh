@@ -33,6 +33,19 @@ func executeHistoryRead(t *testing.T, provider *HistoryProvider, args map[string
 	return nil, nil
 }
 
+func TestHistoryReadRejectsFractionalLimits(t *testing.T) {
+	t.Parallel()
+	provider := NewHistoryProvider(nil, nil, &fakeHistoryMessageReader{}, nil)
+	for _, limit := range []float64{1.5, -0.5} {
+		if _, err := executeHistoryRead(t, provider, map[string]any{"limit": limit}); err == nil {
+			t.Errorf("accepted fractional limit %v", limit)
+		}
+	}
+	if _, err := executeHistoryRead(t, provider, map[string]any{"limit": float64(1)}); err != nil {
+		t.Fatalf("rejected integer JSON number: %v", err)
+	}
+}
+
 func TestHistoryReadPostgresMessageCursorPreservesTurnOrder(t *testing.T) {
 	provider, service, tx := historySearchPostgres(t)
 	var want []string
