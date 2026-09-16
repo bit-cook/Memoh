@@ -2789,7 +2789,7 @@ WITH projected AS NOT MATERIALIZED (
       CASE
         WHEN jsonb_typeof(m.content) = 'string' THEN m.content #>> '{}'
         WHEN jsonb_typeof(m.content->'content') = 'string' THEN m.content->>'content'
-        WHEN m.role = 'tool' AND jsonb_typeof(m.content->'tool_call_id') = 'string'
+        WHEN m.role = 'tool' AND COALESCE(jsonb_typeof(m.content->'tool_call_id') = 'string', false)
           AND btrim(m.content->>'tool_call_id', E' \t\n\r\f\x0B') <> ''
           AND NOT COALESCE(jsonb_path_exists(m.content->'content', '$[*] ? (@.type == "tool-result")'), false)
           THEN m.content->>'content'
