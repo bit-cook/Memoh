@@ -119,6 +119,44 @@ func TestHistoryExecutionPreservesOpaqueLegacyTypedResults(t *testing.T) {
 	}
 }
 
+func TestHistoryExecutionProjectsSingletonToolResults(t *testing.T) {
+	t.Parallel()
+	for _, legacyID := range []bool{false, true} {
+		stored := map[string]any{
+			"role": "tool",
+			"content": map[string]any{
+				"type": "tool-result", "toolCallId": "call-1", "toolName": "inspect", "isError": true,
+				"result":           map[string]any{"evidence": "PUBLIC_RESULT", "providerMetadata": "PAYLOAD_PROVIDER"},
+				"providerMetadata": map[string]any{"private": "PRIVATE_PROVIDER"},
+			},
+		}
+		if legacyID {
+			stored["tool_call_id"] = "call-1"
+		}
+		raw, err := json.Marshal(stored)
+		if err != nil {
+			t.Fatal(err)
+		}
+		reader := &fakeHistoryMessageReader{exactMessage: messagepkg.Message{
+			ID: "message-1", Role: "tool", SessionID: "session-current", Content: raw,
+		}}
+		got, err := callHistoryRead(t, reader, map[string]any{"message_id": "message-1", "view": "execution"})
+		if err != nil {
+			t.Errorf("legacyID=%t: %v", legacyID, err)
+			continue
+		}
+		content := got["messages"].([]map[string]any)[0]["content"].(string)
+		if strings.Contains(content, "PRIVATE_PROVIDER") {
+			t.Errorf("legacyID=%t exposed private provider metadata", legacyID)
+		}
+		for _, value := range []string{"PUBLIC_RESULT", "PAYLOAD_PROVIDER", `"isError":true`} {
+			if !strings.Contains(content, value) {
+				t.Errorf("legacyID=%t lost stored evidence %q", legacyID, value)
+			}
+		}
+	}
+}
+
 func TestHistoryExecutionMalformedLegacyPartsDoNotExposePrivateData(t *testing.T) {
 	t.Parallel()
 	reader := &fakeHistoryMessageReader{exactMessage: messagepkg.Message{

@@ -115,10 +115,16 @@ func historyExecutionContent(source messagepkg.Message) ([]byte, error) {
 	if len(msg.Content) > 0 && json.Unmarshal(msg.Content, &plain) != nil {
 		var rawParts []json.RawMessage
 		if err := json.Unmarshal(msg.Content, &rawParts); err != nil {
-			if legacyResult {
-				return json.Marshal(msg)
+			var single struct {
+				Type string `json:"type"`
 			}
-			return nil, err
+			if json.Unmarshal(msg.Content, &single) == nil && single.Type == "tool-result" {
+				rawParts = []json.RawMessage{msg.Content}
+			} else if legacyResult {
+				return json.Marshal(msg)
+			} else {
+				return nil, err
+			}
 		}
 		parts := make([]map[string]json.RawMessage, len(rawParts))
 		hasResultPart := false
