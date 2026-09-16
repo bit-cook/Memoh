@@ -40,7 +40,7 @@
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             v-if="currentBotId"
-            @select="workspaceTabs.activateChatPanel()"
+            @select="workspaceTabs.openDraftChat({ title: t('chat.newSession'), explicitSelection: false })"
           >
             <MessageCircle class="mr-2 size-3.5" />
             {{ t('sidebar.chat') }}
