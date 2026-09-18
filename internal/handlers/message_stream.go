@@ -152,7 +152,7 @@ func (h *MessageHandler) StreamSessionsActivityEvents(c echo.Context) error {
 			case messageevent.EventTypeMessageCreated:
 				var message messagepkg.Message
 				if err := json.Unmarshal(event.Data, &message); err != nil {
-					h.logger.Warn("activity stream: decode message_created event failed",
+					h.logger.WarnContext(c.Request().Context(), "activity stream: decode message_created event failed",
 						slog.String("bot_id", botID),
 						slog.Any("error", err),
 					)
@@ -167,7 +167,7 @@ func (h *MessageHandler) StreamSessionsActivityEvents(c echo.Context) error {
 			case messageevent.EventTypeSessionTitleUpdated:
 				var payload map[string]string
 				if err := json.Unmarshal(event.Data, &payload); err != nil {
-					h.logger.Warn("activity stream: decode session_title_updated event failed",
+					h.logger.WarnContext(c.Request().Context(), "activity stream: decode session_title_updated event failed",
 						slog.String("bot_id", botID),
 						slog.Any("error", err),
 					)
@@ -190,7 +190,7 @@ func (h *MessageHandler) StreamSessionsActivityEvents(c echo.Context) error {
 			case messageevent.EventTypeSessionCreated:
 				var payload map[string]any
 				if err := json.Unmarshal(event.Data, &payload); err != nil {
-					h.logger.Warn("activity stream: decode session_created event failed",
+					h.logger.WarnContext(c.Request().Context(), "activity stream: decode session_created event failed",
 						slog.String("bot_id", botID),
 						slog.Any("error", err),
 					)
@@ -220,7 +220,7 @@ func (h *MessageHandler) StreamSessionsActivityEvents(c echo.Context) error {
 			case messageevent.EventTypeScheduleChanged:
 				var change messageevent.ScheduleChange
 				if err := json.Unmarshal(event.Data, &change); err != nil {
-					h.logger.Warn("activity stream: decode schedule_changed event failed",
+					h.logger.WarnContext(c.Request().Context(), "activity stream: decode schedule_changed event failed",
 						slog.String("bot_id", botID),
 						slog.Any("error", err),
 					)

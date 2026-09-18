@@ -564,7 +564,7 @@ func (h *ContainerdHandler) HandleMCPStdio(c echo.Context) error {
 		if strings.TrimSpace(req.Method) == "notifications/cancelled" {
 			sess.cancelInFlight(req)
 		} else {
-			h.logger.Debug("mcp stdio notification dropped",
+			h.logger.DebugContext(c.Request().Context(), "mcp stdio notification dropped",
 				slog.String("connection_id", connectionID),
 				slog.String("method", req.Method),
 			)

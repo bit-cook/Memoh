@@ -294,7 +294,7 @@ func (h *ContainerdHandler) PrepareDisplay(c echo.Context) error {
 	streamRequestID := httpx.RequestID(c)
 	sendAppError := func(step string, code apperror.Code, cause error) {
 		if cause != nil {
-			h.logger.Error("display preparation failed",
+			h.logger.ErrorContext(c.Request().Context(), "display preparation failed",
 				slog.String("code", string(code)),
 				slog.String("request_id", streamRequestID),
 				slog.Any("error", cause),

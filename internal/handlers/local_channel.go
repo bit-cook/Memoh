@@ -1812,7 +1812,7 @@ func (h *LocalChannelHandler) HandleWebSocket(c echo.Context) error {
 		_, raw, readErr := conn.ReadMessage()
 		if readErr != nil {
 			connCancel()
-			h.logger.Debug("ws disconnected; active stream can finish in background",
+			h.logger.DebugContext(c.Request().Context(), "ws disconnected; active stream can finish in background",
 				slog.String("bot_id", botID),
 				slog.Any("error", readErr),
 			)
@@ -1820,7 +1820,7 @@ func (h *LocalChannelHandler) HandleWebSocket(c echo.Context) error {
 		}
 		var msg wsClientMessage
 		if err := json.Unmarshal(raw, &msg); err != nil {
-			h.logger.Warn("ws: unmarshal failed",
+			h.logger.WarnContext(c.Request().Context(), "ws: unmarshal failed",
 				slog.String("bot_id", botID),
 				slog.Any("error", err),
 			)
@@ -1892,7 +1892,7 @@ func (h *LocalChannelHandler) HandleWebSocket(c echo.Context) error {
 				SuppressActivePromptAttach: true,
 			})
 			if err != nil {
-				h.logger.Warn("encode ws tool approval response failed", slog.Any("error", err))
+				h.logger.WarnContext(c.Request().Context(), "encode ws tool approval response failed", slog.Any("error", err))
 				sendWSControlAck(writer, ref, msg.Type, controlID, false, string(apperror.CodeToolApprovalOperationFailed))
 				continue
 			}
@@ -1904,7 +1904,7 @@ func (h *LocalChannelHandler) HandleWebSocket(c echo.Context) error {
 			code := ""
 			if err != nil {
 				code = string(apperror.CodeOf(toolApprovalHTTPError(err)))
-				h.logger.Warn("route ws tool approval response failed",
+				h.logger.WarnContext(c.Request().Context(), "route ws tool approval response failed",
 					slog.Any("error", err),
 					slog.String("bot_id", botID),
 					slog.String("run_id", runID),
@@ -1958,7 +1958,7 @@ func (h *LocalChannelHandler) HandleWebSocket(c echo.Context) error {
 				SuppressActivePromptAttach: true,
 			})
 			if err != nil {
-				h.logger.Warn("encode ws user input response failed", slog.Any("error", err))
+				h.logger.WarnContext(c.Request().Context(), "encode ws user input response failed", slog.Any("error", err))
 				sendWSControlAck(writer, ref, msg.Type, controlID, false, string(apperror.CodeUserInputOperationFailed))
 				continue
 			}
@@ -1970,7 +1970,7 @@ func (h *LocalChannelHandler) HandleWebSocket(c echo.Context) error {
 			code := ""
 			if err != nil {
 				code = string(apperror.CodeOf(userInputResponseAppError(err)))
-				h.logger.Warn("route ws user input response failed",
+				h.logger.WarnContext(c.Request().Context(), "route ws user input response failed",
 					slog.Any("error", err),
 					slog.String("bot_id", botID),
 					slog.String("run_id", runID),

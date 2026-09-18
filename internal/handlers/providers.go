@@ -423,7 +423,7 @@ func (h *ProvidersHandler) ImportModels(c echo.Context) error {
 				}
 				continue
 			}
-			h.logger.Warn("failed to import model", slog.String("model_id", m.ID), slog.Any("error", err))
+			h.logger.WarnContext(c.Request().Context(), "failed to import model", slog.String("model_id", m.ID), slog.Any("error", err))
 			continue
 		}
 
