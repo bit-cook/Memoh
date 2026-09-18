@@ -287,7 +287,10 @@ mod tests {
 
     #[test]
     fn fallback_point_uses_center_of_real_box() {
-        assert_eq!(fallback_point(&entry(50, 20)), Some(Point { x: 125, y: 50 }));
+        assert_eq!(
+            fallback_point(&entry(50, 20)),
+            Some(Point { x: 125, y: 50 })
+        );
     }
 
     #[test]
