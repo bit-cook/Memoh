@@ -6899,8 +6899,6 @@ definitions:
         type: string
       image_model_id:
         type: string
-      language:
-        type: string
       memory_provider_id:
         type: string
       overlay_config:
@@ -7022,11 +7020,6 @@ definitions:
       fetch_provider_id:
         type: string
       image_model_id:
-        type: string
-      language:
-        description: |-
-          Language follows the same pointer rule; "" normalizes to DefaultLanguage
-          ("auto") rather than clearing the column.
         type: string
       memory_provider_id:
         type: string

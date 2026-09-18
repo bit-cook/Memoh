@@ -2232,6 +2232,7 @@
     "avatarUrl": "アバターURL",
     "avatarUrlPlaceholder": "アバター画像を入力してくださいURL",
     "timezone": "タイムゾーン",
+    "timezoneHint": "スケジュールタスクはこのタイムゾーンに基づいて実行時刻を決定します。",
     "timezonePlaceholder": "例: America/New_York",
     "timezoneInherited": "ユーザー/システムから継承",
     "timezoneInheritedHint": "ユーザーのタイムゾーンを継承する場合は空のままにするか、システムのタイムゾーンにフォールバックします。",
@@ -2990,13 +2991,10 @@
     "settings": {
       "blocks": {
         "context": "コンテキストとMemory",
-        "global": "グローバル設定",
         "interaction": "交流",
         "multimedia": "マルチメディア",
         "acp": "エージェント"
       },
-      "chatLanguage": "言語",
-      "chatLanguagePlaceholder": "例: 英語、zh-CN",
       "chatModel": "チャットModel",
       "chatModelDescription": "Memoh Agentが使用するModelです。",
       "chatModelPlaceholder": "Modelを選択",

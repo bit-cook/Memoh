@@ -4031,7 +4031,6 @@ export type SettingsSettings = {
     display_enabled?: boolean;
     fetch_provider_id?: string;
     image_model_id?: string;
-    language?: string;
     memory_provider_id?: string;
     overlay_config?: {
         [key: string]: unknown;
@@ -4100,11 +4099,6 @@ export type SettingsUpsertRequest = {
     display_enabled?: boolean;
     fetch_provider_id?: string;
     image_model_id?: string;
-    /**
-     * Language follows the same pointer rule; "" normalizes to DefaultLanguage
-     * ("auto") rather than clearing the column.
-     */
-    language?: string;
     memory_provider_id?: string;
     overlay_config?: {
         [key: string]: unknown;

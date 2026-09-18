@@ -230,7 +230,6 @@ CREATE TABLE IF NOT EXISTS bots (
   timezone TEXT,
   is_active BOOLEAN NOT NULL DEFAULT true,
   status TEXT NOT NULL DEFAULT 'ready',
-  language TEXT NOT NULL DEFAULT 'auto',
   command_ui_language TEXT NOT NULL DEFAULT 'auto',
   reasoning_effort TEXT NOT NULL DEFAULT 'medium',
   chat_model_id UUID REFERENCES models(id) ON DELETE SET NULL,

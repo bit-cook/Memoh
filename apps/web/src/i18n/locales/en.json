@@ -2234,6 +2234,7 @@
     "avatarUrl": "Avatar URL",
     "avatarUrlPlaceholder": "Enter avatar image URL",
     "timezone": "Timezone",
+    "timezoneHint": "Scheduled tasks use this timezone to determine when to run.",
     "timezonePlaceholder": "e.g. America/New_York",
     "timezoneInherited": "Inherited from user/system",
     "timezoneInheritedHint": "Leave empty to inherit the user's timezone, or fall back to the system timezone.",
@@ -2984,13 +2985,10 @@
     "settings": {
       "blocks": {
         "context": "Context & Memory",
-        "global": "Global Settings",
         "interaction": "Interaction",
         "multimedia": "Multimedia",
         "acp": "Agent"
       },
-      "chatLanguage": "Language",
-      "chatLanguagePlaceholder": "e.g., English, zh-CN",
       "chatModel": "Chat Model",
       "chatModelDescription": "Used by the Memoh Agent.",
       "chatModelPlaceholder": "Select model",
