@@ -49,3 +49,13 @@
 - 本地 OAuth 链接最初被 Web 的 localhost 规则识别为工作区浏览器地址；实际验收将同一链接在宿主浏览器打开，再完成真实后端回调。公开外部授权域名未复现该本地地址行为。
 - 现有 WebSocket 入口要求 `workspace_exec` 或 `manage`。纯 Chat 身份在入口收到 403，因此真实聊天权限测试使用 `chat + workspace_exec`、不含 `manage` 的用户；本次未改变既有 WebSocket 策略。
 - 早期开发迭代留下一个旧会话的生成标记；修正后的安装、更新、卸载、恢复与 MCP 操作均验证正常终止。旧侧栏标记在重新登录后已消失；早期截图中的标记不属于被验证的活动 turn。
+
+
+## 分类浏览补充验收
+
+`app_search` 增加 `categories` action，仍保持三个工具。分类返回稳定 ID、多语言名称、非空分类数量及各 Registry 的 App 数量；`search` 传入分类 ID、不提供关键词即可浏览项目。两种查询均支持分页，App 摘要现在包含分类 ID 和名称。
+
+- 新增自动化测试覆盖 Registry 筛选后分页、数量与名称保留、末页与未知 Registry、无关键词分类查询及上游异常不能伪装为空目录。
+- `go test ./internal/agent/tool ./internal/agent/runtime/native ./internal/supermarket` 通过；本次差异 Go lint 通过。
+- 复用当前 worktree 的真实开发环境 `http://localhost:21482`，重新核对 Server 挂载及健康。通过确定性模型调用真实 Supermarket API，分类列表返回 21 个非空分类，开发工具分类返回 24 个 App。
+- [分类列表截图](screenshots/agent-capability-management/15-app-categories.png) 展示分类 ID、中文名称及数量；连续浏览开发工具分类的 [第一页](screenshots/agent-capability-management/16-category-apps-page-1.png) 和 [第二页](screenshots/agent-capability-management/17-category-apps-page-2.png)，每页 3 项，并确认项目不重复。第一页为 algolia / cloudflare / git，第二页为 github / gitlab / postman。

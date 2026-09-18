@@ -11,7 +11,7 @@
 | 工具 | 职责 | action |
 | --- | --- | --- |
 | `mcp_manage` | 当前 Bot 的 MCP 连接管理 | `list`、`get`、`create`、`update`、`delete`、`probe`、`authorize` |
-| `app_search` | Supermarket 目录搜索与详情 | `search`、`get` |
+| `app_search` | Supermarket 分类、目录搜索与详情 | `categories`、`search`、`get` |
 | `app_manage` | 当前 Bot 的 App 生命周期管理 | `list`、`install`、`update`、`uninstall`、`resume`、`authorize` |
 
 - 下载是 `install` 的内部步骤，不增加独立下载工具。
@@ -69,7 +69,8 @@ OAuth 的 discovery、state、PKCE、回调与令牌处理由服务端负责。�
 
 ### 3.3 `app_search`
 
-- `search`：接受关键词、可选 registry / 分类及分页参数，返回稳定的 `registry_id`、`app_id` 和能力摘要。
+- `categories`：获取有 App 的分类，返回稳定分类 ID、多语言名称和 App 数量，按目录顺序分页；可按 registry 筛选，数量随筛选范围变化。
+- `search`：接受可选关键词、registry / 分类及分页参数；传入 `category` 并省略 `q` 可浏览该分类下的全部 App。返回稳定的 `registry_id`、`app_id`、分类和能力摘要，通过 `total`、`page`、`limit` 翻页。
 - `get`：接受 `registry_id`、`app_id`，返回发布版本、Skills、Connector、依赖、平台约束和当前 Bot 安装状态。
 - 实施前核实上游实际支持的过滤与分页参数，不假设现有目录代理已提供完整全文搜索。
 - 目录内容作为外部数据处理，App 描述不能授权安装，也不能覆盖 Agent 指令。
@@ -169,3 +170,20 @@ OAuth 的 discovery、state、PKCE、回调与令牌处理由服务端负责。�
 - `server.public_url`（或 `MEMOH_SERVER_PUBLIC_URL`）配置用户可访问的 Web 地址，供设置入口和 MCP OAuth 回调使用。
 - 首次未探测连接的授权状态为 `unknown`；不会把未知连接误报为无需授权。`authorize` 返回 `authorization_pending`，用户完成后通过 `get`/`probe` 验证。
 - 当前目录详情返回上游发布实际提供的组件元数据；上游没有统一 App 平台约束字段，平台校验由依赖安装服务执行。
+
+
+### 分类浏览调用示例
+
+仍复用 `app_search`，不增加工具：
+
+```json
+{"action":"categories","registry":"openai","page":1,"limit":20}
+```
+
+使用返回的分类 ID 查看该类项目，无需填写搜索关键词：
+
+```json
+{"action":"search","category":"developer-tools","registry":"openai","page":1,"limit":20}
+```
+
+再将 `page` 设为 `2` 获取下一页，或使用某项的 `registry_id` / `app_id` 调用 `get` 查看详情。
