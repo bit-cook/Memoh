@@ -62,6 +62,11 @@ If you are adding a context parameter only so that a log line can take it, and
 the function does no I/O and serves no request, that is the case for leaving
 it alone.
 
+`cmd/bridge` is the clearest example. It runs inside the per-bot workspace
+container, the host reaches it over a Unix socket, and nothing collects that
+container's stdout. Correlation fields there would be written into a stream
+no one reads. Leave its logging as it is.
+
 ## Correlation fields
 
 Added by the handler, never by the call site:
