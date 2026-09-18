@@ -2235,7 +2235,6 @@
     "timezoneHint": "スケジュールタスクはこのタイムゾーンに基づいて実行時刻を決定します。",
     "timezonePlaceholder": "例: America/New_York",
     "timezoneInherited": "ユーザー/システムから継承",
-    "timezoneInheritedHint": "ユーザーのタイムゾーンを継承する場合は空のままにするか、システムのタイムゾーンにフォールバックします。",
     "aclPreset": "IM アプリポリシー",
     "aclPresetDescription": "標準から始めるACLプリセット。後でChannel アクセスで調整できます。",
     "aclPresetHint": "ヒント: 個人Botには「プライベートのみ」を使用し、コミュニティBotには「グループのみ」または「グループとスレッド」を使用し、完全にオープンなままにする場合は「すべてを許可」を使用します。",
@@ -2268,8 +2267,6 @@
     "editTimezoneDescription": "このBotのタイムゾーン オーバーライドを設定します。",
     "avatarUpdateSuccess": "アバターが更新されました",
     "avatarUpdateFailed": "アバターの更新に失敗しました",
-    "timezoneUpdateSuccess": "タイムゾーンが更新されました",
-    "timezoneUpdateFailed": "タイムゾーンの更新に失敗しました",
     "typePlaceholder": "Botの種類を選択してください",
     "types": {
       "personal": "個人的",
@@ -2992,8 +2989,7 @@
       "blocks": {
         "context": "コンテキストとMemory",
         "interaction": "交流",
-        "multimedia": "マルチメディア",
-        "acp": "エージェント"
+        "multimedia": "マルチメディア"
       },
       "chatModel": "チャットModel",
       "chatModelDescription": "Memoh Agentが使用するModelです。",
@@ -3751,9 +3747,6 @@
       "fieldRequired": "{field}を入力してください",
       "fieldInvalid": "{field}の形式が正しくありません"
     }
-  },
-  "languages": {
-    "auto": "自動"
   },
   "onboarding": {
     "prev": "前の",
