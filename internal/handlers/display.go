@@ -547,7 +547,7 @@ func (h *ContainerdHandler) applyDisplayStyleAsync(ctx context.Context, botID st
 		client, err := h.manager.NativeMCPClient(runCtx, botID)
 		if err != nil || client == nil {
 			if err != nil && h.logger != nil {
-				h.logger.Warn("display desktop style skipped", slog.String("bot_id", botID), slog.Any("error", err))
+				h.logger.WarnContext(ctx, "display desktop style skipped", slog.String("bot_id", botID), slog.Any("error", err))
 			}
 			return
 		}
@@ -557,12 +557,12 @@ func (h *ContainerdHandler) applyDisplayStyleAsync(ctx context.Context, botID st
 		result, err := client.Exec(runCtx, displayApplyStyleCommand(), "/", 540)
 		if err != nil {
 			if h.logger != nil {
-				h.logger.Warn("display desktop style failed", slog.String("bot_id", botID), slog.Any("error", err))
+				h.logger.WarnContext(ctx, "display desktop style failed", slog.String("bot_id", botID), slog.Any("error", err))
 			}
 			return
 		}
 		if (result == nil || result.ExitCode != 0) && h.logger != nil {
-			h.logger.Warn("display desktop style exited non-zero", displayStyleLogArgs(runCtx, client, botID, result)...)
+			h.logger.WarnContext(ctx, "display desktop style exited non-zero", displayStyleLogArgs(runCtx, client, botID, result)...)
 		}
 	}()
 }

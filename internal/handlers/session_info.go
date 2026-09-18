@@ -248,7 +248,7 @@ func (h *SessionInfoHandler) loadBotSettings(ctx context.Context, botID string) 
 	}
 	botSettings, err := h.settingsService.GetBot(ctx, botID)
 	if err != nil {
-		h.logger.Warn("load bot settings failed", slog.Any("error", err))
+		h.logger.WarnContext(ctx, "load bot settings failed", slog.Any("error", err))
 		return settings.Settings{}, false
 	}
 	return botSettings, true

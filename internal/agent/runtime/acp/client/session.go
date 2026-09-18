@@ -213,7 +213,7 @@ func (r *Runner) StartSession(ctx context.Context, req StartRequest, sink EventS
 		client, stop, err = r.startMemohToolsBridge(lifecycleCtx, req.BotID, client, guardedPath, guardedHandler)
 		if err != nil {
 			if r.logger != nil {
-				r.logger.Warn("Memoh tools bridge unavailable; starting ACP session without Memoh tools",
+				r.logger.WarnContext(ctx, "Memoh tools bridge unavailable; starting ACP session without Memoh tools",
 					slog.String("agent_id", req.AgentID),
 					slog.String("bot_id", req.BotID),
 					slog.Any("error", err),
@@ -316,7 +316,7 @@ func (r *Runner) StartSession(ctx context.Context, req StartRequest, sink EventS
 	}
 	if r.logger != nil {
 		caps := initResp.AgentCapabilities.McpCapabilities
-		r.logger.Info("ACP agent initialized",
+		r.logger.InfoContext(ctx, "ACP agent initialized",
 			slog.String("agent_id", req.AgentID),
 			slog.String("bot_id", req.BotID),
 			slog.Bool("mcp_acp", caps.Acp),
@@ -328,7 +328,7 @@ func (r *Runner) StartSession(ctx context.Context, req StartRequest, sink EventS
 			slog.Int("mcp_servers", len(mcpServers)),
 		)
 		if toolHTTPURL != "" && len(mcpServers) == 0 {
-			r.logger.Warn("Memoh tools were not exposed to ACP agent because no supported MCP transport was available",
+			r.logger.WarnContext(ctx, "Memoh tools were not exposed to ACP agent because no supported MCP transport was available",
 				slog.String("agent_id", req.AgentID),
 				slog.String("bot_id", req.BotID),
 				slog.Bool("agent_supports_acp_mcp", caps.Acp),
@@ -383,7 +383,7 @@ func (r *Runner) StartSession(ctx context.Context, req StartRequest, sink EventS
 				errors.Is(err, ErrReasoningSelectionUnsupported) ||
 				errors.Is(err, ErrReasoningEffortRequired) {
 				if r.logger != nil {
-					r.logger.Warn("failed to apply default ACP reasoning effort; leaving agent value",
+					r.logger.WarnContext(ctx, "failed to apply default ACP reasoning effort; leaving agent value",
 						slog.String("agent_id", req.AgentID),
 						slog.String("desired_effort", defaultReasoning),
 						slog.Any("error", err))

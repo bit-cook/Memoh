@@ -384,7 +384,7 @@ func (s *Service) runSchedule(ctx context.Context, sched Schedule) error {
 		SessionID:  db.ParseUUIDOrEmpty(sessionID),
 	})
 	if err != nil {
-		s.logger.Error("create schedule log failed", slog.String("schedule_id", sched.ID), slog.Any("error", err))
+		s.logger.ErrorContext(ctx, "create schedule log failed", slog.String("schedule_id", sched.ID), slog.Any("error", err))
 	}
 
 	if errors.Is(sessionErr, ErrTargetSessionGone) {
@@ -426,7 +426,7 @@ func (s *Service) runSchedule(ctx context.Context, sched Schedule) error {
 
 	modelID := db.ParseUUIDOrEmpty(result.ModelID)
 	s.completeLog(ctx, logRow.ID, result.Status, result.Text, "", result.UsageBytes, modelID)
-	s.logger.Info("schedule completed", slog.String("schedule_id", sched.ID), slog.String("status", result.Status))
+	s.logger.InfoContext(ctx, "schedule completed", slog.String("schedule_id", sched.ID), slog.String("status", result.Status))
 	return nil
 }
 
@@ -492,13 +492,13 @@ func (s *Service) resolveRunSession(ctx context.Context, sched Schedule, ownerUs
 func (s *Service) disableGoneSchedule(ctx context.Context, scheduleID string) {
 	updated, err := s.queries.DisableSchedule(ctx, toUUID(scheduleID))
 	if err != nil {
-		s.logger.Error("disable schedule with deleted target session failed",
+		s.logger.ErrorContext(ctx, "disable schedule with deleted target session failed",
 			slog.String("schedule_id", scheduleID), slog.Any("error", err))
 		return
 	}
 	s.removeJob(scheduleID)
 	s.publishChanged(updated.BotID.String(), scheduleID)
-	s.logger.Warn("schedule disabled: target session was deleted", slog.String("schedule_id", scheduleID))
+	s.logger.WarnContext(ctx, "schedule disabled: target session was deleted", slog.String("schedule_id", scheduleID))
 }
 
 func (s *Service) publishChanged(botID, scheduleID string) {
@@ -518,7 +518,7 @@ func (s *Service) completeLog(ctx context.Context, logID pgtype.UUID, status, re
 		ModelID:      modelID,
 	})
 	if err != nil {
-		s.logger.Error("complete schedule log failed", slog.Any("error", err))
+		s.logger.ErrorContext(ctx, "complete schedule log failed", slog.Any("error", err))
 	}
 }
 
@@ -685,7 +685,7 @@ func (s *Service) scheduleJob(ctx context.Context, schedule sqlc.Schedule) error
 		runCtx, runCancel := context.WithTimeout(context.WithoutCancel(ctx), runTimeoutFor(item))
 		defer runCancel()
 		if err := s.runSchedule(runCtx, item); err != nil {
-			s.logger.Error("scheduled job failed", slog.String("schedule_id", schedule.ID.String()), slog.Any("error", err))
+			s.logger.ErrorContext(ctx, "scheduled job failed", slog.String("schedule_id", schedule.ID.String()), slog.Any("error", err))
 		}
 	}
 
@@ -805,7 +805,7 @@ func (s *Service) resolveBotLocation(ctx context.Context, botID pgtype.UUID) *ti
 			if loadErr == nil {
 				return loc
 			}
-			s.logger.Warn("invalid bot timezone for schedule",
+			s.logger.WarnContext(ctx, "invalid bot timezone for schedule",
 				slog.String("bot_id", botID.String()),
 				slog.String("timezone", tz),
 				slog.Any("error", loadErr),
@@ -822,7 +822,7 @@ func (s *Service) resolveBotLocation(ctx context.Context, botID pgtype.UUID) *ti
 				if loadErr == nil {
 					return loc
 				}
-				s.logger.Warn("invalid bot owner timezone for schedule",
+				s.logger.WarnContext(ctx, "invalid bot owner timezone for schedule",
 					slog.String("bot_id", botID.String()),
 					slog.String("user_id", row.OwnerUserID.String()),
 					slog.String("timezone", tz),

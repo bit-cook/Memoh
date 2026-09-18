@@ -108,7 +108,7 @@ func (h *MemoryHandler) resolveProvider(ctx context.Context, botID string) (memp
 				if getErr == nil {
 					return p, nil
 				}
-				h.logger.Warn("memory provider lookup failed", slog.String("provider_id", providerID), slog.Any("error", getErr))
+				h.logger.WarnContext(ctx, "memory provider lookup failed", slog.String("provider_id", providerID), slog.Any("error", getErr))
 				return nil, fmt.Errorf("configured memory provider is unavailable: %w", getErr)
 			}
 		}

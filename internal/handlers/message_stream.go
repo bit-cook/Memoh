@@ -383,7 +383,7 @@ func (c *sessionCache) get(ctx context.Context, sessionID string) (session.Threa
 	}
 	sess, err := c.svc.Get(ctx, sessionID)
 	if err != nil {
-		c.logger.Warn("activity stream: load session failed",
+		c.logger.WarnContext(ctx, "activity stream: load session failed",
 			slog.String("session_id", sessionID),
 			slog.Any("error", err),
 		)

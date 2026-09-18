@@ -504,7 +504,7 @@ func (h *ProvidersHandler) fillExistingModel(ctx context.Context, providerID, mo
 		Type:       existing.Type,
 		Config:     merged,
 	}); err != nil {
-		h.logger.Warn("failed to fill model capabilities", slog.String("model_id", modelID), slog.Any("error", err))
+		h.logger.WarnContext(ctx, "failed to fill model capabilities", slog.String("model_id", modelID), slog.Any("error", err))
 		return false
 	}
 	return true

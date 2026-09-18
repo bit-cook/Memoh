@@ -722,7 +722,7 @@ func (h *ContainerdHandler) observeWorkspace(ctx context.Context, botID string) 
 	obsCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 	defer cancel()
 	if _, err := h.workspaces.Observe(obsCtx, botID); err != nil && !errors.Is(err, botworkspace.ErrNotFound) {
-		h.logger.Warn("refresh workspace observation failed", slog.String("bot_id", botID), slog.Any("error", err))
+		h.logger.WarnContext(ctx, "refresh workspace observation failed", slog.String("bot_id", botID), slog.Any("error", err))
 	}
 }
 
