@@ -1255,6 +1255,9 @@ func (s *Service) buildToolApprovalHandler(p baseRunConfigParams) func(context.C
 }
 
 func isWorkspaceTargetTool(toolName string) bool {
+	if toolName == "mcp_manage" || toolName == "app_manage" {
+		return false
+	}
 	_, ok := toolapproval.OperationForTool(toolName)
 	return ok
 }

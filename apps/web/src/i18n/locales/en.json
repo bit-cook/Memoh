@@ -115,6 +115,13 @@
     "finish": "Done"
   },
   "errors": {
+    "capability": {
+      "access_denied": "You need Manage permission on this bot to manage its capabilities.",
+      "request_invalid": "The capability request is invalid. Check the action and its parameters.",
+      "operation_failed": "The capability operation failed. Check its status before retrying.",
+      "approval_required": "This capability change requires an approved management request.",
+      "not_found": "The requested capability could not be found."
+    },
     "queue": {
       "steer_unsupported": "This run cannot accept steer input. Wait for it to finish and send a new message."
     },

@@ -131,6 +131,7 @@ func ServerModule() fx.Option {
 			provideContainerdHandler,
 			provideBotBackupService,
 			provideFederationGateway,
+			provideFederationSource,
 			provideACPToolSource,
 			provideToolGatewayService,
 			provideBackgroundManager,
