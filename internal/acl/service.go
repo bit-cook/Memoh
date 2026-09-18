@@ -41,6 +41,7 @@ func NewService(log *slog.Logger, queries dbstore.Queries) *Service {
 // Evaluate checks whether the given request is allowed to perform chat.trigger.
 // Rules only override the bot's default mode: deny rules matter in blacklist mode,
 // and allow rules matter in whitelist mode.
+// WeChat messages bypass chat ACL rules and the default mode.
 func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (bool, error) {
 	// Validate scope before any service nil checks so callers get meaningful errors.
 	sourceScope, err := normalizeSourceScope(req.SourceScope)
@@ -59,6 +60,12 @@ func (s *Service) Evaluate(ctx context.Context, req EvaluateRequest) (bool, erro
 	pgBotID, err := db.ParseUUID(botID)
 	if err != nil {
 		return false, err
+	}
+	// WeChat connections do not require a second chat authorization step.
+	// Keep this in the shared evaluator so chat and command entry points agree;
+	// account binding and management permissions remain separate checks.
+	if channelType == "weixin" {
+		return true, nil
 	}
 
 	effect, err := s.queries.EvaluateBotACLRule(ctx, sqlc.EvaluateBotACLRuleParams{
