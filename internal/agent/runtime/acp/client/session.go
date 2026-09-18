@@ -450,7 +450,7 @@ func pinSessionMode(ctx context.Context, conn *clientConnection, sessionID acp.S
 	}
 	if !available {
 		if logger != nil {
-			logger.Warn("ACP agent does not advertise the pinned session mode",
+			logger.WarnContext(ctx, "ACP agent does not advertise the pinned session mode",
 				slog.String("agent_id", agentID),
 				slog.String("desired_mode", desired),
 				slog.String("current_mode", string(modes.CurrentModeId)))
@@ -466,7 +466,7 @@ func pinSessionMode(ctx context.Context, conn *clientConnection, sessionID acp.S
 	previousMode := modes.CurrentModeId
 	modes.CurrentModeId = acp.SessionModeId(desired)
 	if logger != nil {
-		logger.Info("pinned ACP session mode",
+		logger.InfoContext(ctx, "pinned ACP session mode",
 			slog.String("agent_id", agentID),
 			slog.String("mode", desired),
 			slog.String("previous_mode", string(previousMode)))

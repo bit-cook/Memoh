@@ -125,7 +125,7 @@ func startAppServerSession(ctx context.Context, botID, botAgentID string, client
 		// binary usually still speaks a compatible superset (unknown fields
 		// and methods are tolerated by design), so warn loudly instead of
 		// refusing service; the toolkit pin and this check must converge.
-		logger.Warn("codex CLI version differs from the pinned protocol snapshot",
+		logger.WarnContext(ctx, "codex CLI version differs from the pinned protocol snapshot",
 			slog.String("bot_id", botID),
 			slog.String("cli_version", srv.codexVersion),
 			slog.String("pinned", protocol.PinnedCodexVersion),
