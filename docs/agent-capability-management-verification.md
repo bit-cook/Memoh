@@ -59,3 +59,15 @@
 - `go test ./internal/agent/tool ./internal/agent/runtime/native ./internal/supermarket` 通过；本次差异 Go lint 通过。
 - 复用当前 worktree 的真实开发环境 `http://localhost:21482`，重新核对 Server 挂载及健康。通过确定性模型调用真实 Supermarket API，分类列表返回 21 个非空分类，开发工具分类返回 24 个 App。
 - [分类列表截图](screenshots/agent-capability-management/15-app-categories.png) 展示分类 ID、中文名称及数量；连续浏览开发工具分类的 [第一页](screenshots/agent-capability-management/16-category-apps-page-1.png) 和 [第二页](screenshots/agent-capability-management/17-category-apps-page-2.png)，每页 3 项，并确认项目不重复。第一页为 algolia / cloudflare / git，第二页为 github / gitlab / postman。
+
+## 工具文案补充验收
+
+三个工具的描述现在逐项说明 action、所需参数、默认值、权限与审批、返回状态及后续操作；所有顶层参数均有用途和适用 action 说明。跨工具发现、安装、授权、恢复和失败处理放在按需 Usage，静态 Prompt 未修改，工具和 action 数量未增加。
+
+- 核对实际服务实现：MCP 的 `is_active`、最近探测 `status` 与 `auth_status` 各自独立；App 的 `discovered`、安装状态和 Connector 授权状态也须分别判断。App Connector OAuth 需要明确的授权方式 ID；文案没有承诺省略后会自动选择方式。
+- `go test ./internal/agent/tool ./internal/agent/runtime/native ./internal/supermarket` 和本次差异 Go lint 通过；未为描述字符串增加镜像测试。
+- 再次核对开发环境的源码挂载与 Server 健康。在 `http://localhost:21482` 的新聊天中分别调用三个工具，并检查发往本地模型服务的请求：三个工具均带新版完整描述，所有顶层参数都有说明，条件 Usage 正常注入。
+- [分类查询](screenshots/agent-capability-management/18-tool-copy-category-query.png)：`app_search search` 使用分类 ID、无关键词返回开发工具分类的 3 个项目，总数 24。
+- [MCP 状态查询](screenshots/agent-capability-management/19-tool-copy-mcp-status.png)：`mcp_manage list` 正常返回已有测试连接；本次结果为 `is_active=false`、最近探测 `status=connected`、过期后的 `auth_status=needs_reauthorization`，说明旧探测成功不能当作当前可用或已授权。
+- [App 状态刷新](screenshots/agent-capability-management/20-tool-copy-app-status.png)：`app_manage list` 设置 `refresh=true` 后返回 4 个发现的工作区依赖及 1 个已安装 App；已安装项带原有 installation ID 和 revision。三个查询均正常结束、没有管理审批弹窗。
+- 本轮使用确定性模型验证说明下发与真实工具流程，未评价真实语言模型理解新文案后的选工具效果；未重新执行第三方账号授权。

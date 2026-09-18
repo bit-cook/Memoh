@@ -163,6 +163,8 @@ OAuth 的 discovery、state、PKCE、回调与令牌处理由服务端负责。�
 ## 8. 实施说明
 
 - 三个工具由一个 `CapabilityProvider` 提供；静态系统 Prompt 未增加工具说明。
+- 完整 action 用途、输入约束、默认值、审批条件、返回状态和后续操作维护在 `internal/agent/tool/capability_schema.go` 的工具及参数描述中；跨工具发现、安装、授权和恢复流程维护在 `CapabilityProvider.Usage`，仅随当前可用工具注入。
+- 工具文案区分目录筛选 `registry` 与 App 身份 `registry_id`、App 身份与 `installation_id`、MCP 启用状态与探测/授权状态。App Connector OAuth 必须提供服务商支持的 `auth_method`，不能假定省略后有默认方式；方式未知或需手动配置时，通过设置入口完成。
 - `update` 更新 App 发布及新增组件，沿用现有依赖，不隐式升级已安装依赖。
 - 安装、更新和恢复固定发布 revision 与依赖目录快照；恢复还在安装锁内校验已确认 revision。审批等待期间目标或卸载预览变化会拒绝旧操作。
 - 管理审批保留在执行中的调用里。批准后唤醒该调用，避免重新解析并重复执行；进程丢失时，冻结的操作不能从旧审批重放。
