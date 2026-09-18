@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -321,5 +323,50 @@ func TestSpawnAgentProviderScopeUsesCurrentModelOrBotDefault(t *testing.T) {
 				t.Fatalf("provider = %v, want %s", got, tc.wantProvider)
 			}
 		})
+	}
+}
+
+func TestQueuedSubagentRechecksProviderBeforeExecution(t *testing.T) {
+	queries, _, modelBUUID := newSubagentModelCatalog(t)
+	worker := queries.models[1]
+	worker.ID = mustSubagentUUID(t, "00000000-0000-0000-0000-000000000303")
+	worker.ModelID = "worker-only"
+	queries.models = append(queries.models, worker)
+	block := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(block) })
+	t.Cleanup(unblock)
+	agent := &fakeSpawnAgent{block: block}
+	provider, manager, _, _ := newAgentControlProvider(t, agent)
+	provider.models = models.NewService(slog.Default(), queries)
+	provider.queries = queries
+	provider.modelResolver = provider.resolveModel
+	session := SessionContext{
+		BotID: "bot-1", SessionID: "parent-1", CurrentModelUUID: modelBUUID,
+		CurrentModelProviderID: queries.models[1].ProviderID.String(),
+	}
+	mustExecuteAgentTool(t, provider, session, ToolSpawnAgent().String(), map[string]any{
+		"id": "worker", "task": "first", "model_id": "worker-only", "run_in_background": true,
+	})
+	waitUntil(t, time.Second, func() bool { return len(agent.queries()) == 1 })
+	queued := asMap(t, mustExecuteAgentTool(t, provider, session, ToolSendMessage().String(), map[string]any{
+		"id": "worker", "message": "second",
+	}))
+	if queued["status"] != string(background.TaskQueued) {
+		t.Fatalf("expected queued follow-up: %v", queued)
+	}
+	queries.models[2].ProviderID = queries.models[0].ProviderID
+	otherID := queries.models[0].ProviderID.String()
+	other := queries.providers[otherID]
+	other.Name = "provider-b"
+	queries.providers[otherID] = other
+	unblock()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	snapshot, _, err := manager.WaitForSessionTask(ctx, session.BotID, session.SessionID, queued["task_id"].(string), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Status != background.TaskFailed || len(agent.queries()) != 1 {
+		t.Fatalf("queued provider change must fail without executing: %+v", snapshot)
 	}
 }
