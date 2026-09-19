@@ -29,10 +29,8 @@ import pathlib
 import re
 import sys
 
-FUNC = re.compile(
-    r"^func\s+(\((?P<recv>[^)]*)\)\s+)?(?P<name>\w+)\((?P<params>[^{]*?)\)\s*(?P<ret>[^{]*?)\{",
-    re.M | re.S,
-)
+FUNC = re.compile(r"^func\b", re.M)
+NAME = re.compile(r"\s*(\((?P<recv>[^)]*)\)\s*)?(?P<name>\w+)")
 CALL = re.compile(r"\w[\w.]*\.(?:logger|log)\.(?P<level>Debug|Info|Warn|Error)\(")
 CTX_PARAM = re.compile(r"\b(\w+)\s+context\.Context")
 
@@ -43,22 +41,100 @@ class Site:
         self.func = func
 
 
-def enclosing(funcs: list[tuple[int, re.Match[str]]], pos: int) -> re.Match[str] | None:
+class Func:
+    """One function declaration, located by matching brackets rather than by
+    regex.
+
+    A signature can contain braces — `stop chan struct{}` is the common case —
+    so a pattern that stops at the first `{` silently fails to match such a
+    declaration, and every call in its body is then attributed to whichever
+    function happened to be declared above it. Counting brackets is the only
+    way to know where the parameters end and the body begins.
+    """
+
+    def __init__(self, name: str, params: str, params_start: int, body: tuple[int, int]) -> None:
+        self.name = name
+        self.params = params
+        self.params_start = params_start
+        self.body = body
+
+    def contains(self, pos: int) -> bool:
+        return self.body[0] <= pos < self.body[1]
+
+
+def _match_bracket(src: str, start: int, opening: str, closing: str) -> int:
+    """Index just past the bracket that closes the one at src[start]."""
+    depth = 0
+    for i in range(start, len(src)):
+        if src[i] == opening:
+            depth += 1
+        elif src[i] == closing:
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    return -1
+
+
+def parse_funcs(src: str) -> list[Func]:
+    out: list[Func] = []
+    for kw in FUNC.finditer(src):
+        head = NAME.match(src, kw.end())
+        if head is None:
+            continue
+        open_paren = src.find("(", head.end())
+        if open_paren == -1:
+            continue
+        close_paren = _match_bracket(src, open_paren, "(", ")")
+        if close_paren == -1:
+            continue
+        # The body opens at the first brace after the parameters that is not
+        # itself inside the return type's own brackets.
+        depth = 0
+        body_open = -1
+        for i in range(close_paren, len(src)):
+            ch = src[i]
+            if ch in "([":
+                depth += 1
+            elif ch in ")]":
+                depth -= 1
+            elif ch == "{":
+                if depth == 0:
+                    body_open = i
+                break
+            elif ch == "\n" and depth == 0 and src[close_paren:i].strip().endswith(";"):
+                break
+        if body_open == -1:
+            continue  # an interface method or a declaration without a body
+        body_close = _match_bracket(src, body_open, "{", "}")
+        if body_close == -1:
+            continue
+        out.append(
+            Func(
+                name=head.group("name"),
+                params=src[open_paren + 1 : close_paren - 1],
+                params_start=open_paren + 1,
+                body=(body_open, body_close),
+            )
+        )
+    return out
+
+
+def enclosing(funcs: list[Func], pos: int) -> Func | None:
+    # Innermost wins: a call inside a literal nested in a function body belongs
+    # to whichever declaration most tightly encloses it.
     found = None
-    for start, match in funcs:
-        if start <= pos:
-            found = match
-        else:
-            break
+    for func in funcs:
+        if func.contains(pos) and (found is None or func.body[0] > found.body[0]):
+            found = func
     return found
 
 
 def migrate(path: pathlib.Path, dry_run: bool) -> tuple[int, list[Site]]:
     src = path.read_text()
-    funcs = sorted((m.start(), m) for m in FUNC.finditer(src))
+    funcs = parse_funcs(src)
 
     edits: list[tuple[int, int, str]] = []
-    needs_ctx_name: dict[int, re.Match[str]] = {}
+    needs_ctx_name: dict[int, Func] = {}
     deferred: list[Site] = []
 
     for call in CALL.finditer(src):
@@ -66,22 +142,21 @@ def migrate(path: pathlib.Path, dry_run: bool) -> tuple[int, list[Site]]:
         if func is None:
             deferred.append(Site(src[: call.start()].count("\n") + 1, "<file scope>"))
             continue
-        ctx = CTX_PARAM.search(func.group("params") or "")
+        ctx = CTX_PARAM.search(func.params)
         if ctx is None:
-            deferred.append(Site(src[: call.start()].count("\n") + 1, func.group("name")))
+            deferred.append(Site(src[: call.start()].count("\n") + 1, func.name))
             continue
         name = ctx.group(1)
         if name == "_":
             name = "ctx"
-            needs_ctx_name[func.start("params")] = func
+            needs_ctx_name[func.params_start] = func
         # Replace the "(" that opens the call with "Context(<ctx>, ".
         edits.append((call.end() - 1, 1, f"Context({name}, "))
 
     for params_start, func in needs_ctx_name.items():
-        params = func.group("params")
-        renamed = params.replace("_ context.Context", "ctx context.Context", 1)
-        if renamed != params:
-            edits.append((params_start, len(params), renamed))
+        renamed = func.params.replace("_ context.Context", "ctx context.Context", 1)
+        if renamed != func.params:
+            edits.append((params_start, len(func.params), renamed))
 
     # Apply back to front so earlier offsets stay valid.
     edits.sort(key=lambda edit: -edit[0])
