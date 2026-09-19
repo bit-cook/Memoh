@@ -66,6 +66,7 @@ type ContainerStatus struct {
 	Namespace        string    `json:"namespace"`
 	ContainerPath    string    `json:"container_path"`
 	CDIDevices       []string  `json:"cdi_devices,omitempty"`
+	Snapshotter      string    `json:"snapshotter,omitempty"`
 	TaskRunning      bool      `json:"task_running"`
 	HasPreservedData bool      `json:"has_preserved_data"`
 	Legacy           bool      `json:"legacy"`

@@ -1651,6 +1651,28 @@
     "saveSuccess": "プロバイダー設定を保存しました",
     "saveBeforeTest": "変更を保存してから接続をテストしてください。"
   },
+  "providerConnect": {
+    "title": "プロバイダーを追加",
+    "description": "外部サービスが以下のプロバイダーを Memoh に追加しようとしています。確認するまで保存されません。",
+    "name": "名前",
+    "baseUrl": "ベース URL",
+    "clientType": "クライアントタイプ",
+    "apiKey": "API キー",
+    "confirm": "追加",
+    "decline": "キャンセル",
+    "createFailed": "プロバイダーの追加に失敗しました",
+    "invalidTitle": "無効なリンク",
+    "backToProviders": "プロバイダー一覧に戻る",
+    "error": {
+      "missing": "リンクに payload がありません。",
+      "decode": "リンクの内容を解析できませんでした。",
+      "kind": "プロバイダーインポートリンクではありません。",
+      "version": "サポートされていないリンクのバージョンです。",
+      "baseUrl": "リンクに有効なベース URL がありません。",
+      "apiKey": "リンクに API キーがありません。",
+      "clientType": "サポートされていないクライアントタイプが指定されています。"
+    }
+  },
   "webSearch": {
     "title": "ウェブ検索",
     "add": "追加",
@@ -2239,9 +2261,9 @@
     "avatarUrl": "アバターURL",
     "avatarUrlPlaceholder": "アバター画像を入力してくださいURL",
     "timezone": "タイムゾーン",
+    "timezoneHint": "スケジュールタスクはこのタイムゾーンに基づいて実行時刻を決定します。",
     "timezonePlaceholder": "例: America/New_York",
     "timezoneInherited": "ユーザー/システムから継承",
-    "timezoneInheritedHint": "ユーザーのタイムゾーンを継承する場合は空のままにするか、システムのタイムゾーンにフォールバックします。",
     "aclPreset": "IM アプリポリシー",
     "aclPresetDescription": "標準から始めるACLプリセット。後でChannel アクセスで調整できます。",
     "aclPresetHint": "ヒント: 個人Botには「プライベートのみ」を使用し、コミュニティBotには「グループのみ」または「グループとスレッド」を使用し、完全にオープンなままにする場合は「すべてを許可」を使用します。",
@@ -2274,8 +2296,6 @@
     "editTimezoneDescription": "このBotのタイムゾーン オーバーライドを設定します。",
     "avatarUpdateSuccess": "アバターが更新されました",
     "avatarUpdateFailed": "アバターの更新に失敗しました",
-    "timezoneUpdateSuccess": "タイムゾーンが更新されました",
-    "timezoneUpdateFailed": "タイムゾーンの更新に失敗しました",
     "typePlaceholder": "Botの種類を選択してください",
     "types": {
       "personal": "個人的",
@@ -2997,13 +3017,9 @@
     "settings": {
       "blocks": {
         "context": "コンテキストとMemory",
-        "global": "グローバル設定",
         "interaction": "交流",
-        "multimedia": "マルチメディア",
-        "acp": "エージェント"
+        "multimedia": "マルチメディア"
       },
-      "chatLanguage": "言語",
-      "chatLanguagePlaceholder": "例: 英語、zh-CN",
       "chatModel": "チャットModel",
       "chatModelDescription": "Memoh Agentが使用するModelです。",
       "chatModelPlaceholder": "Modelを選択",
@@ -3760,9 +3776,6 @@
       "fieldRequired": "{field}を入力してください",
       "fieldInvalid": "{field}の形式が正しくありません"
     }
-  },
-  "languages": {
-    "auto": "自動"
   },
   "onboarding": {
     "prev": "前の",

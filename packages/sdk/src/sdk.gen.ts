@@ -629,7 +629,9 @@ export const deleteBotsByBotIdContainer = <ThrowOnError extends boolean = false>
 export const getBotsByBotIdContainer = <ThrowOnError extends boolean = false>(options: Options<GetBotsByBotIdContainerData, ThrowOnError>): RequestResult<GetBotsByBotIdContainerResponses, GetBotsByBotIdContainerErrors, ThrowOnError> => (options.client ?? client).get<GetBotsByBotIdContainerResponses, GetBotsByBotIdContainerErrors, ThrowOnError>({ url: '/bots/{bot_id}/container', ...options });
 
 /**
- * Create and start workspace for bot
+ * Create workspace for bot
+ *
+ * Records the intent for a running workspace and streams the
  */
 export const postBotsByBotIdContainer = <ThrowOnError extends boolean = false>(options: Options<PostBotsByBotIdContainerData, ThrowOnError>): RequestResult<PostBotsByBotIdContainerResponses, PostBotsByBotIdContainerErrors, ThrowOnError> => (options.client ?? client).post<PostBotsByBotIdContainerResponses, PostBotsByBotIdContainerErrors, ThrowOnError>({
     url: '/bots/{bot_id}/container',

@@ -3617,10 +3617,11 @@ const docTemplate = `{
                 }
             },
             "post": {
+                "description": "Records the intent for a running workspace and streams the",
                 "tags": [
                     "containerd"
                 ],
-                "summary": "Create and start workspace for bot",
+                "summary": "Create workspace for bot",
                 "parameters": [
                     {
                         "type": "string",
@@ -22754,9 +22755,6 @@ const docTemplate = `{
         "handlers.ChannelMeta": {
             "type": "object",
             "properties": {
-                "acl_exempt": {
-                    "type": "boolean"
-                },
                 "capabilities": {
                     "$ref": "#/definitions/channel.ChannelCapabilities"
                 },
@@ -22768,6 +22766,9 @@ const docTemplate = `{
                 },
                 "display_name": {
                     "type": "string"
+                },
+                "owner_only": {
+                    "type": "boolean"
                 },
                 "target_spec": {
                     "$ref": "#/definitions/channel.TargetSpec"
@@ -23152,10 +23153,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "restore_data": {
+                    "description": "RestoreData imports the preserved /data archive into the new workspace\nonce it is running. Backends that expose snapshot mounts restore the\narchive while starting regardless of this flag; the flag matters for\nbackends that restore through the bridge.",
                     "type": "boolean"
-                },
-                "snapshotter": {
-                    "type": "string"
                 }
             }
         },
@@ -27556,9 +27555,6 @@ const docTemplate = `{
                 "image_model_id": {
                     "type": "string"
                 },
-                "language": {
-                    "type": "string"
-                },
                 "memory_provider_id": {
                     "type": "string"
                 },
@@ -27728,10 +27724,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "image_model_id": {
-                    "type": "string"
-                },
-                "language": {
-                    "description": "Language follows the same pointer rule; \"\" normalizes to DefaultLanguage\n(\"auto\") rather than clearing the column.",
                     "type": "string"
                 },
                 "memory_provider_id": {

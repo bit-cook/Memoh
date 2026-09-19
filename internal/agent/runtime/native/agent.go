@@ -1773,6 +1773,7 @@ func (a *Agent) assembleTools(
 		CurrentModelUUID:          cfg.CurrentModelUUID,
 		CurrentModelID:            cfg.CurrentModelID,
 		CurrentModelProvider:      cfg.CurrentModelProvider,
+		CurrentModelProviderID:    cfg.CurrentModelProviderID,
 		ReasoningStoredEffort:     cfg.ReasoningStoredEffort,
 		ReasoningRequestedEffort:  cfg.ReasoningRequestedEffort,
 		ForkContext:               cfg.ForkContext,
