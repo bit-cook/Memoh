@@ -31,8 +31,19 @@ import sys
 
 FUNC = re.compile(r"^func\b", re.M)
 NAME = re.compile(r"\s*(\((?P<recv>[^)]*)\)\s*)?(?P<name>\w+)")
-CALL = re.compile(r"\w[\w.]*\.(?:logger|log)\.(?P<level>Debug|Info|Warn|Error)\(")
+# The receiver may be a field (s.logger, h.log) or a plain local, which is
+# how a logger derived with With is usually held: `log := s.log.With(...)`.
+# Requiring a qualifier missed every one of the latter, and missed them
+# silently — those functions simply never appeared in the report.
+CALL = re.compile(r"(?:\w[\w.]*\.)?\b(?:logger|log)\.(?P<level>Debug|Info|Warn|Error)\(")
 CTX_PARAM = re.compile(r"\b(\w+)\s+context\.Context")
+
+# A call site can opt out. Some records deliberately carry no correlation even
+# though a context is in scope: a callback stored on a long-lived object holds
+# whichever context happened to build it, and stamping every later event with
+# that one names a request that had nothing to do with it. Without a marker
+# this script silently undoes that decision on every run.
+OPT_OUT = "logctx:plain"
 
 
 class Site:
@@ -138,6 +149,11 @@ def migrate(path: pathlib.Path, dry_run: bool) -> tuple[int, list[Site]]:
     deferred: list[Site] = []
 
     for call in CALL.finditer(src):
+        line_start = src.rfind("\n", 0, call.start()) + 1
+        line_end = src.find("\n", call.start())
+        preceding = src[max(0, src.rfind("\n", 0, line_start - 1)) : line_start]
+        if OPT_OUT in src[line_start : line_end if line_end != -1 else len(src)] or OPT_OUT in preceding:
+            continue
         func = enclosing(funcs, call.start())
         if func is None:
             deferred.append(Site(src[: call.start()].count("\n") + 1, "<file scope>"))

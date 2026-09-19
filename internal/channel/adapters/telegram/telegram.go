@@ -162,7 +162,13 @@ func (a *TelegramAdapter) getOrCreateBot(ctx context.Context, cfg Config, config
 		Client: httpClient,
 		OnError: func(handlerErr error, _ tele.Context) {
 			if a.logger != nil {
-				a.logger.WarnContext(ctx, "telegram bot sdk error", slog.String("config_id", configID), slog.Any("error", handlerErr))
+				// Plain Warn: this bot is cached and outlives the call that
+				// created it, so ctx here is whichever request happened to be
+				// first. Correlating an SDK error years of requests later
+				// with that one would name a request that has nothing to do
+				// with it. The error belongs to no request.
+				//logctx:plain
+				a.logger.Warn("telegram bot sdk error", slog.String("config_id", configID), slog.Any("error", handlerErr))
 			}
 		},
 	})
@@ -469,7 +475,10 @@ func (a *TelegramAdapter) Connect(ctx context.Context, cfg channel.ChannelConfig
 		}
 		if a.seenTelegramUpdate(cfg.ID, upd.ID, time.Now()) {
 			if a.logger != nil {
-				a.logger.DebugContext(ctx, "skip duplicate telegram update",
+				// connCtx, the one the guard above checks: an update belongs
+				// to the connection that is polling, not to whichever call
+				// opened it.
+				a.logger.DebugContext(connCtx, "skip duplicate telegram update",
 					slog.String("config_id", cfg.ID),
 					slog.Int("update_id", upd.ID),
 				)
@@ -507,9 +516,11 @@ func (a *TelegramAdapter) Connect(ctx context.Context, cfg channel.ChannelConfig
 
 	go bot.Start()
 
-	stop := func(_ context.Context) error {
+	stop := func(stopCtx context.Context) error {
 		if a.logger != nil {
-			a.logger.InfoContext(ctx, "stop", slog.String("config_id", cfg.ID))
+			// The caller's shutdown context, not the one that opened this
+			// connection: by the time stop runs, that one is usually done.
+			a.logger.InfoContext(stopCtx, "stop", slog.String("config_id", cfg.ID))
 		}
 		bot.Stop()
 		cancel()

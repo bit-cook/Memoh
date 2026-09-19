@@ -1090,7 +1090,7 @@ func proxyRFBListener(ctx context.Context, listener net.Listener, dialRFB func(c
 		conn, err := listener.Accept()
 		if err != nil {
 			if ctx.Err() == nil && !errors.Is(err, net.ErrClosed) {
-				logger.Warn("display RFB screenshot shim stopped", slog.String("bot_id", botID), slog.Any("error", err))
+				logger.WarnContext(ctx, "display RFB screenshot shim stopped", slog.String("bot_id", botID), slog.Any("error", err))
 			}
 			return
 		}
@@ -1103,7 +1103,7 @@ func proxyRFBConnection(ctx context.Context, conn net.Conn, dialRFB func(context
 
 	rfbConn, err := dialRFB(ctx)
 	if err != nil {
-		logger.Warn("display RFB dial failed", slog.String("bot_id", botID), slog.Any("error", err))
+		logger.WarnContext(ctx, "display RFB dial failed", slog.String("bot_id", botID), slog.Any("error", err))
 		return
 	}
 	defer func() { _ = rfbConn.Close() }()

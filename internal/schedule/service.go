@@ -685,7 +685,12 @@ func (s *Service) scheduleJob(ctx context.Context, schedule sqlc.Schedule) error
 		runCtx, runCancel := context.WithTimeout(context.WithoutCancel(ctx), runTimeoutFor(item))
 		defer runCancel()
 		if err := s.runSchedule(runCtx, item); err != nil {
-			s.logger.ErrorContext(ctx, "scheduled job failed", slog.String("schedule_id", schedule.ID.String()), slog.Any("error", err))
+			// runCtx, not ctx: ctx is whatever registered this schedule — on
+			// the Create path an HTTP request that finished long ago. Logging
+			// with it stamps every later firing with that request's id, which
+			// is worse than no correlation: it points at a request that had
+			// nothing to do with this run.
+			s.logger.ErrorContext(runCtx, "scheduled job failed", slog.String("schedule_id", schedule.ID.String()), slog.Any("error", err))
 		}
 	}
 
