@@ -362,7 +362,7 @@ func (s *Service) loop(ctx context.Context) {
 		case <-s.kick:
 		}
 		if _, err := s.reconcileOnce(ctx, &wg); err != nil {
-			s.log.Error("reconcile pass failed", slog.Any("error", err))
+			s.log.ErrorContext(ctx, "reconcile pass failed", slog.Any("error", err))
 		}
 		if s.now().Sub(s.lastDrift) >= s.opts.DriftInterval {
 			s.lastDrift = s.now()
@@ -613,7 +613,7 @@ func (s *Service) detectDriftIn(ctx context.Context, observed string) {
 	rows, err := s.repo.ListByObserved(listCtx, observed, 500)
 	cancel()
 	if err != nil {
-		s.log.Warn("drift scan failed", slog.String("observed", observed), slog.Any("error", err))
+		s.log.WarnContext(ctx, "drift scan failed", slog.String("observed", observed), slog.Any("error", err))
 		return
 	}
 	cutoff := s.now().Add(-s.opts.DriftInterval)
@@ -623,7 +623,7 @@ func (s *Service) detectDriftIn(ctx context.Context, observed string) {
 		}
 		obsCtx, cancel := context.WithTimeout(ctx, s.opts.WriteTimeout)
 		if _, err := s.Observe(obsCtx, w.BotID); err != nil && !errors.Is(err, ErrNotFound) {
-			s.log.Warn("drift observe failed", slog.String("bot_id", w.BotID), slog.Any("error", err))
+			s.log.WarnContext(ctx, "drift observe failed", slog.String("bot_id", w.BotID), slog.Any("error", err))
 		}
 		cancel()
 	}
@@ -669,7 +669,7 @@ func (s *Service) release(ctx context.Context, botID string) {
 	rctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.opts.WriteTimeout)
 	defer cancel()
 	if err := s.repo.Release(rctx, botID, s.opts.Owner); err != nil {
-		s.log.Warn("release lease failed", slog.String("bot_id", botID), slog.Any("error", err))
+		s.log.WarnContext(ctx, "release lease failed", slog.String("bot_id", botID), slog.Any("error", err))
 	}
 }
 
@@ -695,7 +695,7 @@ func (s *Service) leasedContext(parent context.Context, botID string, timeout ti
 				err := s.repo.Renew(rctx, botID, s.opts.Owner, s.opts.Lease)
 				rcancel()
 				if err != nil {
-					s.log.Warn("lease lost; abandoning operation", slog.String("bot_id", botID), slog.Any("error", err))
+					s.log.WarnContext(parent, "lease lost; abandoning operation", slog.String("bot_id", botID), slog.Any("error", err))
 					cancel()
 					return
 				}
@@ -743,7 +743,7 @@ func (s *Service) deriveBotStatus(ctx context.Context, w Workspace) {
 	wctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.opts.WriteTimeout)
 	defer cancel()
 	if err := writer.SetBotStatusFromWorkspace(wctx, w.BotID, status); err != nil {
-		s.log.Warn("derive bot status failed", slog.String("bot_id", w.BotID), slog.String("status", status), slog.Any("error", err))
+		s.log.WarnContext(ctx, "derive bot status failed", slog.String("bot_id", w.BotID), slog.String("status", status), slog.Any("error", err))
 	}
 }
 

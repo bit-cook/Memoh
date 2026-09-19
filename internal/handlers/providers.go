@@ -449,7 +449,7 @@ func importedCompatibilities(remote providers.RemoteModel, modelType models.Mode
 func (h *ProvidersHandler) markUnavailableManagedModels(ctx context.Context, providerID string, available map[string]struct{}) {
 	existingModels, err := h.modelsService.ListByProviderID(ctx, providerID)
 	if err != nil {
-		h.logger.Warn("failed to list managed models for catalog reconciliation", slog.Any("error", err))
+		h.logger.WarnContext(ctx, "failed to list managed models for catalog reconciliation", slog.Any("error", err))
 		return
 	}
 	for _, existing := range existingModels {
@@ -469,7 +469,7 @@ func (h *ProvidersHandler) markUnavailableManagedModels(ctx context.Context, pro
 			Type:       existing.Type,
 			Config:     config,
 		}); err != nil {
-			h.logger.Warn("failed to mark stale managed model unavailable", slog.String("model_id", existing.ModelID), slog.Any("error", err))
+			h.logger.WarnContext(ctx, "failed to mark stale managed model unavailable", slog.String("model_id", existing.ModelID), slog.Any("error", err))
 		}
 	}
 }
