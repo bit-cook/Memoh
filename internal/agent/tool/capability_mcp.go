@@ -31,7 +31,8 @@ func (p *CapabilityProvider) manageMCP(ctx *sdk.ToolExecContext, session Session
 			}
 			items = append(items, item)
 		}
-		return map[string]any{"items": items, "total": len(list), "page": page, "limit": limit}, nil
+		message := capabilityPageMessage(len(list), len(items), page, limit, "MCP connection", "MCP connections", "Use connection_id with get, update, delete, probe, or authorize.", "If the user provided an MCP server, add it with action=create.")
+		return map[string]any{"items": items, "total": len(list), "page": page, "limit": limit, "message": message}, nil
 	}
 	id := StringArg(args, "connection_id")
 	var conn mcp.Connection
@@ -44,7 +45,12 @@ func (p *CapabilityProvider) manageMCP(ctx *sdk.ToolExecContext, session Session
 	}
 	if action == "get" {
 		p.changed(session.BotID)
-		return p.connectionSummary(ctx.Context, conn)
+		result, err := p.connectionSummary(ctx.Context, conn)
+		if err != nil {
+			return nil, err
+		}
+		result["message"] = mcpConnectionMessage(action, conn, len(conn.ToolsCache), false)
+		return result, nil
 	}
 	var req mcp.UpsertRequest
 	if action == "create" || action == "update" {
@@ -81,10 +87,10 @@ func (p *CapabilityProvider) manageMCP(ctx *sdk.ToolExecContext, session Session
 		if err := p.opts.Connections.Delete(ctx.Context, session.BotID, id); err != nil {
 			return nil, err
 		}
-		return map[string]any{"ok": true, "status": "deleted", "connection_id": id}, nil
+		return map[string]any{"ok": true, "status": "deleted", "connection_id": id, "message": "The MCP connection was deleted. Its tools are no longer available to this bot."}, nil
 	case "authorize":
 		if StringArg(args, "auth_method") == "api_key" || conn.Type == "stdio" {
-			return map[string]any{"status": "needs_configuration", "settings_url": p.settingsPath(session.BotID, "mcp")}, nil
+			return map[string]any{"status": "needs_configuration", "settings_url": p.settingsPath(session.BotID, "mcp"), "message": "This MCP connection needs manual credential or process setup. Ask the user to open settings_url and configure it there, then probe the connection."}, nil
 		}
 		serverURL, _ := conn.Config["url"].(string)
 		discovery, err := p.opts.OAuth.Discover(ctx.Context, serverURL)
@@ -96,9 +102,9 @@ func (p *CapabilityProvider) manageMCP(ctx *sdk.ToolExecContext, session Session
 		}
 		auth, err := p.opts.OAuth.StartAuthorization(ctx.Context, id, "", "", "")
 		if err != nil {
-			return map[string]any{"status": "needs_configuration", "settings_url": p.settingsPath(session.BotID, "mcp")}, nil
+			return map[string]any{"status": "needs_configuration", "settings_url": p.settingsPath(session.BotID, "mcp"), "message": "OAuth could not be started automatically for this MCP server. Ask the user to open settings_url and finish configuration there, then probe the connection."}, nil
 		}
-		return map[string]any{"status": "authorization_pending", "authorization_url": auth.AuthorizationURL, "connection_id": id}, nil
+		return map[string]any{"status": "authorization_pending", "authorization_url": auth.AuthorizationURL, "connection_id": id, "message": "MCP authorization has started but is not complete. Ask the user to open authorization_url; after they finish, call get to confirm auth_status and probe to verify connectivity."}, nil
 	case "probe":
 		descriptors, probeErr := p.opts.Probe(ctx.Context, session.BotID, conn)
 		status := "connected"
@@ -120,12 +126,18 @@ func (p *CapabilityProvider) manageMCP(ctx *sdk.ToolExecContext, session Session
 		if probeErr != nil {
 			result["probe_failed"] = true
 		}
+		result["message"] = mcpConnectionMessage(action, conn, len(descriptors), probeErr != nil)
 		return result, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return p.connectionSummary(ctx.Context, conn)
+	result, err := p.connectionSummary(ctx.Context, conn)
+	if err != nil {
+		return nil, err
+	}
+	result["message"] = mcpConnectionMessage(action, conn, len(conn.ToolsCache), false)
+	return result, nil
 }
 
 func (p *CapabilityProvider) connectionSummary(ctx context.Context, conn mcp.Connection) (map[string]any, error) {

@@ -22,6 +22,14 @@ type capabilityTestConnections struct {
 	failure error
 }
 
+func (*capabilityTestConnections) Delete(context.Context, string, string) error { return nil }
+
+func (f *capabilityTestConnections) UpdateProbeResult(_ context.Context, _, _ string, status string, tools []mcp.ToolDescriptor, _ string) error {
+	f.conn.Status = status
+	f.conn.ToolsCache = tools
+	return nil
+}
+
 func (f *capabilityTestConnections) Get(_ context.Context, bot, id string) (mcp.Connection, error) {
 	if bot != f.conn.BotID || id != f.conn.ID {
 		return mcp.Connection{}, errors.New("wrong bot or connection")
@@ -46,6 +54,18 @@ func (f *capabilityTestConnections) ListByBot(context.Context, string) ([]mcp.Co
 type capabilityTestOAuth struct {
 	CapabilityOAuth
 	status mcp.OAuthStatus
+}
+
+func (capabilityTestOAuth) Discover(context.Context, string) (*mcp.DiscoveryResult, error) {
+	return &mcp.DiscoveryResult{}, nil
+}
+
+func (capabilityTestOAuth) SaveDiscovery(context.Context, string, *mcp.DiscoveryResult) error {
+	return nil
+}
+
+func (capabilityTestOAuth) StartAuthorization(context.Context, string, string, string, string) (*mcp.AuthorizeResult, error) {
+	return &mcp.AuthorizeResult{AuthorizationURL: "https://example.test/authorize"}, nil
 }
 
 func (f capabilityTestOAuth) GetStatus(context.Context, string) (*mcp.OAuthStatus, error) {
@@ -120,6 +140,14 @@ func assertCapabilityCode(t *testing.T, result any, code apperror.Code) {
 	}
 }
 
+func assertCapabilityMessage(t *testing.T, result any) {
+	t.Helper()
+	data, ok := result.(map[string]any)
+	if !ok || strings.TrimSpace(StringArg(data, "message")) == "" {
+		t.Fatalf("result has no actionable message: %#v", result)
+	}
+}
+
 func TestCapabilityManagementRechecksPermissionAfterApproval(t *testing.T) {
 	p, connections, review, session := capabilityFixture(t)
 	allowed := true
@@ -132,6 +160,7 @@ func TestCapabilityManagementRechecksPermissionAfterApproval(t *testing.T) {
 	review.beforeDecision = func() { allowed = false }
 	result := callCapability(t, p, session, map[string]any{"action": "create", "name": "New", "url": "https://example.test/mcp"})
 	assertCapabilityCode(t, result, apperror.CodeCapabilityAccessDenied)
+	assertCapabilityMessage(t, result)
 	if connections.creates != 0 || review.reviews != 1 {
 		t.Fatalf("created=%d reviews=%d", connections.creates, review.reviews)
 	}
@@ -154,6 +183,7 @@ func TestCapabilityManagementDoesNotExposeSecrets(t *testing.T) {
 	p, connections, review, session := capabilityFixture(t)
 	connections.conn.Config["url"] = "https://user:SECRET@example.test/mcp?key=SECRET"
 	result := callCapability(t, p, session, map[string]any{"action": "get", "connection_id": "connection"})
+	assertCapabilityMessage(t, result)
 	data, _ := json.Marshal(result)
 	if strings.Contains(string(data), "SECRET") {
 		t.Fatalf("leak: %s", data)
@@ -168,6 +198,27 @@ func TestCapabilityManagementDoesNotExposeSecrets(t *testing.T) {
 		t.Fatalf("error leak: %s", data)
 	}
 	assertCapabilityCode(t, result, apperror.CodeCapabilityOperationFailed)
+	assertCapabilityMessage(t, result)
+}
+
+func TestCapabilityMCPResultsExplainNextStep(t *testing.T) {
+	p, _, _, session := capabilityFixture(t)
+	tests := []map[string]any{
+		{"action": "list"},
+		{"action": "get", "connection_id": "connection"},
+		{"action": "create", "name": "New", "url": "https://example.test/mcp"},
+		{"action": "update", "connection_id": "connection", "name": "Renamed"},
+		{"action": "probe", "connection_id": "connection"},
+		{"action": "authorize", "connection_id": "connection", "auth_method": "api_key"},
+		{"action": "authorize", "connection_id": "connection", "auth_method": "oauth"},
+		{"action": "delete", "connection_id": "connection"},
+	}
+	for _, args := range tests {
+		t.Run(StringArg(args, "action")+StringArg(args, "auth_method"), func(t *testing.T) {
+			result := callCapability(t, p, session, args)
+			assertCapabilityMessage(t, result)
+		})
+	}
 }
 
 func TestCapabilityMCPPartialUpdateKeepsCredentialAndDisabledState(t *testing.T) {

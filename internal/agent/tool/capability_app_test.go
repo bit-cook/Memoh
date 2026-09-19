@@ -35,9 +35,15 @@ type capabilityTestApps struct {
 	snapshot  any
 }
 
-func (a *capabilityTestApps) Install(ctx context.Context, _ string, req apps.InstallRequest, _ apps.EventSink) (apps.OperationResult, error) {
+func (a *capabilityTestApps) Install(ctx context.Context, _ string, req apps.InstallRequest, sink apps.EventSink) (apps.OperationResult, error) {
 	a.installed = req
 	a.snapshot = ctx.Value(capabilityCatalogKey{})
+	if sink != nil {
+		sink.Send(apps.Event{Type: apps.EventStarted, Kind: apps.KindApp, ID: req.AppID})
+		sink.Send(apps.Event{Type: apps.EventStep, Kind: apps.KindDependency, ID: "node"})
+		sink.Send(apps.Event{Type: apps.EventStepDone, Kind: apps.KindDependency, ID: "node", Status: apps.StepInstalled})
+		sink.Send(apps.Event{Type: apps.EventDone, Kind: apps.KindApp, ID: req.AppID, Status: string(apps.StatusInstalled)})
+	}
 	return apps.OperationResult{Installation: apps.Installation{ID: "installation"}}, nil
 }
 
@@ -62,9 +68,10 @@ func TestCapabilityInstallKeepsReleaseAndDependencySnapshotAcrossApproval(t *tes
 		t.Fatal(err)
 	}
 	var result any
+	var progress []any
 	for _, tool := range available {
 		if tool.Name == ToolAppManage().String() {
-			result, err = tool.Execute(&sdk.ToolExecContext{Context: t.Context()}, map[string]any{"action": "install", "registry_id": "memoh", "app_id": "node"})
+			result, err = tool.Execute(&sdk.ToolExecContext{Context: t.Context(), SendProgress: func(value any) { progress = append(progress, value) }}, map[string]any{"action": "install", "registry_id": "memoh", "app_id": "node"})
 		}
 	}
 	if err != nil {
@@ -75,6 +82,13 @@ func TestCapabilityInstallKeepsReleaseAndDependencySnapshotAcrossApproval(t *tes
 	}
 	if review.input.ToolInput.(map[string]any)["revision"] != service.installed.Revision {
 		t.Fatal("review did not show installed revision")
+	}
+	assertCapabilityMessage(t, result)
+	if len(progress) != 4 {
+		t.Fatalf("progress messages = %d, want 4", len(progress))
+	}
+	for _, event := range progress {
+		assertCapabilityMessage(t, event)
 	}
 }
 

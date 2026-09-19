@@ -138,7 +138,7 @@ func (p *CapabilityProvider) Tools(_ context.Context, session SessionContext) ([
 			// credential-bearing request data, so never echo them into tool history.
 			code := apperror.CodeCapabilityOperationFailed
 			if public, ok := apperror.PublicFrom(err, ""); ok {
-				return map[string]any{"ok": false, "code": public.Code, "detail": public.Detail}, nil
+				return map[string]any{"ok": false, "code": public.Code, "detail": public.Detail, "message": public.Detail}, nil
 			}
 			switch {
 			case errors.Is(err, apps.ErrInvalidRequest):
@@ -148,7 +148,7 @@ func (p *CapabilityProvider) Tools(_ context.Context, session SessionContext) ([
 			}
 			p.logger.Warn("capability operation failed", slog.String("tool", spec.name), slog.String("action", StringArg(args, "action")))
 			public, _ := apperror.PublicFrom(apperror.New(code, nil), "")
-			return map[string]any{"ok": false, "code": public.Code, "detail": public.Detail}, nil
+			return map[string]any{"ok": false, "code": public.Code, "detail": public.Detail, "message": public.Detail}, nil
 		}}
 		switch spec.name {
 		case "mcp_manage":
@@ -257,6 +257,7 @@ func (p *CapabilityProvider) search(ctx context.Context, session SessionContext,
 				}
 			}
 		}
+		result["message"] = "Loaded the current catalog release for " + app.RegistryID + "/" + app.AppID + ". This only inspected the App; use app_manage with action=install and the returned IDs to install it."
 		return result, nil
 	}
 	query := url.Values{}
@@ -276,7 +277,8 @@ func (p *CapabilityProvider) search(ctx context.Context, session SessionContext,
 	for _, item := range list.Data[:min(len(list.Data), limit)] {
 		items = append(items, appSummary(item))
 	}
-	return map[string]any{"items": items, "total": list.Total, "page": page, "limit": limit}, nil
+	message := capabilityPageMessage(list.Total, len(items), page, limit, "App", "Apps", "Use registry_id and app_id with action=get to inspect a candidate before installation.", "Try a broader query or remove a filter.")
+	return map[string]any{"items": items, "total": list.Total, "page": page, "limit": limit, "message": message}, nil
 }
 
 func (p *CapabilityProvider) categories(ctx context.Context, args map[string]any) (any, error) {
@@ -305,7 +307,9 @@ func (p *CapabilityProvider) categories(ctx context.Context, args map[string]any
 	page, limit := capabilityPagination(args)
 	start := min((page-1)*limit, len(categories))
 	end := min(start+limit, len(categories))
-	return map[string]any{"items": categories[start:end], "total": len(categories), "page": page, "limit": limit}, nil
+	items := categories[start:end]
+	message := capabilityPageMessage(len(categories), len(items), page, limit, "App category", "App categories", "Use a category ID with action=search and omit q to browse that category.", "Remove the registry filter or check the catalog configuration.")
+	return map[string]any{"items": items, "total": len(categories), "page": page, "limit": limit, "message": message}, nil
 }
 
 func (p *CapabilityProvider) catalogJSON(ctx context.Context, path string, result any) error {
@@ -429,7 +433,14 @@ func (p *CapabilityProvider) manageApp(ctx *sdk.ToolExecContext, session Session
 		for _, item := range list.Items[start:end] {
 			items = append(items, appItemSummary(item))
 		}
-		return map[string]any{"items": items, "total": len(list.Items), "page": page, "limit": limit}, nil
+		guidance := "Use installation_id for update, resume, uninstall, or authorize. A discovered record without installation_id is not an installed App."
+		if args["check_updates"] == true {
+			guidance = "Compare version with available_version. This check did not install any update."
+		} else if args["refresh"] == true {
+			guidance = "Workspace dependencies and connector authorization were refreshed. Inspect each status before deciding whether recovery is needed."
+		}
+		message := capabilityPageMessage(len(list.Items), len(items), page, limit, "App record", "App records", guidance, "Use app_search to find an App, then install it with registry_id and app_id.")
+		return map[string]any{"items": items, "total": len(list.Items), "page": page, "limit": limit, "message": message}, nil
 	}
 	prepared := cloneCapabilityArgs(args)
 	var item apps.Item
@@ -525,17 +536,17 @@ func (p *CapabilityProvider) manageApp(ctx *sdk.ToolExecContext, session Session
 	}
 	if action == "authorize" {
 		if StringArg(args, "auth_method") == "api_key" {
-			return map[string]any{"status": "needs_configuration", "settings_url": p.settingsPath(session.BotID, "apps")}, nil
+			return map[string]any{"status": "needs_configuration", "settings_url": p.settingsPath(session.BotID, "apps"), "message": "This App connector needs manual credential setup. Ask the user to open settings_url and configure it there, then call list with refresh=true."}, nil
 		}
 		auth, err := p.opts.Apps.BeginConnectorOAuth(ctx.Context, session.BotID, id, StringArg(args, "connector_type"), StringArg(args, "auth_method"))
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"status": "authorization_pending", "authorization_url": auth.AuthorizationURL}, nil
+		return map[string]any{"status": "authorization_pending", "authorization_url": auth.AuthorizationURL, "message": "Connector authorization has started but is not complete. Ask the user to open authorization_url; after they finish, call list with refresh=true and resume the App only if its installation remains partial or failed."}, nil
 	}
 	sink := apps.EventFunc(func(evt apps.Event) {
 		if ctx.SendProgress != nil && evt.Type != apps.EventLog {
-			ctx.SendProgress(map[string]any{"type": evt.Type, "kind": evt.Kind, "id": evt.ID, "status": evt.Status})
+			ctx.SendProgress(map[string]any{"type": evt.Type, "kind": evt.Kind, "id": evt.ID, "status": evt.Status, "message": appProgressMessage(action, evt)})
 		}
 	})
 	// Operations can publish some components before failing; always invalidate.
@@ -555,13 +566,15 @@ func (p *CapabilityProvider) manageApp(ctx *sdk.ToolExecContext, session Session
 		return nil, err
 	}
 	if action == "uninstall" {
-		return map[string]any{"ok": true, "status": "removed", "installation_id": id}, nil
+		return map[string]any{"ok": true, "status": "removed", "installation_id": id, "message": "The App was uninstalled. Shared resources were preserved; its unshared Skills and tools are no longer available."}, nil
 	}
 	updated, err := p.opts.Apps.Get(ctx.Context, session.BotID, result.Installation.ID)
 	if err != nil {
 		return nil, err
 	}
-	return appItemSummary(updated), nil
+	summary := appItemSummary(updated)
+	summary["message"] = appOperationMessage(action, updated)
+	return summary, nil
 }
 
 func cloneCapabilityArgs(args map[string]any) map[string]any {

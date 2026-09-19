@@ -71,3 +71,19 @@
 - [MCP 状态查询](screenshots/agent-capability-management/19-tool-copy-mcp-status.png)：`mcp_manage list` 正常返回已有测试连接；本次结果为 `is_active=false`、最近探测 `status=connected`、过期后的 `auth_status=needs_reauthorization`，说明旧探测成功不能当作当前可用或已授权。
 - [App 状态刷新](screenshots/agent-capability-management/20-tool-copy-app-status.png)：`app_manage list` 设置 `refresh=true` 后返回 4 个发现的工作区依赖及 1 个已安装 App；已安装项带原有 installation ID 和 revision。三个查询均正常结束、没有管理审批弹窗。
 - 本轮使用确定性模型验证说明下发与真实工具流程，未评价真实语言模型理解新文案后的选工具效果；未重新执行第三方账号授权。
+
+## 工具消息与冲突处理补充验收
+
+本轮补齐了工具执行过程和结果本身的用户可读文案，而不只补工具定义：
+
+- `app_search` 的分类、搜索、详情结果都返回 `message`，包含当前页范围、下一页参数或安装入口。
+- `mcp_manage` 的列表、详情、创建、更新、删除、探测、OAuth 和手动配置结果都返回 `message`，明确区分启用、连通和授权状态，并给出下一步。
+- `app_manage` 的列表、刷新、检查更新、安装、更新、恢复、卸载和 Connector 授权结果都返回 `message`；安装类长任务的每个非日志进度事件也有安全、可展示的 `message`。
+- 失败结果同时保留稳定 `code` / `detail` 并增加 `message`；业务逻辑继续依赖稳定字段，不解析自然语言。进度消息只使用结构化事件字段，不回显内部错误、路径或凭据。
+- Web 工具行已为三个工具的 18 个 action 增加中、英、日文标题，并根据 action 展示连接 ID、App ID、Registry 或 Connector 类型。
+
+自动化验证覆盖每个 action 都有非空消息、分页空态与越界页、安装进度消息、错误消息、所有 18 个 Web action 标题及目标字段。`go test ./...`、关键包 race 检查、变更范围 Go lint、125 项 Web 测试和相关 ESLint 均通过。实际开发服务继续运行当前 worktree，Server、Channel、PostgreSQL、pgvector、Connect-It 健康，Web 可访问，Server `/health` 返回 200。
+
+本分支已用普通 merge 同步 `origin/main`，仅在 `internal/agent/tool/types.go` 发生冲突；解决时同时保留 capability 的 `CapabilitiesChanged` / `ApprovalEmitter` 和主分支新增的 `CurrentModelProviderID`。合并提交为 `ca9ee7b08`，已推送；PR 当前为 `MERGEABLE`，同步后的远程 CI 全部通过。
+
+当前自动浏览器控制没有可用的浏览器 surface，无法由 Agent 再捕获本轮工具行标题和展开消息的页面截图。代码、运行环境和自动化验证已完成；依照 Web Skill，提交这批 UI 文案前仍需人工在 `http://localhost:21482` 检查渲染结果。人工确认前，本节不把本轮 UI 变更标记为已完成验收。

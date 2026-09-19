@@ -80,6 +80,7 @@ func TestAppCategoriesFilterCountsBeforePagination(t *testing.T) {
 				t.Fatal(err)
 			}
 			data := result.(map[string]any)
+			assertCapabilityMessage(t, data)
 			items := data["items"].([]supermarket.AppCategory)
 			ids := make([]string, 0, len(items))
 			for _, item := range items {
@@ -122,6 +123,7 @@ func TestAppSearchBrowsesCategoryWithoutKeywords(t *testing.T) {
 		t.Fatal(err)
 	}
 	data := result.(map[string]any)
+	assertCapabilityMessage(t, data)
 	items := data["items"].([]map[string]any)
 	if len(items) != 2 || items[0]["app_id"] != "app-c" || items[1]["category"] != "developer-tools" || data["total"] != 5 {
 		t.Fatalf("browse result = %#v", data)
@@ -140,6 +142,7 @@ func TestAppCategoriesFailureDoesNotBecomeEmptyCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCapabilityCode(t, result, apperror.CodeCapabilityOperationFailed)
+	assertCapabilityMessage(t, result)
 	if _, ok := result.(map[string]any)["items"]; ok {
 		t.Fatal("upstream failure reported as empty catalog")
 	}
