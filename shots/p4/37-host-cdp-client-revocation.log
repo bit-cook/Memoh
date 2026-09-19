@@ -1,0 +1,8 @@
+{"t":"2026-09-19T08:56:44.066Z","step":"json_version","status":200,"has_browser_ws":false,"scope":"page target A94F78E1FCF12D1C357BB7984BFF87B3 only; the browser-level websocket is not exposed, use the target listed by /json/list"}
+{"t":"2026-09-19T08:56:44.070Z","step":"json_list","status":200,"targets":[{"id":"A94F78E1FCF12D1C357BB7984BFF87B3","title":"cdp-target","ws":"ws://localhost:19880/bots/9fdcb968-1cef-4ef8-b42a-6750ed32f021/container/cdp/5e8faa1032977352f7d9cfa604daaff4/devtools/page/A94F78E1FCF12D1C357BB7984BFF87B3"}]}
+{"t":"2026-09-19T08:56:44.071Z","step":"foreign_target_http_status","status":404}
+{"t":"2026-09-19T08:56:44.074Z","step":"ws_open"}
+{"t":"2026-09-19T08:56:44.076Z","step":"evaluate","result":"remote / cdp-target"}
+{"t":"2026-09-19T08:56:56.962Z","step":"ws_closed_by_server","closed":true,"code":1006,"reason":""}
+{"t":"2026-09-19T08:56:56.964Z","step":"json_list_after_revoke","status":404}
+{"t":"2026-09-19T08:56:56.966Z","step":"reconnect_after_revoke","result":"refused"}
