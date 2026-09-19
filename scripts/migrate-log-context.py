@@ -151,8 +151,13 @@ def migrate(path: pathlib.Path, dry_run: bool) -> tuple[int, list[Site]]:
     for call in CALL.finditer(src):
         line_start = src.rfind("\n", 0, call.start()) + 1
         line_end = src.find("\n", call.start())
-        preceding = src[max(0, src.rfind("\n", 0, line_start - 1)) : line_start]
-        if OPT_OUT in src[line_start : line_end if line_end != -1 else len(src)] or OPT_OUT in preceding:
+        own_line = src[line_start : line_end if line_end != -1 else len(src)]
+        # The marker counts on the call's own line, or alone on the line above
+        # it. Accepting any preceding line that merely contains it would let a
+        # trailing marker exempt the next call as well.
+        prev_start = src.rfind("\n", 0, line_start - 1) + 1
+        previous = src[prev_start : max(prev_start, line_start - 1)].strip()
+        if OPT_OUT in own_line or previous.startswith("//") and OPT_OUT in previous:
             continue
         func = enclosing(funcs, call.start())
         if func is None:

@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/robfig/cron/v3"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/felinics/memoh/internal/auth"
 	"github.com/felinics/memoh/internal/boot"
@@ -684,13 +685,20 @@ func (s *Service) scheduleJob(ctx context.Context, schedule sqlc.Schedule) error
 		item := toSchedule(schedule)
 		runCtx, runCancel := context.WithTimeout(context.WithoutCancel(ctx), runTimeoutFor(item))
 		defer runCancel()
+		// The registering request's span rides along in those values too, so
+		// without this every firing for the life of the process would be
+		// grafted onto the trace of the call that created the schedule. A
+		// firing is its own unit of work and starts its own trace.
+		runCtx = trace.ContextWithSpanContext(runCtx, trace.SpanContext{})
 		if err := s.runSchedule(runCtx, item); err != nil {
-			// runCtx, not ctx: ctx is whatever registered this schedule — on
-			// the Create path an HTTP request that finished long ago. Logging
-			// with it stamps every later firing with that request's id, which
-			// is worse than no correlation: it points at a request that had
-			// nothing to do with this run.
-			s.logger.ErrorContext(runCtx, "scheduled job failed", slog.String("schedule_id", schedule.ID.String()), slog.Any("error", err))
+			// Plain Error. Every context reachable here descends from the one
+			// that registered the schedule — on the Create path an HTTP
+			// request that finished long ago — and context.WithoutCancel
+			// drops the cancellation but keeps the values, so runCtx carries
+			// that request's id too. A firing belongs to no request; stamping
+			// it with one points at a request that had nothing to do with it.
+			//logctx:plain
+			s.logger.Error("scheduled job failed", slog.String("schedule_id", schedule.ID.String()), slog.Any("error", err))
 		}
 	}
 

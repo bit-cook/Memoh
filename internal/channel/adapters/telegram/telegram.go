@@ -475,10 +475,13 @@ func (a *TelegramAdapter) Connect(ctx context.Context, cfg channel.ChannelConfig
 		}
 		if a.seenTelegramUpdate(cfg.ID, upd.ID, time.Now()) {
 			if a.logger != nil {
-				// connCtx, the one the guard above checks: an update belongs
-				// to the connection that is polling, not to whichever call
-				// opened it.
-				a.logger.DebugContext(connCtx, "skip duplicate telegram update",
+				// Plain Debug. connCtx descends from the call that opened
+				// this connection, and WithoutCancel kept that call's values,
+				// so any context here carries an id belonging to whichever
+				// reconcile happened to start the poller — not to this
+				// update, which arrived from Telegram on its own.
+				//logctx:plain
+				a.logger.Debug("skip duplicate telegram update",
 					slog.String("config_id", cfg.ID),
 					slog.Int("update_id", upd.ID),
 				)
